@@ -236,12 +236,15 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     for (const account of relatedAccounts) {
       const id = String(account.账户ID || "").trim();
       const name = String(account.账户名称 || "").trim() || (id ? `账户 ${id}` : "");
+      const task = String(row.任务名 || "").trim() || "未填写";
       if (!id && !name) continue;
-      const key = id || name;
+      const key = JSON.stringify([id || name, task]);
       if (!buckets.has(key)) {
         buckets.set(key, {
           账户ID: id,
           账户名称: name,
+          任务名: task,
+          闲鱼任务: task.includes("闲鱼"),
           消耗: 0,
           关联注册数: 0,
           关联结算数: 0,
@@ -264,10 +267,11 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     const settlements = account.关联结算数;
     const spend = account.消耗;
     const reasons = [];
-    if (registrations < settlements) {
+    if (settlements > 0 && registrations < settlements * 0.9) {
+      const lowerPercent = Number((((settlements - registrations) / settlements) * 100).toFixed(2));
       reasons.push({
-        code: "registrations_below_settlements",
-        message: `关联注册数 ${registrations} 少于关联结算数 ${settlements}`,
+        code: "registrations_below_settlements_10pct",
+        message: `关联注册数 ${registrations} 比关联结算数 ${settlements} 低 ${lowerPercent}%`,
       });
     }
     if (spend >= 100 && registrations === 0) {
@@ -286,6 +290,8 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     return [{
       账户ID: account.账户ID,
       账户名称: account.账户名称,
+      任务名: account.任务名,
+      闲鱼任务: account.闲鱼任务,
       消耗: spend,
       关联注册数: registrations,
       关联结算数: settlements,

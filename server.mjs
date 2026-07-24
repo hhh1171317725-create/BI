@@ -86,9 +86,23 @@ async function fetchRows(token, userId) {
     const date = String(record.日期 || "").trim();
     if (!date || date === "-") return [];
     const task = String(record.任务名 || "").trim() || "未填写";
+    const account = [
+      record.媒体账户名称,
+      record.媒体账户名,
+      record.账户名称,
+      record.广告账户名称,
+      record.媒体账户,
+      record.推广账户,
+      record.广告账户,
+      record.账户,
+      record.媒体账户ID,
+      record.账户ID,
+      record.媒体,
+    ].map((value) => String(value || "").trim()).find((value) => value && value !== "-") || "未填写";
     const row = {
       日期: date.slice(0, 10),
       媒体: String(record.媒体 || "").trim() || "未填写",
+      账户: account,
       优化师: String(record.优化师 || "").trim() || "未填写",
       任务名: task,
       项目: projectFromTask(task),
@@ -195,6 +209,58 @@ function aggregate(data, fields) {
   }).sort((left, right) => right.消耗 - left.消耗);
 }
 
+function previousBeijingDate(now = new Date()) {
+  const beijing = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  beijing.setUTCDate(beijing.getUTCDate() - 1);
+  return beijing.toISOString().slice(0, 10);
+}
+
+function buildDhhAlerts(data, date = previousBeijingDate()) {
+  const dailyRows = data
+    .filter((row) => row.日期 === date)
+    .map((row) => ({ ...row, 账户: row.账户 || row.媒体 || "未填写" }));
+  const accounts = aggregate(dailyRows, "账户");
+  const items = accounts.flatMap((account) => {
+    const registrations = account.注册数;
+    const settlements = account.结算数;
+    const spend = account.消耗;
+    const reasons = [];
+    if (registrations < settlements) {
+      reasons.push({
+        code: "registrations_below_settlements",
+        message: `注册数 ${registrations} 少于结算数 ${settlements}`,
+      });
+    }
+    if (spend >= 100 && registrations === 0) {
+      reasons.push({
+        code: "spend_without_registration",
+        message: `消耗 ${Number(spend.toFixed(2))} 元但注册数为 0`,
+      });
+    }
+    if (registrations > settlements * 1.1) {
+      const message = settlements
+        ? `注册数 ${registrations} 比结算数 ${settlements} 高 ${Number((((registrations - settlements) / settlements) * 100).toFixed(2))}%`
+        : `结算数为 0，但注册数为 ${registrations}`;
+      reasons.push({ code: "registrations_over_settlements_10pct", message });
+    }
+    if (!reasons.length) return [];
+    return [{
+      账户: account.账户,
+      消耗: spend,
+      注册数: registrations,
+      结算数: settlements,
+      reasons,
+    }];
+  }).sort((left, right) => right.reasons.length - left.reasons.length || right.消耗 - left.消耗);
+  return {
+    date,
+    hasData: dailyRows.length > 0,
+    accountCount: accounts.length,
+    total: items.length,
+    items,
+  };
+}
+
 function buildAnalysis(start = "", end = "") {
   const filtered = rows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
   const byProject = aggregate(filtered, "项目");
@@ -207,6 +273,7 @@ function buildAnalysis(start = "", end = "") {
     rows: filtered.length,
     range: filtered.length ? [filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期), filtered.reduce((max, row) => row.日期 > max ? row.日期 : max, filtered[0].日期)] : ["-", "-"],
     summary,
+    alerts: buildDhhAlerts(rows),
     by_optimizer: aggregate(filtered, "优化师"),
     by_project: byProject,
     by_date: aggregate(filtered, "日期").sort((left, right) => right.日期.localeCompare(left.日期)),
@@ -342,4 +409,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   server.listen(port, host, () => console.log(`营销日报分析系统已启动：http://${host}:${port}`));
 }
 
-export { aggregateJd, jdMetrics, parseCsv, parseJdCsv };
+export { aggregateJd, buildDhhAlerts, jdMetrics, parseCsv, parseJdCsv, previousBeijingDate };

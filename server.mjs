@@ -380,12 +380,28 @@ function aggregateJd(data, fields) {
     .sort((left, right) => right.消耗 - left.消耗);
 }
 
-function buildJdAnalysis(start = "", end = "") {
-  const filtered = jdRows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
+function isUnknownOptimizer(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return !normalized
+    || normalized === "-"
+    || ["未填写", "未知", "未知优化师", "unknown"].includes(normalized);
+}
+
+function filterJdRows(data, start = "", end = "", excludeUnknownOptimizer = false) {
+  return data.filter((row) => (
+    (!start || row.日期 >= start)
+    && (!end || row.日期 <= end)
+    && (!excludeUnknownOptimizer || !isUnknownOptimizer(row.优化师))
+  ));
+}
+
+function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = false) {
+  const filtered = filterJdRows(jdRows, start, end, excludeUnknownOptimizer);
   const emptyValues = Object.fromEntries(jdNumericFields.map((field) => [field, 0]));
   const summary = aggregateJd(filtered, [])[0] || jdMetrics(emptyValues);
   return {
     cachedAt: jdCachedAt,
+    excludeUnknownOptimizer,
     rows: filtered.length,
     range: filtered.length
       ? [
@@ -449,12 +465,16 @@ const server = http.createServer(async (request, response) => {
       const payload = await readRequestBody(request);
       jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
       await saveJdCache();
-      return sendJson(response, buildJdAnalysis());
+      return sendJson(response, buildJdAnalysis("", "", payload.excludeUnknownOptimizer === true));
     }
     if (request.method === "POST" && request.url === "/api/jd/analyze") {
       await restoreJdCache();
       const payload = await readRequestBody(request);
-      return sendJson(response, buildJdAnalysis(payload.start || "", payload.end || ""));
+      return sendJson(response, buildJdAnalysis(
+        payload.start || "",
+        payload.end || "",
+        payload.excludeUnknownOptimizer === true,
+      ));
     }
     response.writeHead(404);
     response.end("Not found");
@@ -467,4 +487,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   server.listen(port, host, () => console.log(`营销日报分析系统已启动：http://${host}:${port}`));
 }
 
-export { aggregateJd, buildDhhAlerts, jdMetrics, parseCsv, parseDhhAccounts, parseJdCsv, previousBeijingDate };
+export {
+  aggregateJd,
+  buildDhhAlerts,
+  filterJdRows,
+  isUnknownOptimizer,
+  jdMetrics,
+  parseCsv,
+  parseDhhAccounts,
+  parseJdCsv,
+  previousBeijingDate,
+};

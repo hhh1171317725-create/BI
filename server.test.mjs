@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDhhAlerts, parseDhhAccounts } from "./server.mjs";
+import { buildDhhAlerts, filterJdRows, isUnknownOptimizer, parseDhhAccounts } from "./server.mjs";
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {
   const accounts = parseDhhAccounts(JSON.stringify([{
@@ -145,4 +145,22 @@ test("buildDhhAlerts rejects stale media-level cache as account data", () => {
   assert.equal(result.hasAccountData, false);
   assert.equal(result.accountCount, 0);
   assert.equal(result.total, 0);
+});
+
+test("JD unknown optimizer filter applies to every downstream dataset", () => {
+  const data = [
+    { 日期: "2026-07-22", 优化师: "优化师A" },
+    { 日期: "2026-07-23", 优化师: "优化师A" },
+    { 日期: "2026-07-23", 优化师: "未填写" },
+    { 日期: "2026-07-23", 优化师: "未知优化师" },
+    { 日期: "2026-07-23", 优化师: "unknown" },
+  ];
+
+  assert.equal(isUnknownOptimizer("未知"), true);
+  assert.equal(isUnknownOptimizer("优化师A"), false);
+  assert.deepEqual(
+    filterJdRows(data, "2026-07-23", "2026-07-23", true),
+    [{ 日期: "2026-07-23", 优化师: "优化师A" }],
+  );
+  assert.equal(filterJdRows(data, "2026-07-23", "2026-07-23", false).length, 4);
 });

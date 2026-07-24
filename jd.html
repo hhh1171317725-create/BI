@@ -391,7 +391,13 @@
       <label>结束日期（可选）
         <input id="end" type="date" />
       </label>
-      <button class="secondary" id="apply" type="button">应用日期筛选</button>
+      <label>是否排除未知优化师
+        <select id="excludeUnknownOptimizer">
+          <option value="false">否，保留全部数据</option>
+          <option value="true">是，排除未知优化师</option>
+        </select>
+      </label>
+      <button class="secondary" id="apply" type="button">应用筛选</button>
       <button class="secondary" id="reset" type="button">重置日期</button>
       <span class="note" id="loading" aria-live="polite"></span>
     </div>
@@ -654,7 +660,8 @@
         const pages = Math.max(1, Math.ceil(rows.length / pageSize));
         page = Math.min(page, pages);
         const range = Array.isArray(report.range) ? report.range : ["-", "-"];
-        $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条。`;
+        const optimizerFilterText = report.excludeUnknownOptimizer ? "，已排除未知优化师" : "，包含未知优化师";
+        $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条${optimizerFilterText}。`;
 
         const columns = [config.key, ...metricColumns];
         const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
@@ -770,6 +777,7 @@
           report = await post("/api/jd/load", {
             token,
             userId: $("#userId").value.trim() || "20",
+            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
           $("#token").value = "";
           page = 1;
@@ -797,7 +805,11 @@
           button.disabled = true;
           $("#reset").disabled = true;
           $("#loading").textContent = "计算中…";
-          report = await post("/api/jd/analyze", { start, end });
+          report = await post("/api/jd/analyze", {
+            start,
+            end,
+            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
+          });
           if (reset) {
             $("#start").value = "";
             $("#end").value = "";

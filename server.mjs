@@ -9,7 +9,6 @@ const port = Number(process.env.DHH_PORT || 8765);
 const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
 const cachePath = path.join(runtimeDir, "report-cache.json");
 const jdCachePath = path.join(runtimeDir, "jd-report-cache.json");
-const mobgiCachePath = path.join(runtimeDir, "mobgi-project-cache.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
 const numericFields = ["消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数"];
@@ -19,16 +18,10 @@ const jdNumericFields = [
   "首购已完成订单", "回流已完成订单", "消耗", "条件内预估赔付金额",
   "首购预估佣金", "回流预估佣金", "首购实际佣金", "回流实际佣金",
 ];
-const mobgiNumericFields = [
-  "新建创意数", "有消耗创意数", "过学习期计划数", "创量消耗",
-  "展示数", "点击数", "创量转化数",
-];
 let rows = [];
 let cachedAt = "";
 let jdRows = [];
 let jdCachedAt = "";
-let mobgiRows = [];
-let mobgiCachedAt = "";
 
 function number(value) {
   const parsed = Number(String(value ?? "0").replaceAll(",", ""));
@@ -74,43 +67,6 @@ function parseCsv(text) {
   }
   const [headers = [], ...data] = records;
   return data.map((values) => Object.fromEntries(headers.map((header, index) => [header.trim(), values[index] ?? ""])));
-}
-
-function normalizeDate(value) {
-  const digits = String(value || "").trim().replaceAll(/[^0-9]/g, "");
-  if (digits.length < 8) return "";
-  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
-}
-
-function normalizeMobgiProject(value) {
-  const project = String(value || "").trim();
-  if (!project || project === "--") return "";
-  if (project.includes("闲鱼")) return "淘宝闲鱼促活";
-  if (project.toUpperCase().includes("MCVR")) return "淘宝闪购MCVR";
-  if (project.toUpperCase().includes("CVR") && !project.toUpperCase().includes("QCVR")) return "淘宝促购CVR";
-  if (project.includes("促活") && (project.toUpperCase().includes("UV") || project === "淘宝促活")) return "淘宝促活UV";
-  return project;
-}
-
-function parseMobgiCsv(raw) {
-  return parseCsv(String(raw || "").replace(/^\uFEFF/, "")).flatMap((record) => {
-    const date = normalizeDate(record.日期);
-    const sourceProject = String(record.项目 || "").trim();
-    const project = normalizeMobgiProject(sourceProject);
-    if (!date || !project) return [];
-    return [{
-      日期: date,
-      项目: project,
-      创量原项目: sourceProject,
-      新建创意数: number(record["新建广告(创意)数"]),
-      有消耗创意数: number(record["有消耗广告(创意)数"]),
-      过学习期计划数: number(record.过学习期计划数),
-      创量消耗: number(record.总消耗),
-      展示数: number(record.展示数),
-      点击数: number(record.点击数),
-      创量转化数: number(record.转化数),
-    }];
-  });
 }
 
 function parseDhhAccounts(value) {
@@ -231,72 +187,6 @@ async function restoreJdCache() {
   if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的京东数据，请粘贴 x-token 后加载一次");
   jdRows = cached.rows;
   jdCachedAt = cached.cachedAt || "";
-}
-
-async function saveMobgiCache() {
-  await fs.mkdir(runtimeDir, { recursive: true });
-  mobgiCachedAt = new Date().toISOString();
-  const temporaryPath = `${mobgiCachePath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify({ cachedAt: mobgiCachedAt, rows: mobgiRows }), "utf8");
-  await fs.rename(temporaryPath, mobgiCachePath);
-}
-
-async function restoreMobgiCache() {
-  if (mobgiRows.length) return true;
-  try {
-    const cached = JSON.parse(await fs.readFile(mobgiCachePath, "utf8"));
-    if (!Array.isArray(cached.rows) || !cached.rows.length) return false;
-    mobgiRows = cached.rows;
-    mobgiCachedAt = cached.cachedAt || "";
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function mobgiMetrics(values = {}) {
-  const spend = values.创量消耗 || 0;
-  const impressions = values.展示数 || 0;
-  const clicks = values.点击数 || 0;
-  const conversions = values.创量转化数 || 0;
-  return {
-    ...Object.fromEntries(mobgiNumericFields.map((field) => [field, Number((values[field] || 0).toFixed(2))])),
-    平均千次展示费用: impressions ? Number(((spend / impressions) * 1000).toFixed(2)) : 0,
-    平均点击单价: clicks ? Number((spend / clicks).toFixed(2)) : 0,
-    创量转化成本: conversions ? Number((spend / conversions).toFixed(2)) : 0,
-  };
-}
-
-function aggregateMobgi(data, fields) {
-  const groupFields = Array.isArray(fields) ? fields : [fields];
-  const buckets = new Map();
-  for (const row of data) {
-    const key = JSON.stringify(groupFields.map((field) => row[field]));
-    if (!buckets.has(key)) {
-      buckets.set(key, {
-        dimensions: Object.fromEntries(groupFields.map((field) => [field, row[field]])),
-        values: Object.fromEntries(mobgiNumericFields.map((field) => [field, 0])),
-      });
-    }
-    const values = buckets.get(key).values;
-    mobgiNumericFields.forEach((field) => { values[field] += number(row[field]); });
-  }
-  return [...buckets.values()].map(({ dimensions, values }) => ({ ...dimensions, ...mobgiMetrics(values) }));
-}
-
-function attachMobgiProjectMetrics(baseRows, mobgiData, fields) {
-  const groupFields = Array.isArray(fields) ? fields : [fields];
-  const related = new Map(aggregateMobgi(mobgiData, groupFields)
-    .map((row) => [JSON.stringify(groupFields.map((field) => row[field])), row]));
-  const empty = mobgiMetrics();
-  return baseRows.map((row) => {
-    const matched = related.get(JSON.stringify(groupFields.map((field) => row[field])));
-    return {
-      ...row,
-      创量关联: matched ? "已关联" : "未关联",
-      ...(matched || empty),
-    };
-  });
 }
 
 function aggregate(data, fields) {
@@ -431,17 +321,11 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
 
 function buildAnalysis(start = "", end = "") {
   const filtered = rows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
-  const filteredMobgi = mobgiRows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
-  const baseByProject = aggregate(filtered, "项目");
-  const byProject = attachMobgiProjectMetrics(baseByProject, filteredMobgi, "项目");
-  const baseByProjectDate = aggregate(filtered, ["日期", "项目"]);
-  const byProjectDate = attachMobgiProjectMetrics(baseByProjectDate, filteredMobgi, ["日期", "项目"]);
-  const summary = Object.fromEntries(numericFields.map((field) => [field, Number(baseByProject.reduce((total, item) => total + item[field], 0).toFixed(2))]));
+  const byProject = aggregate(filtered, "项目");
+  const summary = Object.fromEntries(numericFields.map((field) => [field, Number(byProject.reduce((total, item) => total + item[field], 0).toFixed(2))]));
   summary.现金利润 = Number((summary.预估佣金 - summary.现金消耗).toFixed(2));
   summary.ROI = summary.消耗 ? Number((summary.预估佣金 / summary.消耗).toFixed(4)) : 0;
   summary.现金ROI = summary.现金消耗 ? Number((summary.预估佣金 / summary.现金消耗).toFixed(4)) : 0;
-  const mobgiProjects = new Set(filteredMobgi.map((row) => row.项目));
-  const matchedProjects = baseByProject.filter((row) => mobgiProjects.has(row.项目)).length;
   return {
     cachedAt,
     rows: filtered.length,
@@ -454,20 +338,8 @@ function buildAnalysis(start = "", end = "") {
     by_task: aggregate(filtered, "任务名"),
     by_optimizer_date: aggregate(filtered, ["日期", "优化师"]),
     by_optimizer_task_date: aggregate(filtered, ["日期", "优化师", "任务名"]),
-    by_project_date: byProjectDate,
+    by_project_date: aggregate(filtered, ["日期", "项目"]),
     by_task_date: aggregate(filtered, ["日期", "任务名"]),
-    mobgi: {
-      hasData: mobgiRows.length > 0,
-      cachedAt: mobgiCachedAt,
-      rows: filteredMobgi.length,
-      matchedProjects,
-      range: filteredMobgi.length
-        ? [
-          filteredMobgi.reduce((min, row) => row.日期 < min ? row.日期 : min, filteredMobgi[0].日期),
-          filteredMobgi.reduce((max, row) => row.日期 > max ? row.日期 : max, filteredMobgi[0].日期),
-        ]
-        : ["-", "-"],
-    },
   };
 }
 
@@ -715,35 +587,8 @@ function sendJson(response, payload, status = 200) {
 
 async function readRequestBody(request) {
   const chunks = [];
-  let length = 0;
-  for await (const chunk of request) {
-    length += chunk.length;
-    if (length > 8 * 1024 * 1024) throw new Error("请求内容不能超过 8 MB");
-    chunks.push(chunk);
-  }
+  for await (const chunk of request) chunks.push(chunk);
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-}
-
-function parseMobgiDownloadUrl(value) {
-  const cleaned = String(value || "").replaceAll("^", "").trim();
-  const matched = cleaned.match(/https:\/\/cls\.mobgi\.com\/download\/report\/[^\s"'&]+/i);
-  if (!matched) throw new Error("请粘贴创量 CSV 下载链接或选择 CSV 文件");
-  const url = new URL(matched[0]);
-  if (url.protocol !== "https:" || url.hostname !== "cls.mobgi.com" || !url.pathname.startsWith("/download/report/")) {
-    throw new Error("仅支持 cls.mobgi.com 的报表下载链接");
-  }
-  return url.toString();
-}
-
-async function fetchMobgiCsv(value) {
-  const url = parseMobgiDownloadUrl(value);
-  const response = await fetch(url, { headers: { Accept: "text/csv,*/*", Referer: "https://cl.mobgi.com/" } });
-  if (!response.ok) throw new Error(`创量报表下载失败：${response.status}`);
-  const declaredLength = number(response.headers.get("content-length"));
-  if (declaredLength > 8 * 1024 * 1024) throw new Error("创量 CSV 文件不能超过 8 MB");
-  const content = Buffer.from(await response.arrayBuffer());
-  if (content.length > 8 * 1024 * 1024) throw new Error("创量 CSV 文件不能超过 8 MB");
-  return content.toString("utf8");
 }
 
 async function serveFile(response, filename, contentType) {
@@ -762,32 +607,17 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/assets/miku-pet.png") return serveFile(response, "assets/miku-pet.png", "image/png");
     if (request.method === "GET" && request.url === "/api/current") {
       await restoreCache();
-      await restoreMobgiCache();
       return sendJson(response, buildAnalysis());
     }
     if (request.method === "POST" && request.url === "/api/load") {
       const payload = await readRequestBody(request);
       rows = await fetchRows(payload.token || "", payload.userId || "20");
       await saveCache();
-      await restoreMobgiCache();
       return sendJson(response, buildAnalysis());
     }
     if (request.method === "POST" && request.url === "/api/analyze") {
       await restoreCache();
-      await restoreMobgiCache();
       const payload = await readRequestBody(request);
-      return sendJson(response, buildAnalysis(payload.start || "", payload.end || ""));
-    }
-    if (request.method === "POST" && request.url === "/api/mobgi/import") {
-      const payload = await readRequestBody(request);
-      const raw = String(payload.csv || "").trim()
-        ? String(payload.csv)
-        : await fetchMobgiCsv(payload.downloadUrl || "");
-      const parsed = parseMobgiCsv(raw);
-      if (!parsed.length) throw new Error("创量 CSV 中没有可关联的项目明细");
-      mobgiRows = parsed;
-      await saveMobgiCache();
-      await restoreCache();
       return sendJson(response, buildAnalysis(payload.start || "", payload.end || ""));
     }
     if (request.method === "GET" && request.url === "/api/jd/current") {
@@ -840,18 +670,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
 export {
   aggregateJd,
-  attachMobgiProjectMetrics,
   buildDhhAlerts,
   filterJdRows,
   isUnknownOptimizer,
   jdMetrics,
   localPetReply,
-  normalizeMobgiProject,
   parseCsv,
   parseDhhAccounts,
   parseJdCsv,
-  parseMobgiDownloadUrl,
-  parseMobgiCsv,
   previousBeijingDate,
   resolveAiProvider,
 };

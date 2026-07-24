@@ -1,14 +1,11 @@
 import http from "node:http";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.DHH_HOST || "127.0.0.1";
 const port = Number(process.env.DHH_PORT || 8765);
-const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(os.homedir(), ".dahanghai_analysis_system");
-const settingsPath = path.join(runtimeDir, "settings.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const numericFields = ["消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数"];
 let rows = [];
@@ -57,27 +54,6 @@ function parseCsv(text) {
   }
   const [headers = [], ...data] = records;
   return data.map((values) => Object.fromEntries(headers.map((header, index) => [header.trim(), values[index] ?? ""])));
-}
-
-async function loadSettings() {
-  try {
-    return JSON.parse(await fs.readFile(settingsPath, "utf8"));
-  } catch {
-    return { token: "", userId: "20" };
-  }
-}
-
-async function saveSettings(token, userId) {
-  await fs.mkdir(runtimeDir, { recursive: true });
-  await fs.writeFile(settingsPath, JSON.stringify({ token: token.trim(), userId: userId.trim() || "20" }), "utf8");
-}
-
-async function serverCredentials() {
-  const settings = await loadSettings();
-  return {
-    token: process.env.DHH_TOKEN || settings.token || "",
-    userId: process.env.DHH_USER_ID || settings.userId || "20",
-  };
 }
 
 async function fetchRows(token, userId) {
@@ -181,18 +157,8 @@ const server = http.createServer(async (request, response) => {
   try {
     if (request.method === "GET" && request.url === "/") return serveFile(response, "index.html", "text/html; charset=utf-8");
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
-    if (request.method === "GET" && request.url === "/api/settings") {
-      const credentials = await serverCredentials();
-      return sendJson(response, { configured: Boolean(credentials.token), userId: credentials.userId });
-    }
-    if (request.method === "POST" && request.url === "/api/refresh") {
-      const credentials = await serverCredentials();
-      rows = await fetchRows(credentials.token, credentials.userId);
-      return sendJson(response, buildAnalysis());
-    }
     if (request.method === "POST" && request.url === "/api/load") {
       const payload = await readRequestBody(request);
-      if (payload.remember !== false) await saveSettings(payload.token || "", payload.userId || "20");
       rows = await fetchRows(payload.token || "", payload.userId || "20");
       return sendJson(response, buildAnalysis());
     }

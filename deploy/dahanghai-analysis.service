@@ -10,7 +10,6 @@ WorkingDirectory=/www/wwwroot/BI
 Environment=DHH_HOST=127.0.0.1
 Environment=DHH_PORT=8765
 Environment=DHH_OPEN_BROWSER=0
-Environment=DHH_RUNTIME_DIR=/www/wwwroot/BI/.runtime
 ExecStart=/usr/bin/node /www/wwwroot/BI/server.mjs
 Restart=always
 RestartSec=3

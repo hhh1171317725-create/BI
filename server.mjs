@@ -604,6 +604,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
     if (request.method === "GET" && request.url === "/pet.css") return serveFile(response, "pet.css", "text/css; charset=utf-8");
     if (request.method === "GET" && request.url === "/pet.js") return serveFile(response, "pet.js", "application/javascript; charset=utf-8");
+    if (request.method === "GET" && request.url === "/assets/miku-pet.png") return serveFile(response, "assets/miku-pet.png", "image/png");
     if (request.method === "GET" && request.url === "/api/current") {
       await restoreCache();
       return sendJson(response, buildAnalysis());

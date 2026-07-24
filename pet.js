@@ -4,6 +4,7 @@
   const history = [];
   let busy = false;
   const aiConfigStorageKey = "data-pet-ai-config-v1";
+  const petPositionStorageKey = "data-pet-position-v1";
 
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -19,7 +20,10 @@
     root.innerHTML = `
       <section class="data-pet-panel" hidden>
         <header class="data-pet-head">
-          <div><div class="data-pet-name">🐳 数数鲸</div><div class="data-pet-mode">报表对话与数据分析</div></div>
+          <div class="data-pet-identity">
+            <img class="data-pet-avatar" src="/assets/miku-pet.png" alt="" />
+            <div><div class="data-pet-name">初音未来 · 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
+          </div>
           <div class="data-pet-head-actions">
             <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置">⚙</button>
             <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
@@ -46,7 +50,10 @@
           <button class="data-pet-send" type="submit">发送</button>
         </form>
       </section>
-      <button class="data-pet-toggle" type="button" aria-label="打开数据分析宠物" aria-expanded="false">🐳<span class="data-pet-dot"></span></button>
+      <button class="data-pet-toggle" type="button" aria-label="打开初音数据助手" aria-expanded="false">
+        <img src="/assets/miku-pet.png" alt="" draggable="false" />
+        <span class="data-pet-dot"></span>
+      </button>
     `;
     document.body.appendChild(root);
     return root;
@@ -62,6 +69,123 @@
   const settings = root.querySelector(".data-pet-settings");
   const providerInput = root.querySelector(".data-pet-provider");
   const apiKeyInput = root.querySelector(".data-pet-api-key");
+  const head = root.querySelector(".data-pet-head");
+  let dragState = null;
+
+  function updatePanelDirection() {
+    if (window.innerWidth <= 560) {
+      root.classList.remove("data-pet-open-right", "data-pet-open-down");
+      return;
+    }
+    if (panel.hidden) return;
+    const rootRect = root.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const gap = 14;
+    root.classList.toggle(
+      "data-pet-open-right",
+      rootRect.left + panelRect.width <= window.innerWidth - 8,
+    );
+    root.classList.toggle(
+      "data-pet-open-down",
+      rootRect.bottom + gap + panelRect.height <= window.innerHeight - 8,
+    );
+  }
+
+  function setPetPosition(left, top, save = false) {
+    const rootRect = root.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - rootRect.width - 8);
+    const maxTop = Math.max(8, window.innerHeight - rootRect.height - 8);
+    const nextLeft = Math.min(Math.max(8, left), maxLeft);
+    const nextTop = Math.min(Math.max(8, top), maxTop);
+    root.style.left = `${nextLeft}px`;
+    root.style.top = `${nextTop}px`;
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+    updatePanelDirection();
+    if (save) {
+      try {
+        localStorage.setItem(petPositionStorageKey, JSON.stringify({ left: nextLeft, top: nextTop }));
+      } catch {
+        // 拖动功能不依赖浏览器是否允许本地存储。
+      }
+    }
+  }
+
+  function keepPanelInViewport() {
+    if (panel.hidden || window.innerWidth <= 560) return;
+    updatePanelDirection();
+    const panelRect = panel.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
+    const horizontalShift = panelRect.left < 8
+      ? 8 - panelRect.left
+      : panelRect.right > window.innerWidth - 8
+        ? window.innerWidth - 8 - panelRect.right
+        : 0;
+    const verticalShift = panelRect.top < 8
+      ? 8 - panelRect.top
+      : panelRect.bottom > window.innerHeight - 8
+        ? window.innerHeight - 8 - panelRect.bottom
+        : 0;
+    if (horizontalShift || verticalShift) {
+      setPetPosition(rootRect.left + horizontalShift, rootRect.top + verticalShift);
+    }
+  }
+
+  function restorePetPosition() {
+    try {
+      const position = JSON.parse(localStorage.getItem(petPositionStorageKey) || "{}");
+      if (Number.isFinite(position.left) && Number.isFinite(position.top)) {
+        setPetPosition(position.left, position.top);
+      }
+    } catch {
+      // 使用默认右下角位置。
+    }
+  }
+
+  function startPetDrag(event, source) {
+    if (event.button !== 0) return;
+    if (source === "head" && event.target.closest("button, input, select")) return;
+    const rect = root.getBoundingClientRect();
+    dragState = {
+      pointerId: event.pointerId,
+      source,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    root.classList.add("data-pet-dragging");
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function movePet(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    if (!dragState.moved && Math.hypot(deltaX, deltaY) < 4) return;
+    dragState.moved = true;
+    setPetPosition(dragState.left + deltaX, dragState.top + deltaY);
+    event.preventDefault();
+  }
+
+  function finishPetDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const moved = dragState.moved;
+    const source = dragState.source;
+    dragState = null;
+    root.classList.remove("data-pet-dragging");
+    if (moved) {
+      const rect = root.getBoundingClientRect();
+      setPetPosition(rect.left, rect.top);
+      keepPanelInViewport();
+      const finalRect = root.getBoundingClientRect();
+      setPetPosition(finalRect.left, finalRect.top, true);
+    } else if (source === "toggle" && event.type === "pointerup") {
+      panel.hidden ? openPet() : closePet();
+    }
+  }
 
   function savedAiConfig() {
     try {
@@ -91,6 +215,11 @@
   function openPet() {
     panel.hidden = false;
     toggle.setAttribute("aria-expanded", "true");
+    keepPanelInViewport();
+    if (root.style.left) {
+      const rect = root.getBoundingClientRect();
+      setPetPosition(rect.left, rect.top, true);
+    }
     input.focus();
   }
 
@@ -133,7 +262,22 @@
     }
   }
 
-  toggle.addEventListener("click", () => panel.hidden ? openPet() : closePet());
+  toggle.addEventListener("pointerdown", (event) => startPetDrag(event, "toggle"));
+  head.addEventListener("pointerdown", (event) => startPetDrag(event, "head"));
+  window.addEventListener("pointermove", movePet);
+  window.addEventListener("pointerup", finishPetDrag);
+  window.addEventListener("pointercancel", finishPetDrag);
+  window.addEventListener("resize", () => {
+    if (root.style.left) {
+      const rect = root.getBoundingClientRect();
+      setPetPosition(rect.left, rect.top, true);
+    } else {
+      updatePanelDirection();
+    }
+  });
+  toggle.addEventListener("click", (event) => {
+    if (event.detail === 0) panel.hidden ? openPet() : closePet();
+  });
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
   root.querySelector(".data-pet-settings-toggle").addEventListener("click", () => {
     const config = savedAiConfig();
@@ -169,6 +313,7 @@
     if (button) ask(button.dataset.question);
   });
 
-  addMessage("assistant", "嗨，我是数数鲸！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
+  addMessage("assistant", "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
   updateAiMode();
+  restorePetPosition();
 })();

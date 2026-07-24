@@ -397,7 +397,7 @@ function filterJdRows(data, start = "", end = "", excludeUnknownOptimizer = fals
   ));
 }
 
-function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = false) {
+function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = true) {
   const filtered = filterJdRows(jdRows, start, end, excludeUnknownOptimizer);
   const emptyValues = Object.fromEntries(jdNumericFields.map((field) => [field, 0]));
   const summary = aggregateJd(filtered, [])[0] || jdMetrics(emptyValues);
@@ -467,7 +467,7 @@ const server = http.createServer(async (request, response) => {
       const payload = await readRequestBody(request);
       jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
       await saveJdCache();
-      return sendJson(response, buildJdAnalysis("", "", payload.excludeUnknownOptimizer === true));
+      return sendJson(response, buildJdAnalysis("", "", payload.excludeUnknownOptimizer !== false));
     }
     if (request.method === "POST" && request.url === "/api/jd/analyze") {
       await restoreJdCache();
@@ -475,7 +475,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, buildJdAnalysis(
         payload.start || "",
         payload.end || "",
-        payload.excludeUnknownOptimizer === true,
+        payload.excludeUnknownOptimizer !== false,
       ));
     }
     response.writeHead(404);

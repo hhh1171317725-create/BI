@@ -467,6 +467,8 @@
   <script src="/echarts.min.js"></script>
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
+    const now = new Date();
+    document.querySelector("#start").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     (() => {
       "use strict";
 

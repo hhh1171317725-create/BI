@@ -313,6 +313,13 @@ function nextBeijingNine(now = new Date()) {
   return next;
 }
 
+function beijingMonthStart(now = new Date()) {
+  const beijing = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  const year = beijing.getUTCFullYear();
+  const month = String(beijing.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
 async function refreshAllReports() {
   if (scheduledRefreshRunning) throw new Error("已有全量更新任务正在运行");
   scheduledRefreshRunning = true;
@@ -795,14 +802,14 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/assets/miku-pet.png") return serveFile(response, "assets/miku-pet.png", "image/png");
     if (request.method === "GET" && request.url === "/api/current") {
       await restoreCache();
-      return sendJson(response, buildAnalysis());
+      return sendJson(response, buildAnalysis(beijingMonthStart()));
     }
     if (request.method === "POST" && request.url === "/api/load") {
       const payload = await readRequestBody(request);
       rows = await fetchRows(payload.token || "", payload.userId || "20");
       await saveCache();
       await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
-      return sendJson(response, buildAnalysis());
+      return sendJson(response, buildAnalysis(beijingMonthStart()));
     }
     if (request.method === "POST" && request.url === "/api/analyze") {
       await restoreCache();
@@ -811,14 +818,14 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && request.url === "/api/jd/current") {
       await restoreJdCache();
-      return sendJson(response, buildJdAnalysis());
+      return sendJson(response, buildJdAnalysis(beijingMonthStart()));
     }
     if (request.method === "POST" && request.url === "/api/jd/load") {
       const payload = await readRequestBody(request);
       jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
       await saveJdCache();
       await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
-      return sendJson(response, buildJdAnalysis("", "", payload.excludeUnknownOptimizer !== false));
+      return sendJson(response, buildJdAnalysis(beijingMonthStart(), "", payload.excludeUnknownOptimizer !== false));
     }
     if (request.method === "POST" && request.url === "/api/jd/analyze") {
       await restoreJdCache();
@@ -863,6 +870,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
 export {
   aggregateJd,
+  beijingMonthStart,
   buildDhhAlerts,
   filterJdRows,
   isUnknownOptimizer,

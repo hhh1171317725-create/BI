@@ -44,6 +44,8 @@
     const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
     const dismissedAlertStorageKey='dhh-dismissed-alerts-v1';
     const tokenStorageKey='marketing-report-x-token';
+    const now=new Date(),defaultMonthStart=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    $('#start').value=defaultMonthStart;
     $('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     const alertId=(alerts,item)=>encodeURIComponent(JSON.stringify([alerts.date,item.优化师,item.账户ID||item.账户名称,item.任务名]));
     function dismissedAlertIds(){try{const ids=JSON.parse(localStorage.getItem(dismissedAlertStorageKey)||'[]');return new Set(Array.isArray(ids)?ids:[])}catch{return new Set()}}

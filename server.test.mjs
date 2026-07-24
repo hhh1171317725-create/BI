@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDhhAlerts,
+  beijingMonthStart,
   filterJdRows,
   isUnknownOptimizer,
   jdMetrics,
@@ -41,6 +42,12 @@ test("daily refresh schedules the next 09:00 in Beijing", () => {
     nextBeijingNine(new Date("2026-12-31T18:00:00.000Z")).toISOString(),
     "2027-01-01T01:00:00.000Z",
   );
+});
+
+test("default report range starts at the current Beijing month", () => {
+  assert.equal(beijingMonthStart(new Date("2026-07-31T15:59:59.000Z")), "2026-07-01");
+  assert.equal(beijingMonthStart(new Date("2026-07-31T16:00:00.000Z")), "2026-08-01");
+  assert.equal(beijingMonthStart(new Date("2026-12-31T16:00:00.000Z")), "2027-01-01");
 });
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {

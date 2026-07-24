@@ -50,7 +50,7 @@
   display: grid;
   width: min(370px, calc(100vw - 28px));
   height: min(520px, calc(100vh - 120px));
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto auto 1fr auto auto;
   overflow: hidden;
   border: 1px solid #d9e2ec;
   border-radius: 16px;
@@ -73,7 +73,9 @@
 
 .data-pet-name { font-size: 15px; font-weight: 700; color: #172b4d; }
 .data-pet-mode { margin-top: 3px; color: #667085; font-size: 11px; }
-.data-pet-close {
+.data-pet-head-actions { display: flex; align-items: center; gap: 6px; }
+.data-pet-close,
+.data-pet-settings-toggle {
   width: 30px;
   height: 30px;
   padding: 0;
@@ -83,6 +85,47 @@
   color: #475467;
   cursor: pointer;
   font-size: 20px;
+}
+
+.data-pet-settings-toggle { font-size: 15px; }
+.data-pet-settings {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  gap: 7px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #fffdf5;
+}
+
+.data-pet-settings[hidden] { display: none; }
+.data-pet-settings select,
+.data-pet-settings input {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #c7d3df;
+  border-radius: 7px;
+  background: #fff;
+  font: 12px inherit;
+}
+
+.data-pet-settings-save {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: #1677ff;
+  color: #fff;
+  cursor: pointer;
+  font: 600 12px inherit;
+}
+
+.data-pet-settings-note {
+  grid-column: 1 / -1;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .data-pet-messages {
@@ -179,4 +222,6 @@
   .data-pet { right: 14px; bottom: 14px; }
   .data-pet-toggle { width: 56px; height: 56px; font-size: 30px; }
   .data-pet-panel { position: fixed; inset: 12px 12px 82px; width: auto; height: auto; }
+  .data-pet-settings { grid-template-columns: 90px minmax(0, 1fr); }
+  .data-pet-settings-save { grid-column: 1 / -1; }
 }

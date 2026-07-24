@@ -490,27 +490,31 @@ function responseOutputText(payload) {
     .trim();
 }
 
-function resolveAiProvider(environment = process.env) {
-  const requested = String(environment.AI_PROVIDER || "").trim().toLowerCase();
+function resolveAiProvider(environment = process.env, clientConfig = {}) {
+  const clientProvider = ["deepseek", "openai"].includes(clientConfig?.provider)
+    ? clientConfig.provider
+    : "";
+  const clientApiKey = String(clientConfig?.apiKey || "").trim().slice(0, 300);
+  const requested = clientProvider || String(environment.AI_PROVIDER || "").trim().toLowerCase();
   const provider = requested || (environment.DEEPSEEK_API_KEY ? "deepseek" : "openai");
   if (provider === "deepseek") {
     return {
       provider,
-      apiKey: String(environment.DEEPSEEK_API_KEY || "").trim(),
+      apiKey: clientApiKey || String(environment.DEEPSEEK_API_KEY || "").trim(),
       model: String(environment.DEEPSEEK_MODEL || "").trim() || "deepseek-v4-flash",
       baseUrl: String(environment.DEEPSEEK_BASE_URL || "").trim() || "https://api.deepseek.com",
     };
   }
   return {
     provider: "openai",
-    apiKey: String(environment.OPENAI_API_KEY || "").trim(),
+    apiKey: clientApiKey || String(environment.OPENAI_API_KEY || "").trim(),
     model: String(environment.OPENAI_MODEL || "").trim() || "gpt-5.6-terra",
     baseUrl: "https://api.openai.com/v1",
   };
 }
 
-async function askAiPet(message, context, history = []) {
-  const config = resolveAiProvider();
+async function askAiPet(message, context, history = [], clientConfig = {}) {
+  const config = resolveAiProvider(process.env, clientConfig);
   if (!config.apiKey) return { text: "", provider: "local" };
   const safeHistory = history.slice(-8).flatMap((item) => {
     const role = item?.role === "assistant" ? "assistant" : "user";
@@ -640,7 +644,12 @@ const server = http.createServer(async (request, response) => {
       if (!message) return sendJson(response, { error: "请输入问题" }, 400);
       const context = payload.context && typeof payload.context === "object" ? payload.context : {};
       try {
-        const aiReply = await askAiPet(message, context, Array.isArray(payload.history) ? payload.history : []);
+        const aiReply = await askAiPet(
+          message,
+          context,
+          Array.isArray(payload.history) ? payload.history : [],
+          payload.aiConfig && typeof payload.aiConfig === "object" ? payload.aiConfig : {},
+        );
         if (aiReply.text) return sendJson(response, { reply: aiReply.text, mode: "ai", provider: aiReply.provider });
       } catch {
         // AI 暂不可用时继续使用确定性的本地报表分析。

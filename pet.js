@@ -3,6 +3,7 @@
 
   const history = [];
   let busy = false;
+  const aiConfigStorageKey = "data-pet-ai-config-v1";
 
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -19,8 +20,20 @@
       <section class="data-pet-panel" hidden>
         <header class="data-pet-head">
           <div><div class="data-pet-name">🐳 数数鲸</div><div class="data-pet-mode">报表对话与数据分析</div></div>
-          <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
+          <div class="data-pet-head-actions">
+            <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置">⚙</button>
+            <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
+          </div>
         </header>
+        <div class="data-pet-settings" hidden>
+          <select class="data-pet-provider" aria-label="AI 提供商">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <input class="data-pet-api-key" type="password" autocomplete="off" placeholder="粘贴 API Key" aria-label="AI API Key" />
+          <button class="data-pet-settings-save" type="button">保存</button>
+          <div class="data-pet-settings-note">Key 仅保存在当前浏览器，通过本站后端转发，不写入服务器文件。</div>
+        </div>
         <div class="data-pet-messages" aria-live="polite"></div>
         <div class="data-pet-quick">
           <button type="button" data-question="帮我总结当前报表">总结报表</button>
@@ -46,6 +59,25 @@
   const input = root.querySelector(".data-pet-input");
   const send = root.querySelector(".data-pet-send");
   const mode = root.querySelector(".data-pet-mode");
+  const settings = root.querySelector(".data-pet-settings");
+  const providerInput = root.querySelector(".data-pet-provider");
+  const apiKeyInput = root.querySelector(".data-pet-api-key");
+
+  function savedAiConfig() {
+    try {
+      const value = JSON.parse(localStorage.getItem(aiConfigStorageKey) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function updateAiMode() {
+    const config = savedAiConfig();
+    mode.textContent = config.apiKey
+      ? `${config.provider === "openai" ? "OpenAI" : "DeepSeek"} 已配置 · 当前浏览器`
+      : "点击 ⚙ 配置 AI · 本地分析";
+  }
 
   function addMessage(role, text, className = "") {
     const item = document.createElement("div");
@@ -82,7 +114,7 @@
       const response = await fetch("/api/pet/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context, history: history.slice(-8) }),
+        body: JSON.stringify({ message, context, history: history.slice(-8), aiConfig: savedAiConfig() }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "分析失败");
@@ -103,6 +135,31 @@
 
   toggle.addEventListener("click", () => panel.hidden ? openPet() : closePet());
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
+  root.querySelector(".data-pet-settings-toggle").addEventListener("click", () => {
+    const config = savedAiConfig();
+    providerInput.value = config.provider === "openai" ? "openai" : "deepseek";
+    apiKeyInput.value = config.apiKey || "";
+    settings.hidden = !settings.hidden;
+    if (!settings.hidden) apiKeyInput.focus();
+  });
+  root.querySelector(".data-pet-settings-save").addEventListener("click", () => {
+    const apiKey = apiKeyInput.value.trim();
+    try {
+      if (apiKey) {
+        localStorage.setItem(aiConfigStorageKey, JSON.stringify({
+          provider: providerInput.value === "openai" ? "openai" : "deepseek",
+          apiKey,
+        }));
+      } else {
+        localStorage.removeItem(aiConfigStorageKey);
+      }
+      settings.hidden = true;
+      updateAiMode();
+      addMessage("assistant", apiKey ? "AI 设置已保存，可以开始对话了。" : "AI 设置已清除，已切换为本地分析。");
+    } catch {
+      addMessage("assistant", "浏览器未允许保存设置，请检查本地存储权限。");
+    }
+  });
   root.querySelector(".data-pet-form").addEventListener("submit", (event) => {
     event.preventDefault();
     ask(input.value);
@@ -113,4 +170,5 @@
   });
 
   addMessage("assistant", "嗨，我是数数鲸！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
+  updateAiMode();
 })();

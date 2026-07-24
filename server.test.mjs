@@ -215,3 +215,14 @@ test("data pet resolves DeepSeek without exposing credentials to the browser", (
   assert.equal(config.model, "deepseek-v4-flash");
   assert.equal(config.baseUrl, "https://api.deepseek.com");
 });
+
+test("browser AI configuration overrides missing server environment", () => {
+  const config = resolveAiProvider({}, {
+    provider: "deepseek",
+    apiKey: "browser-secret",
+  });
+
+  assert.equal(config.provider, "deepseek");
+  assert.equal(config.apiKey, "browser-secret");
+  assert.equal(config.model, "deepseek-v4-flash");
+});

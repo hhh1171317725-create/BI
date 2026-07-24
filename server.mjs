@@ -150,6 +150,7 @@ function buildAnalysis(start = "", end = "") {
     by_date: aggregate(filtered, "日期").sort((left, right) => right.日期.localeCompare(left.日期)),
     by_task: aggregate(filtered, "任务名"),
     by_optimizer_date: aggregate(filtered, ["日期", "优化师"]),
+    by_optimizer_task_date: aggregate(filtered, ["日期", "优化师", "任务名"]),
     by_project_date: aggregate(filtered, ["日期", "项目"]),
     by_task_date: aggregate(filtered, ["日期", "任务名"]),
   };

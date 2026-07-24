@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 · 营销日报分析</title>
+  <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
+  <style>
+    :root{color-scheme:light;--blue:#1677ff;--ink:#172b4d;--muted:#667085;--line:#d9e2ec;--bg:#f3f7fc;--bad:#cf3d3d}
+    *{box-sizing:border-box}
+    body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top left,#e4f1ff 0,transparent 42%),var(--bg);color:var(--ink);font:14px "Microsoft YaHei","PingFang SC",sans-serif}
+    main{width:min(410px,100%);padding:34px;border:1px solid rgba(217,226,236,.9);border-radius:16px;background:rgba(255,255,255,.96);box-shadow:0 20px 55px rgba(23,43,77,.12)}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:8px}.mark{display:grid;width:42px;height:42px;place-items:center;border-radius:11px;background:var(--blue);color:#fff;font-size:21px;font-weight:700}
+    h1{margin:0;font-size:23px}p{margin:0 0 26px;color:var(--muted)}
+    form{display:grid;gap:17px}label{display:grid;gap:7px;font-weight:600;color:#344054}
+    input{width:100%;height:44px;padding:0 13px;border:1px solid #c7d3df;border-radius:7px;outline:none;font:inherit}input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(22,119,255,.13)}
+    button{height:44px;border:0;border-radius:7px;background:var(--blue);color:#fff;font:600 15px inherit;cursor:pointer}button:hover{background:#0958d9}button:disabled{opacity:.6;cursor:wait}
+    #error{min-height:20px;margin:-4px 0 0;color:var(--bad);font-size:13px}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">报</span><h1>营销日报分析</h1></div>
+    <p>登录后查看大航海与京东日报数据</p>
+    <form id="loginForm">
+      <label>用户名<input id="username" name="username" autocomplete="username" required autofocus /></label>
+      <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
+      <div id="error" role="alert" aria-live="polite"></div>
+      <button id="submit" type="submit">登录</button>
+    </form>
+  </main>
+  <script>
+    const form=document.querySelector('#loginForm'),button=document.querySelector('#submit'),error=document.querySelector('#error');
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();error.textContent='';button.disabled=true;button.textContent='登录中...';
+      try{
+        const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.username.value,password:form.password.value})});
+        const result=await response.json();
+        if(!response.ok)throw new Error(result.error||'登录失败');
+        location.replace(result.redirect||'/');
+      }catch(reason){error.textContent=reason.message||'登录失败，请稍后重试';}
+      finally{button.disabled=false;button.textContent='登录';}
+    });
+  </script>
+</body>
+</html>

@@ -8,7 +8,24 @@ import {
   localPetReply,
   parseDhhAccounts,
   resolveAiProvider,
+  createSessionToken,
+  validateCredentials,
+  verifySessionToken,
 } from "./server.mjs";
+
+test("login accepts only the configured report credentials", () => {
+  assert.equal(validateCredentials("hhh", "123456"), true);
+  assert.equal(validateCredentials("hhh", "wrong"), false);
+  assert.equal(validateCredentials("other", "123456"), false);
+});
+
+test("signed login sessions reject tampering and expiry", () => {
+  const now = Date.now();
+  const token = createSessionToken(now);
+  assert.equal(verifySessionToken(token, now), true);
+  assert.equal(verifySessionToken(`${token}changed`, now), false);
+  assert.equal(verifySessionToken(token, now + (8 * 24 * 60 * 60 * 1000)), false);
+});
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {
   const accounts = parseDhhAccounts(JSON.stringify([{

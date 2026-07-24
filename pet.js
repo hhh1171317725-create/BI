@@ -245,6 +245,10 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, context, history: history.slice(-8), aiConfig: savedAiConfig() }),
       });
+      if (response.status === 401) {
+        location.replace("/login");
+        throw new Error("登录已失效");
+      }
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "分析失败");
       thinking.remove();

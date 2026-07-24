@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
@@ -11,6 +12,11 @@ const cachePath = path.join(runtimeDir, "report-cache.json");
 const jdCachePath = path.join(runtimeDir, "jd-report-cache.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
+const loginUsername = process.env.REPORT_USERNAME || "hhh";
+const loginPassword = process.env.REPORT_PASSWORD || "123456";
+const sessionSecret = process.env.REPORT_SESSION_SECRET || randomBytes(32).toString("hex");
+const sessionCookieName = "report_session";
+const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 const numericFields = ["消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数"];
 const jdNumericFields = [
   "转化数", "计费转化数", "去重订单总数", "首购订单总数", "回流订单总数",
@@ -22,6 +28,65 @@ let rows = [];
 let cachedAt = "";
 let jdRows = [];
 let jdCachedAt = "";
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function validateCredentials(username, password) {
+  return safeEqual(username, loginUsername) && safeEqual(password, loginPassword);
+}
+
+function createSessionToken(now = Date.now()) {
+  const payload = Buffer.from(JSON.stringify({
+    username: loginUsername,
+    expiresAt: now + sessionLifetimeMs,
+  })).toString("base64url");
+  const signature = createHmac("sha256", sessionSecret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifySessionToken(token, now = Date.now()) {
+  const [payload, signature, extra] = String(token || "").split(".");
+  if (!payload || !signature || extra) return false;
+  const expected = createHmac("sha256", sessionSecret).update(payload).digest("base64url");
+  if (!safeEqual(signature, expected)) return false;
+  try {
+    const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return session.username === loginUsername && Number(session.expiresAt) > now;
+  } catch {
+    return false;
+  }
+}
+
+function cookieValue(request, name) {
+  const cookies = String(request.headers.cookie || "").split(";");
+  for (const cookie of cookies) {
+    const separator = cookie.indexOf("=");
+    if (separator < 0) continue;
+    if (cookie.slice(0, separator).trim() === name) return decodeURIComponent(cookie.slice(separator + 1).trim());
+  }
+  return "";
+}
+
+function isAuthenticated(request) {
+  return verifySessionToken(cookieValue(request, sessionCookieName));
+}
+
+function sessionCookie(request, token, maxAge) {
+  const forwardedProtocol = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const secure = request.socket.encrypted || forwardedProtocol === "https";
+  return [
+    `${sessionCookieName}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+    secure ? "Secure" : "",
+  ].filter(Boolean).join("; ");
+}
 
 function number(value) {
   const parsed = Number(String(value ?? "0").replaceAll(",", ""));
@@ -599,6 +664,34 @@ async function serveFile(response, filename, contentType) {
 
 const server = http.createServer(async (request, response) => {
   try {
+    const pathname = new URL(request.url, "http://localhost").pathname;
+    if (request.method === "GET" && pathname === "/login") {
+      if (isAuthenticated(request)) {
+        response.writeHead(302, { Location: "/" });
+        return response.end();
+      }
+      return serveFile(response, "login.html", "text/html; charset=utf-8");
+    }
+    if (request.method === "GET" && pathname === "/assets/miku-pet.png") {
+      return serveFile(response, "assets/miku-pet.png", "image/png");
+    }
+    if (request.method === "POST" && pathname === "/api/login") {
+      const payload = await readRequestBody(request);
+      if (!validateCredentials(payload.username || "", payload.password || "")) {
+        return sendJson(response, { error: "用户名或密码错误" }, 401);
+      }
+      response.setHeader("Set-Cookie", sessionCookie(request, createSessionToken(), Math.floor(sessionLifetimeMs / 1000)));
+      return sendJson(response, { ok: true, redirect: "/" });
+    }
+    if (request.method === "POST" && pathname === "/api/logout") {
+      response.setHeader("Set-Cookie", sessionCookie(request, "", 0));
+      return sendJson(response, { ok: true });
+    }
+    if (!isAuthenticated(request)) {
+      if (pathname.startsWith("/api/")) return sendJson(response, { error: "登录已失效，请重新登录" }, 401);
+      response.writeHead(302, { Location: "/login" });
+      return response.end();
+    }
     if (request.method === "GET" && request.url === "/") return serveFile(response, "index.html", "text/html; charset=utf-8");
     if (request.method === "GET" && (request.url === "/jd" || request.url === "/jd.html")) return serveFile(response, "jd.html", "text/html; charset=utf-8");
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
@@ -680,4 +773,7 @@ export {
   parseJdCsv,
   previousBeijingDate,
   resolveAiProvider,
+  createSessionToken,
+  validateCredentials,
+  verifySessionToken,
 };

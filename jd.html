@@ -41,6 +41,12 @@
       gap: 20px;
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .brand {
       display: flex;
       align-items: center;
@@ -90,6 +96,10 @@
       color: #344054;
       text-decoration: none;
       font-weight: 600;
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
     }
 
     .report-link:hover,
@@ -377,7 +387,10 @@
         <div class="brand"><button class="brand-mark" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东 CPA 日报分析</h1></div>
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
-      <a class="report-link" href="/">返回大航海日报</a>
+      <div class="header-actions">
+        <a class="report-link" href="/">返回大航海日报</a>
+        <button class="report-link" id="logout" type="button">退出登录</button>
+      </div>
     </div>
   </header>
 
@@ -453,6 +466,7 @@
 
   <script src="/echarts.min.js"></script>
   <script>
+    document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     (() => {
       "use strict";
 
@@ -794,6 +808,10 @@
 
       async function requestJson(url, options) {
         const response = await fetch(url, options);
+        if (response.status === 401) {
+          location.replace("/login");
+          throw new Error("登录已失效");
+        }
         const raw = await response.text();
         let result;
         try {

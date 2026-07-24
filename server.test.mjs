@@ -23,22 +23,22 @@ test("buildDhhAlerts monitors real accounts instead of media names", () => {
   const result = buildDhhAlerts([{
     日期: "2026-07-23",
     媒体: "字节",
-    任务名: "淘宝闲鱼促活",
+    任务名: "淘宝促购CVR",
     注册数: 0,
     结算数: 8,
     账户列表: [{
       账户ID: "86784411",
-      账户名称: "0723.1亿典闲鱼",
+      账户名称: "0723.1亿典促购",
       消耗: 120,
     }],
   }], "2026-07-23");
 
   assert.equal(result.hasAccountData, true);
   assert.equal(result.total, 1);
-  assert.equal(result.items[0].账户名称, "0723.1亿典闲鱼");
+  assert.equal(result.items[0].账户名称, "0723.1亿典促购");
   assert.equal(result.items[0].账户ID, "86784411");
-  assert.equal(result.items[0].任务名, "淘宝闲鱼促活");
-  assert.equal(result.items[0].闲鱼任务, true);
+  assert.equal(result.items[0].任务名, "淘宝促购CVR");
+  assert.equal(result.items[0].闲鱼任务, false);
   assert.equal(result.items[0].reasons.length, 1);
   assert.equal(result.items[0].reasons[0].code, "spend_without_registration");
   assert.equal(result.items[0].账户名称 === "字节", false);
@@ -47,32 +47,54 @@ test("buildDhhAlerts monitors real accounts instead of media names", () => {
 test("settlement warning only fires when settlements are over 10 percent below registrations", () => {
   const account = {
     账户ID: "1",
-    账户名称: "闲鱼账户",
+    账户名称: "普通账户",
     消耗: 10,
   };
   const result = buildDhhAlerts([
-    { 日期: "2026-07-23", 任务名: "闲鱼任务A", 注册数: 100, 结算数: 91, 账户列表: [account] },
-    { 日期: "2026-07-23", 任务名: "闲鱼任务B", 注册数: 100, 结算数: 89, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "普通任务A", 注册数: 100, 结算数: 91, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "普通任务B", 注册数: 100, 结算数: 89, 账户列表: [account] },
   ], "2026-07-23");
 
   assert.equal(result.total, 1);
-  assert.equal(result.items[0].任务名, "闲鱼任务B");
+  assert.equal(result.items[0].任务名, "普通任务B");
   assert.equal(result.items[0].reasons[0].code, "settlements_below_registrations_10pct");
 });
 
 test("alerts are separated by account and task", () => {
   const account = {
     账户ID: "1",
-    账户名称: "闲鱼账户",
+    账户名称: "普通账户",
     消耗: 120,
   };
   const result = buildDhhAlerts([
-    { 日期: "2026-07-23", 任务名: "闲鱼任务A", 注册数: 0, 结算数: 0, 账户列表: [account] },
-    { 日期: "2026-07-23", 任务名: "闲鱼任务B", 注册数: 0, 结算数: 0, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "普通任务A", 注册数: 0, 结算数: 0, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "普通任务B", 注册数: 0, 结算数: 0, 账户列表: [account] },
   ], "2026-07-23");
 
   assert.equal(result.total, 2);
-  assert.deepEqual(result.items.map((item) => item.任务名).sort(), ["闲鱼任务A", "闲鱼任务B"]);
+  assert.deepEqual(result.items.map((item) => item.任务名).sort(), ["普通任务A", "普通任务B"]);
+});
+
+test("Xianyu accounts and tasks are excluded from alerts", () => {
+  const result = buildDhhAlerts([
+    {
+      日期: "2026-07-23",
+      任务名: "淘宝闲鱼促活",
+      注册数: 0,
+      结算数: 0,
+      账户列表: [{ 账户ID: "1", 账户名称: "普通账户", 消耗: 120 }],
+    },
+    {
+      日期: "2026-07-23",
+      任务名: "普通任务",
+      注册数: 0,
+      结算数: 0,
+      账户列表: [{ 账户ID: "2", 账户名称: "咸鱼账户", 消耗: 120 }],
+    },
+  ], "2026-07-23");
+
+  assert.equal(result.total, 0);
+  assert.equal(result.accountCount, 0);
 });
 
 test("buildDhhAlerts rejects stale media-level cache as account data", () => {

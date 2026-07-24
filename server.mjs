@@ -238,6 +238,7 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
       const name = String(account.账户名称 || "").trim() || (id ? `账户 ${id}` : "");
       const task = String(row.任务名 || "").trim() || "未填写";
       if (!id && !name) continue;
+      if (["闲鱼", "咸鱼"].some((keyword) => task.includes(keyword) || name.includes(keyword))) continue;
       const key = JSON.stringify([id || name, task]);
       if (!buckets.has(key)) {
         buckets.set(key, {

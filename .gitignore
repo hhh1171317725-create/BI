@@ -1,0 +1,12 @@
+# Local credentials and per-user configuration
+config.json
+settings.json
+.dahanghai_analysis_system/
+
+# Python runtime output
+__pycache__/
+*.py[cod]
+
+# Editor and OS files
+.DS_Store
+Thumbs.db

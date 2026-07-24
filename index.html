@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>大航海日报分析</title>
+  <style>
+    :root { --navy:#163a5f; --blue:#1677ff; --ink:#172b4d; --muted:#667085; --line:#d9e2ec; --bg:#f5f8fb; --good:#12805c; --bad:#cf3d3d; }
+    * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--bg); font:14px "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+    header { background:#fff; border-bottom:1px solid var(--line); padding:20px 32px 16px; } h1 { margin:0; font-size:22px; letter-spacing:0; } header p { margin:7px 0 0; color:var(--muted); }
+    .panel { margin:18px 32px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:18px; }
+    .controls { display:grid; grid-template-columns:1fr 110px auto; gap:12px; align-items:end; } label { display:grid; gap:7px; color:#475467; font-weight:600; } input { height:36px; padding:0 10px; border:1px solid #c7d3df; border-radius:5px; font:inherit; } button { height:36px; padding:0 16px; color:#fff; background:var(--blue); border:0; border-radius:5px; cursor:pointer; font:600 14px inherit; } button.secondary { color:#1756a9; background:#eaf3ff; } .note { margin:12px 0 0; color:var(--muted); font-size:12px; }
+    .filters { display:flex; align-items:end; gap:12px; flex-wrap:wrap; } .filters label { width:155px; } .filters button { margin-left:auto; }
+    .cards { margin:18px 32px; display:grid; grid-template-columns:repeat(6,minmax(130px,1fr)); gap:12px; } .card { min-height:92px; padding:14px; border:1px solid var(--line); border-radius:7px; background:#fff; } .card .k { color:var(--muted); font-size:12px; } .card .v { margin-top:10px; font-size:20px; font-weight:700; } .good { color:var(--good); } .bad { color:var(--bad); }
+    .tabs { margin:18px 32px 0; display:flex; gap:4px; border-bottom:1px solid var(--line); } .tab { height:42px; color:#667085; background:transparent; border-radius:5px 5px 0 0; } .tab.active { color:var(--blue); background:#eaf3ff; }
+    .content { margin:0 32px 32px; background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px; overflow:hidden; } .insight { padding:16px 18px 5px; color:#475467; } .table-wrap { overflow:auto; max-height:560px; } table { width:100%; border-collapse:collapse; white-space:nowrap; } th { position:sticky; top:0; z-index:1; background:#f2f6fa; color:#344054; text-align:right; font-size:12px; } th:first-child, td:first-child { text-align:left; } th,td { border-bottom:1px solid #edf1f5; padding:10px 12px; } td { text-align:right; } tr:hover td { background:#f8fbff; } .empty { padding:48px; color:var(--muted); text-align:center; }
+    .chart { width:100%; height:290px; margin:0 0 12px; } .pager { display:flex; justify-content:flex-end; align-items:center; gap:10px; padding:12px 14px; color:var(--muted); border-top:1px solid var(--line); } .pager button { height:30px; padding:0 11px; font-size:12px; } .pager button:disabled { cursor:not-allowed; opacity:.45; } .hidden { display:none; } #loading { color:var(--blue); font-weight:600; }
+    @media (max-width:950px){ .panel, header, .cards, .tabs, .content { margin-left:16px; margin-right:16px; } .cards{grid-template-columns:repeat(2,1fr)} .controls{grid-template-columns:1fr} .filters button{margin-left:0} }
+  </style>
+</head>
+<body>
+  <header><h1>大航海日报分析</h1><p>全量导出后，本机按优化师、项目、日期和任务归因汇总。利润口径：预估佣金 - 现金消耗。</p></header>
+  <section class="panel" id="loadPanel"><div class="controls"><label>x-token<input id="token" type="password" placeholder="粘贴当前报表后台的 x-token" autocomplete="off" /></label><label>用户 ID<input id="userId" value="20" /></label><button id="load">加载全量数据</button></div><p class="note"><label style="display:inline-flex;grid-auto-flow:column;align-items:center;gap:6px;font-weight:400"><input id="remember" type="checkbox" checked style="height:auto" /> 保存 token 到本机当前用户配置</label>　默认不传 startTime/endTime。</p></section>
+  <section class="panel hidden" id="filterPanel"><div class="filters"><label>开始日期（可选）<input id="start" type="date" /></label><label>结束日期（可选）<input id="end" type="date" /></label><button class="secondary" id="apply">应用日期筛选</button><span id="loading"></span></div></section>
+  <section class="cards hidden" id="cards"></section>
+  <nav class="tabs hidden" id="tabs"><button class="tab active" data-key="by_optimizer">优化师</button><button class="tab" data-key="by_project">项目</button><button class="tab" data-key="by_date">时间</button><button class="tab" data-key="by_task">任务</button></nav>
+  <main class="content hidden" id="content"><div class="insight" id="insight"></div><div class="chart" id="chart"></div><div class="table-wrap"><table id="table"></table></div><div class="pager" id="mainPager"></div></main>
+  <section class="panel hidden" id="drillPanel"><div class="filters"><label id="drillLabel">关联对象<select id="drillSelect"></select></label></div><p class="note" id="drillNote"></p><div class="chart" id="drillChart"></div><div class="table-wrap"><table id="drillTable"></table></div><div class="pager" id="drillPager"></div></section>
+  <script src="/echarts.min.js"></script>
+  <script>
+    let data=null, active='by_optimizer', mainPage=1, drillPage=1;
+    const PAGE_SIZE=20;
+    const fmt=n=>new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(n||0);
+    const pct=n=>(n||0).toLocaleString('zh-CN',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2});
+    async function post(url, body){ const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json(); if(!r.ok) throw Error(j.error||'请求失败'); return j; }
+    function cards(){ const s=data.summary, items=[['明细行',data.rows],['消耗',s.消耗],['现金消耗',s.现金消耗],['预估佣金',s.预估佣金],['现金利润',s.现金利润],['现金ROI',pct(s.现金ROI)]]; document.querySelector('#cards').innerHTML=items.map(([k,v])=>`<div class="card"><div class="k">${k}</div><div class="v ${k==='现金利润'?(v<0?'bad':'good'):''}">${typeof v==='number'?fmt(v):v}</div></div>`).join(''); }
+    function insight(rows,key){ if(!rows.length) return '当前筛选没有数据。'; const loss=rows.filter(r=>r.现金利润<0&&r.现金消耗>0).sort((a,b)=>a.现金利润-b.现金利润)[0]; const best=[...rows].filter(r=>r.现金消耗>0).sort((a,b)=>b.现金ROI-a.现金ROI)[0]; const name=r=>r[key]; return `数据范围：${data.range[0]} 至 ${data.range[1]}。最大现金亏损：${loss?`${name(loss)}（${fmt(loss.现金利润)}）`:'无'}；最高现金ROI：${best?`${name(best)}（${pct(best.现金ROI)}）`:'无'}。`; }
+    function pager(id,total,page){const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));document.querySelector(id).innerHTML=`<span>共 ${total} 条，第 ${page}/${pages} 页</span><button data-pager="prev" ${page===1?'disabled':''}>上一页</button><button data-pager="next" ${page===pages?'disabled':''}>下一页</button>`;}
+    function table(){ const rows=data[active]||[], key={by_optimizer:'优化师',by_project:'项目',by_date:'日期',by_task:'任务名'}[active]; const pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));mainPage=Math.min(mainPage,pages);const shown=rows.slice((mainPage-1)*PAGE_SIZE,mainPage*PAGE_SIZE); document.querySelector('#insight').textContent=insight(rows,key); const cols=[key,'消耗','现金消耗','预估佣金','现金利润','ROI','现金ROI','结算数','结算单价','转化数','注册数','转化成本','注册成本']; const el=document.querySelector('#table'); if(!rows.length){el.innerHTML='';return;} el.innerHTML='<thead><tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>'+shown.map(r=>'<tr>'+cols.map(c=>`<td class="${c==='现金利润'?(r[c]<0?'bad':'good'):''}">${c==='ROI'||c==='现金ROI'?pct(r[c]):c===key?r[c]:fmt(r[c])}</td>`).join('')+'</tr>').join('')+'</tbody>';pager('#mainPager',rows.length,mainPage); draw(rows,key); renderDrill(); }
+    const charts={};
+    function lineChart(id, rows, title){
+      const el=document.querySelector(id);
+      if(!rows.length){el.classList.add('hidden');return;}
+      el.classList.remove('hidden');
+      charts[id]=charts[id]||echarts.init(el);
+      const ordered=[...rows].reverse();
+      charts[id].setOption({
+        animation:true,
+        grid:{left:58,right:34,top:50,bottom:58},
+        title:{text:title,left:16,top:8,textStyle:{fontSize:14,fontWeight:600,color:'#344054'}},
+        tooltip:{trigger:'axis',formatter:p=>{const r=ordered[p[0].dataIndex];return `${r.日期}<br/>消耗：${fmt(r.消耗)}<br/>现金ROI：${pct(r.现金ROI)}<br/>现金利润：${fmt(r.现金利润)}`;}},
+        xAxis:{type:'category',data:ordered.map(r=>r.日期),axisLabel:{rotate:35}},
+        yAxis:{type:'value',name:'消耗',axisLabel:{formatter:v=>fmt(v)}},
+        dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8}],
+        series:[{name:'消耗',type:'line',smooth:true,symbolSize:7,data:ordered.map(r=>r.消耗),lineStyle:{color:'#1677ff',width:3},itemStyle:{color:'#1677ff'}}]
+      },{notMerge:true});
+    }
+    function draw(rows,key){if(active!=='by_date'){document.querySelector('#chart').classList.add('hidden');return;}lineChart('#chart',rows,'每日消耗趋势');}
+    function renderDrill(){ const map={by_optimizer:['优化师','by_optimizer_date'],by_project:['项目','by_project_date'],by_task:['任务名','by_task_date']}; if(!map[active]){document.querySelector('#drillPanel').classList.add('hidden');return;} document.querySelector('#drillPanel').classList.remove('hidden'); const [key,source]=map[active],select=document.querySelector('#drillSelect'),current=select.value||data[active][0]?.[key]||''; document.querySelector('#drillLabel').childNodes[0].textContent=`${key}关联日期：`; select.innerHTML=data[active].map(x=>`<option value="${x[key]}">${x[key]}</option>`).join('');select.value=current; const rows=(data[source]||[]).filter(x=>x[key]===select.value).sort((a,b)=>b.日期.localeCompare(a.日期));const pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));drillPage=Math.min(drillPage,pages);const shown=rows.slice((drillPage-1)*PAGE_SIZE,drillPage*PAGE_SIZE);document.querySelector('#drillNote').textContent=`${select.value} 的每日关联数据，共 ${rows.length} 天，按日期降序。`;const cols=['日期','消耗','现金消耗','预估佣金','现金利润','ROI','现金ROI','结算数','结算单价','转化数','注册数'];document.querySelector('#drillTable').innerHTML='<thead><tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>'+shown.map(r=>'<tr>'+cols.map(c=>`<td class="${c==='现金利润'?(r[c]<0?'bad':'good'):''}">${c==='ROI'||c==='现金ROI'?pct(r[c]):c==='日期'?r[c]:fmt(r[c])}</td>`).join('')+'</tr>').join('')+'</tbody>';pager('#drillPager',rows.length,drillPage);lineChart('#drillChart',rows,`${select.value} 每日消耗趋势`);}
+    function show(){ document.querySelectorAll('.hidden').forEach(x=>x.classList.remove('hidden')); cards(); table(); }
+    document.querySelector('#load').onclick=async()=>{const b=document.querySelector('#load');try{b.disabled=true;b.textContent='加载中…';data=await post('/api/load',{token:document.querySelector('#token').value,userId:document.querySelector('#userId').value,remember:document.querySelector('#remember').checked});show();}catch(e){alert(e.message)}finally{b.disabled=false;b.textContent='加载全量数据'}};
+    document.querySelector('#apply').onclick=async()=>{try{document.querySelector('#loading').textContent='计算中…';data=await post('/api/analyze',{start:document.querySelector('#start').value,end:document.querySelector('#end').value});mainPage=1;drillPage=1;cards();table();}catch(e){alert(e.message)}finally{document.querySelector('#loading').textContent=''}};
+    document.querySelector('#tabs').onclick=e=>{if(!e.target.dataset.key)return;active=e.target.dataset.key;mainPage=1;drillPage=1;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===e.target));table();};
+    document.querySelector('#drillSelect').onchange=()=>{drillPage=1;renderDrill()};
+    document.querySelector('#mainPager').onclick=e=>{if(!e.target.dataset.pager)return;mainPage+=e.target.dataset.pager==='next'?1:-1;table();};
+    document.querySelector('#drillPager').onclick=e=>{if(!e.target.dataset.pager)return;drillPage+=e.target.dataset.pager==='next'?1:-1;renderDrill();};
+    fetch('/api/settings').then(r=>r.json()).then(s=>{document.querySelector('#token').value=s.token||'';document.querySelector('#userId').value=s.userId||'20'});
+    window.addEventListener('resize',()=>Object.values(charts).forEach(chart=>chart.resize()));
+  </script>
+</body>
+</html>

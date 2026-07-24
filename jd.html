@@ -855,9 +855,14 @@
           button.disabled = true;
           button.textContent = "加载中…";
           setStatus("正在获取并保存京东全量报表…");
-          report = await post("/api/jd/load", {
+          await post("/api/jd/load", {
             token,
             userId: $("#userId").value.trim() || "20",
+            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
+          });
+          report = await post("/api/jd/analyze", {
+            start: $("#start").value,
+            end: $("#end").value,
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
           rememberToken(token);
@@ -963,8 +968,12 @@
       });
 
       get("/api/jd/current")
-        .then((result) => {
-          report = result;
+        .then(async () => {
+          report = await post("/api/jd/analyze", {
+            start: $("#start").value,
+            end: $("#end").value,
+            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
+          });
           showReport();
           setStatus(cacheText(), "success");
         })

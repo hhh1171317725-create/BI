@@ -49,12 +49,21 @@
       display: inline-grid;
       width: 30px;
       height: 30px;
+      padding: 0;
       place-items: center;
+      border: 0;
       border-radius: 7px;
       background: var(--accent);
       color: #fff;
+      cursor: pointer;
       font-size: 17px;
       font-weight: 700;
+    }
+
+    .brand-mark:hover,
+    .brand-mark:focus-visible {
+      background: var(--accent-dark);
+      outline: 3px solid rgba(225, 37, 27, .16);
     }
 
     h1 {
@@ -363,7 +372,7 @@
   <header>
     <div class="header-row">
       <div>
-        <div class="brand"><span class="brand-mark" aria-hidden="true">京</span><h1>京东 CPA 日报分析</h1></div>
+        <div class="brand"><button class="brand-mark" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东 CPA 日报分析</h1></div>
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
       <a class="report-link" href="/">返回大航海日报</a>
@@ -380,7 +389,7 @@
       </label>
       <button id="load" type="button">更新京东全量数据</button>
     </div>
-    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。Token 仅用于本次请求，不会保存到服务器或文件。</p>
+    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。Token 不会上传保存到服务器，仅保存在当前浏览器。</p>
   </section>
 
   <section class="panel hidden" id="filterPanel">
@@ -502,6 +511,7 @@
       let drillPage = 1;
       let mainChart = null;
       let drillChart = null;
+      const tokenStorageKey = "marketing-report-x-token";
 
       const $ = (selector) => document.querySelector(selector);
       const number = (value) => {
@@ -528,6 +538,48 @@
         const status = $("#status");
         status.textContent = message;
         status.className = `note status${tone ? ` ${tone}` : ""}`;
+      }
+
+      function rememberToken(token) {
+        try {
+          localStorage.setItem(tokenStorageKey, token);
+        } catch {
+          // 浏览器禁用本地存储时仍可正常更新数据。
+        }
+      }
+
+      function savedToken() {
+        try {
+          return localStorage.getItem(tokenStorageKey) || "";
+        } catch {
+          return "";
+        }
+      }
+
+      async function copyToken() {
+        const token = $("#token").value.trim() || savedToken();
+        if (!token) {
+          setStatus("暂无已保存的 x-token，请先粘贴并成功更新一次数据。", "error");
+          $("#token").focus();
+          return;
+        }
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(token);
+          } else {
+            const field = document.createElement("textarea");
+            field.value = token;
+            field.style.position = "fixed";
+            field.style.opacity = "0";
+            document.body.appendChild(field);
+            field.select();
+            document.execCommand("copy");
+            field.remove();
+          }
+          setStatus("x-token 已复制到剪贴板。", "success");
+        } catch {
+          setStatus("浏览器未允许自动复制，请检查剪贴板权限。", "error");
+        }
       }
 
       function formatCell(value, column, dimensionKey) {
@@ -781,6 +833,7 @@
             userId: $("#userId").value.trim() || "20",
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
+          rememberToken(token);
           $("#token").value = "";
           page = 1;
           drillPage = 1;
@@ -829,6 +882,7 @@
       }
 
       $("#load").addEventListener("click", loadLatest);
+      $("#copyToken").addEventListener("click", copyToken);
       $("#apply").addEventListener("click", () => applyDateFilter(false));
       $("#reset").addEventListener("click", () => applyDateFilter(true));
 

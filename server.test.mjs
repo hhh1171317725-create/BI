@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDhhAlerts,
+  buildPetBottomData,
   beijingMonthStart,
   filterJdRows,
   isUnknownOptimizer,
@@ -243,6 +244,40 @@ test("data pet answers report metrics without an AI key", () => {
   assert.match(localPetReply("有效订单有多少？", context), /321/);
   assert.match(localPetReply("分析利润和ROI", context), /预估\/现金利润 4,567\.89 元/);
   assert.match(localPetReply("哪个优化师消耗最高？", context), /1\. 优化师A：300 元/);
+});
+
+test("data pet receives question-matched bottom-table rows and full summaries", () => {
+  const bottomData = buildPetBottomData("分析陈灵灿的淘宝促购CVR", {
+    reportType: "大航海日报",
+    range: ["2026-07-01", "2026-07-31"],
+  }, [
+    { 日期: "2026-07-23", 优化师: "陈灵灿", 项目: "淘宝促购CVR", 任务名: "任务A", 媒体: "字节", 消耗: 100 },
+    { 日期: "2026-07-24", 优化师: "王李敏", 项目: "淘宝促购CVR", 任务名: "任务B", 媒体: "字节", 消耗: 200 },
+    { 日期: "2026-06-30", 优化师: "陈灵灿", 项目: "淘宝促购CVR", 任务名: "任务C", 媒体: "字节", 消耗: 300 },
+  ], []);
+
+  assert.equal(bottomData.底表总行数, 2);
+  assert.equal(bottomData.问题匹配行数, 1);
+  assert.equal(bottomData.明细行[0].优化师, "陈灵灿");
+  assert.equal(bottomData.维度汇总.按优化师.length, 2);
+  assert.deepEqual(bottomData.匹配条件, {
+    优化师: ["陈灵灿"],
+    项目: ["淘宝促购CVR"],
+  });
+});
+
+test("JD pet bottom table respects unknown optimizer exclusion", () => {
+  const bottomData = buildPetBottomData("分析账户", {
+    reportType: "京东 CPA 日报",
+    range: ["2026-07-01", "2026-07-31"],
+    excludeUnknownOptimizer: true,
+  }, [], [
+    { 日期: "2026-07-23", 优化师: "陈灵灿", 媒体账户名称: "账户A", 消耗: 100 },
+    { 日期: "2026-07-23", 优化师: "未知优化师", 媒体账户名称: "账户B", 消耗: 200 },
+  ]);
+
+  assert.equal(bottomData.底表总行数, 1);
+  assert.equal(bottomData.明细行[0].媒体账户名称, "账户A");
 });
 
 test("data pet resolves DeepSeek without exposing credentials to the browser", () => {

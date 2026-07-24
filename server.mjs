@@ -39,22 +39,45 @@ function validateCredentials(username, password) {
   return safeEqual(username, loginUsername) && safeEqual(password, loginPassword);
 }
 
+function encodeBase64Url(value) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/u, "");
+}
+
+function decodeBase64Url(value) {
+  const base64 = String(value).replace(/-/gu, "+").replace(/_/gu, "/");
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  return Buffer.from(`${base64}${padding}`, "base64").toString("utf8");
+}
+
+function hmacBase64Url(value) {
+  return createHmac("sha256", sessionSecret)
+    .update(value)
+    .digest("base64")
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/u, "");
+}
+
 function createSessionToken(now = Date.now()) {
-  const payload = Buffer.from(JSON.stringify({
+  const payload = encodeBase64Url(JSON.stringify({
     username: loginUsername,
     expiresAt: now + sessionLifetimeMs,
-  })).toString("base64url");
-  const signature = createHmac("sha256", sessionSecret).update(payload).digest("base64url");
+  }));
+  const signature = hmacBase64Url(payload);
   return `${payload}.${signature}`;
 }
 
 function verifySessionToken(token, now = Date.now()) {
   const [payload, signature, extra] = String(token || "").split(".");
   if (!payload || !signature || extra) return false;
-  const expected = createHmac("sha256", sessionSecret).update(payload).digest("base64url");
+  const expected = hmacBase64Url(payload);
   if (!safeEqual(signature, expected)) return false;
   try {
-    const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const session = JSON.parse(decodeBase64Url(payload));
     return session.username === loginUsername && Number(session.expiresAt) > now;
   } catch {
     return false;

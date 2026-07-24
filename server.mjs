@@ -237,11 +237,13 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
       const id = String(account.账户ID || "").trim();
       const name = String(account.账户名称 || "").trim() || (id ? `账户 ${id}` : "");
       const task = String(row.任务名 || "").trim() || "未填写";
+      const optimizer = String(row.优化师 || "").trim() || "未填写";
       if (!id && !name) continue;
       if (["闲鱼", "咸鱼"].some((keyword) => task.includes(keyword) || name.includes(keyword))) continue;
-      const key = JSON.stringify([id || name, task]);
+      const key = JSON.stringify([optimizer, id || name, task]);
       if (!buckets.has(key)) {
         buckets.set(key, {
+          优化师: optimizer,
           账户ID: id,
           账户名称: name,
           任务名: task,
@@ -283,6 +285,7 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     }
     if (!reasons.length) return [];
     return [{
+      优化师: account.优化师,
       账户ID: account.账户ID,
       账户名称: account.账户名称,
       任务名: account.任务名,

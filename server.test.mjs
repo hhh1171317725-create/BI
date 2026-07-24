@@ -75,6 +75,21 @@ test("alerts are separated by account and task", () => {
   assert.deepEqual(result.items.map((item) => item.任务名).sort(), ["普通任务A", "普通任务B"]);
 });
 
+test("alerts are separated by selected optimizer", () => {
+  const account = {
+    账户ID: "1",
+    账户名称: "普通账户",
+    消耗: 120,
+  };
+  const result = buildDhhAlerts([
+    { 日期: "2026-07-23", 优化师: "优化师A", 任务名: "普通任务", 注册数: 0, 结算数: 0, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师B", 任务名: "普通任务", 注册数: 0, 结算数: 0, 账户列表: [account] },
+  ], "2026-07-23");
+
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.items.map((item) => item.优化师).sort(), ["优化师A", "优化师B"]);
+});
+
 test("Xianyu accounts and tasks are excluded from alerts", () => {
   const result = buildDhhAlerts([
     {

@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>京东 CPA 日报分析</title>
+  <style>
+    :root {
+      --accent: #e1251b;
+      --accent-dark: #b51d15;
+      --accent-soft: #fff1f0;
+      --ink: #172b4d;
+      --muted: #667085;
+      --line: #d9e2ec;
+      --bg: #f5f8fb;
+      --good: #12805c;
+      --bad: #cf3d3d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+
+    header {
+      padding: 20px 32px 16px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      display: inline-grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    header p,
+    .note {
+      color: var(--muted);
+    }
+
+    header p {
+      margin: 7px 0 0;
+    }
+
+    .report-link {
+      flex: none;
+      padding: 8px 12px;
+      border: 1px solid #c7d3df;
+      border-radius: 5px;
+      color: #344054;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .report-link:hover,
+    .report-link:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+    }
+
+    .panel,
+    .content {
+      margin: 18px 32px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .controls,
+    .filters {
+      display: flex;
+      align-items: end;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: #475467;
+      font-weight: 600;
+    }
+
+    input,
+    select {
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid #c7d3df;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(225, 37, 27, .1);
+      outline: none;
+    }
+
+    input { width: 390px; }
+    input[type="date"] { width: 155px; }
+    select { min-width: 260px; }
+
+    button {
+      height: 36px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 5px;
+      background: var(--accent);
+      color: #fff;
+      font: 600 14px inherit;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { background: var(--accent-dark); }
+
+    button.secondary {
+      border: 1px solid #ffc9c6;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+    }
+
+    button.secondary:hover:not(:disabled) { background: #ffe4e2; }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+    }
+
+    .note {
+      margin: 10px 0 0;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .status.error { color: var(--bad); }
+    .status.success { color: var(--good); }
+    .hidden { display: none !important; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin: 18px 32px;
+    }
+
+    .card {
+      min-height: 88px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .card .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .card .v {
+      margin-top: 10px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin: 18px 32px 0;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+    }
+
+    .tab {
+      flex: none;
+      border-radius: 5px 5px 0 0;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .tab:hover:not(:disabled) {
+      background: #f9e9e8;
+      color: var(--accent);
+    }
+
+    .tab.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .content {
+      margin-top: 0;
+      padding: 0;
+      overflow: hidden;
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .insight {
+      padding: 16px 18px 5px;
+      color: #475467;
+      line-height: 1.6;
+    }
+
+    .chart-heading {
+      margin: 20px 18px 0;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 20px;
+    }
+
+    .chart-subtitle {
+      margin: 4px 18px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chart {
+      width: 100%;
+      height: 310px;
+    }
+
+    .table-wrap {
+      max-height: 590px;
+      overflow: auto;
+      border-top: 1px solid #edf1f5;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      white-space: nowrap;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf1f5;
+      background: #fff;
+      text-align: right;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f2f6fa;
+      color: #344054;
+      font-size: 12px;
+    }
+
+    th:first-child,
+    td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      text-align: left;
+    }
+
+    th:first-child {
+      z-index: 3;
+      background: #f2f6fa;
+    }
+
+    tr:hover td { background: #fafcff; }
+    tr:hover td:first-child { background: #fafcff; }
+
+    .empty-cell {
+      height: 100px;
+      color: var(--muted);
+      text-align: center !important;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px 14px;
+      color: var(--muted);
+    }
+
+    .pager button {
+      height: 30px;
+      padding: 0 11px;
+      font-size: 12px;
+    }
+
+    .drill-panel {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .drill-header {
+      padding: 18px 18px 0;
+    }
+
+    .drill-panel .note { margin-bottom: 0; }
+
+    @media (max-width: 950px) {
+      header,
+      .panel,
+      .cards,
+      .tabs,
+      .content {
+        margin-left: 16px;
+        margin-right: 16px;
+      }
+
+      header { margin: 0; }
+      .header-row { align-items: flex-start; }
+      input, select { width: 100%; }
+      .controls > label, .filters > label { flex: 1 1 100%; }
+      .chart { height: 280px; }
+    }
+
+    @media (max-width: 560px) {
+      .header-row { flex-direction: column; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .card .v { font-size: 17px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <div class="brand"><span class="brand-mark" aria-hidden="true">京</span><h1>京东 CPA 日报分析</h1></div>
+        <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
+      </div>
+      <a class="report-link" href="/">返回大航海日报</a>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="controls">
+      <label>x-token
+        <input id="token" type="password" autocomplete="off" placeholder="仅更新最新数据时需要粘贴" />
+      </label>
+      <label>用户 ID
+        <input id="userId" value="20" inputmode="numeric" />
+      </label>
+      <button id="load" type="button">更新京东全量数据</button>
+    </div>
+    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。Token 仅用于本次请求，不会保存到服务器或文件。</p>
+  </section>
+
+  <section class="panel hidden" id="filterPanel">
+    <div class="filters">
+      <label>开始日期（可选）
+        <input id="start" type="date" />
+      </label>
+      <label>结束日期（可选）
+        <input id="end" type="date" />
+      </label>
+      <button class="secondary" id="apply" type="button">应用日期筛选</button>
+      <button class="secondary" id="reset" type="button">重置日期</button>
+      <span class="note" id="loading" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="cards hidden" id="cards" aria-label="京东日报汇总"></section>
+
+  <nav class="tabs hidden" id="tabs" aria-label="分析维度" role="tablist">
+    <button class="tab active" type="button" data-key="by_optimizer" role="tab" aria-selected="true">优化师</button>
+    <button class="tab" type="button" data-key="by_date" role="tab" aria-selected="false">日期</button>
+    <button class="tab" type="button" data-key="by_media" role="tab" aria-selected="false">媒体</button>
+    <button class="tab" type="button" data-key="by_account" role="tab" aria-selected="false">媒体账户</button>
+    <button class="tab" type="button" data-key="by_promoter" role="tab" aria-selected="false">推客</button>
+  </nav>
+
+  <main class="content hidden" id="content">
+    <div class="insight" id="insight"></div>
+    <section class="hidden" id="mainChartSection" aria-labelledby="mainChartTitle">
+      <h2 class="chart-heading" id="mainChartTitle"></h2>
+      <p class="chart-subtitle">横向拖动底部滑块可查看较长日期范围。</p>
+      <div class="chart" id="mainChart" role="img" aria-label="京东日报日期趋势图"></div>
+    </section>
+    <div class="table-wrap"><table id="table"></table></div>
+    <div class="pager" id="pager"></div>
+  </main>
+
+  <section class="panel drill-panel hidden" id="drillPanel">
+    <div class="drill-header">
+      <div class="filters">
+        <label>优化师关联日期
+          <select id="optimizerSelect" aria-label="选择优化师"></select>
+        </label>
+      </div>
+      <p class="note" id="drillNote"></p>
+    </div>
+    <h2 class="chart-heading" id="drillChartTitle"></h2>
+    <p class="chart-subtitle">折线同时展示每日消耗与实际 ROI，便于定位投放效率变化。</p>
+    <div class="chart" id="drillChart" role="img" aria-label="优化师每日消耗与实际 ROI 趋势图"></div>
+    <div class="table-wrap"><table id="drillTable"></table></div>
+    <div class="pager" id="drillPager"></div>
+  </section>
+
+  <script src="/echarts.min.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const pageSize = 20;
+      const dimensions = {
+        by_optimizer: { label: "优化师", key: "优化师" },
+        by_date: { label: "日期", key: "日期" },
+        by_media: { label: "媒体", key: "媒体" },
+        by_account: { label: "媒体账户", key: "媒体账户名称" },
+        by_promoter: { label: "推客", key: "推客用户名" },
+      };
+      const metricColumns = [
+        "消耗",
+        "转化数",
+        "计费转化数",
+        "转化成本",
+        "条件内预估赔付金额",
+        "首购预估佣金",
+        "回流预估佣金",
+        "预估佣金合计",
+        "预估利润",
+        "预估ROI",
+        "首购实际佣金",
+        "回流实际佣金",
+        "实际佣金合计",
+        "实际利润",
+        "实际ROI",
+        "去重订单总数",
+        "首购订单总数",
+        "回流订单总数",
+        "首购有效订单数",
+        "回流有效订单数",
+        "首购无效订单数",
+        "回流无效订单数",
+        "首购已完成订单",
+        "回流已完成订单",
+      ];
+      const moneyFields = new Set([
+        "消耗",
+        "转化成本",
+        "条件内预估赔付金额",
+        "首购预估佣金",
+        "回流预估佣金",
+        "预估佣金合计",
+        "预估利润",
+        "首购实际佣金",
+        "回流实际佣金",
+        "实际佣金合计",
+        "实际利润",
+      ]);
+      const percentFields = new Set(["预估ROI", "实际ROI"]);
+      const profitFields = new Set(["预估利润", "实际利润"]);
+
+      let report = null;
+      let active = "by_optimizer";
+      let page = 1;
+      let drillPage = 1;
+      let mainChart = null;
+      let drillChart = null;
+
+      const $ = (selector) => document.querySelector(selector);
+      const number = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const escapeHtml = (value) => String(value ?? "-")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+      const formatNumber = (value, minimumFractionDigits = 0) => new Intl.NumberFormat("zh-CN", {
+        minimumFractionDigits,
+        maximumFractionDigits: 2,
+      }).format(number(value));
+      const formatPercent = (value) => number(value).toLocaleString("zh-CN", {
+        style: "percent",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      function setStatus(message, tone = "") {
+        const status = $("#status");
+        status.textContent = message;
+        status.className = `note status${tone ? ` ${tone}` : ""}`;
+      }
+
+      function formatCell(value, column, dimensionKey) {
+        if (column === dimensionKey || column === "日期") return escapeHtml(value);
+        if (percentFields.has(column)) return formatPercent(value);
+        if (moneyFields.has(column)) return formatNumber(value, 2);
+        return formatNumber(value);
+      }
+
+      function cellClass(row, column) {
+        if (!profitFields.has(column)) return "";
+        return number(row[column]) < 0 ? "bad" : "good";
+      }
+
+      function renderTable(target, rows, columns, dimensionKey) {
+        const head = `<thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>`;
+        const body = rows.length
+          ? rows.map((row) => `<tr>${columns.map((column) => `<td class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey)}</td>`).join("")}</tr>`).join("")
+          : `<tr><td class="empty-cell" colspan="${columns.length}">当前条件下暂无数据</td></tr>`;
+        target.innerHTML = `${head}<tbody>${body}</tbody>`;
+      }
+
+      function renderPager(target, total, current) {
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        target.innerHTML = `
+          <span>共 ${total} 条，第 ${current}/${pages} 页</span>
+          <button type="button" data-step="-1" ${current === 1 ? "disabled" : ""}>上一页</button>
+          <button type="button" data-step="1" ${current === pages ? "disabled" : ""}>下一页</button>
+        `;
+      }
+
+      function renderCards() {
+        const summary = report.summary || {};
+        const items = [
+          { label: "明细行数", value: report.rows, type: "number" },
+          { label: "消耗", value: summary.消耗, type: "money" },
+          { label: "转化数", value: summary.转化数, type: "number" },
+          { label: "计费转化数", value: summary.计费转化数, type: "number" },
+          { label: "转化成本", value: summary.转化成本, type: "money" },
+          { label: "条件内预估赔付", value: summary.条件内预估赔付金额, type: "money" },
+          { label: "预估佣金合计", value: summary.预估佣金合计, type: "money" },
+          { label: "预估利润", value: summary.预估利润, type: "money", profit: true },
+          { label: "预估 ROI", value: summary.预估ROI, type: "percent" },
+          { label: "实际佣金合计", value: summary.实际佣金合计, type: "money" },
+          { label: "实际利润", value: summary.实际利润, type: "money", profit: true },
+          { label: "实际 ROI", value: summary.实际ROI, type: "percent" },
+        ];
+        $("#cards").innerHTML = items.map((item) => {
+          const formatted = item.type === "percent"
+            ? formatPercent(item.value)
+            : formatNumber(item.value, item.type === "money" ? 2 : 0);
+          const tone = item.profit ? (number(item.value) < 0 ? "bad" : "good") : "";
+          return `<article class="card"><div class="k">${escapeHtml(item.label)}</div><div class="v ${tone}">${formatted}</div></article>`;
+        }).join("");
+      }
+
+      function trendRows(rows) {
+        return [...rows].sort((left, right) => String(left.日期 || "").localeCompare(String(right.日期 || "")));
+      }
+
+      function renderTrend(element, instance, rows) {
+        const ordered = trendRows(rows);
+        const chart = instance || echarts.init(element);
+        chart.setOption({
+          animationDuration: 350,
+          color: ["#e1251b", "#1677ff"],
+          grid: { left: 72, right: 72, top: 38, bottom: 66 },
+          legend: { top: 6, right: 24, data: ["消耗", "实际 ROI"] },
+          tooltip: {
+            trigger: "axis",
+            formatter(params) {
+              const row = ordered[params[0]?.dataIndex] || {};
+              return [
+                escapeHtml(row.日期 || "-"),
+                `消耗：${formatNumber(row.消耗, 2)}`,
+                `计费转化数：${formatNumber(row.计费转化数)}`,
+                `实际利润：${formatNumber(row.实际利润, 2)}`,
+                `实际 ROI：${formatPercent(row.实际ROI)}`,
+              ].join("<br>");
+            },
+          },
+          xAxis: {
+            type: "category",
+            data: ordered.map((row) => row.日期),
+            axisLabel: { rotate: 35 },
+            axisTick: { alignWithLabel: true },
+          },
+          yAxis: [
+            {
+              type: "value",
+              name: "消耗",
+              splitLine: { lineStyle: { color: "#e8eef5" } },
+            },
+            {
+              type: "value",
+              name: "ROI",
+              axisLabel: { formatter: (value) => `${value}%` },
+              splitLine: { show: false },
+            },
+          ],
+          dataZoom: [
+            { type: "inside" },
+            { type: "slider", height: 18, bottom: 8 },
+          ],
+          series: [
+            {
+              name: "消耗",
+              type: "line",
+              data: ordered.map((row) => number(row.消耗)),
+              smooth: true,
+              symbolSize: 6,
+              lineStyle: { width: 3 },
+            },
+            {
+              name: "实际 ROI",
+              type: "line",
+              yAxisIndex: 1,
+              data: ordered.map((row) => Number((number(row.实际ROI) * 100).toFixed(2))),
+              smooth: true,
+              symbolSize: 6,
+              lineStyle: { width: 2 },
+            },
+          ],
+        }, { notMerge: true });
+        return chart;
+      }
+
+      function renderMain() {
+        const config = dimensions[active];
+        const rows = Array.isArray(report[active]) ? report[active] : [];
+        const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+        page = Math.min(page, pages);
+        const range = Array.isArray(report.range) ? report.range : ["-", "-"];
+        $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条。`;
+
+        const columns = [config.key, ...metricColumns];
+        const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
+        renderTable($("#table"), visibleRows, columns, config.key);
+        renderPager($("#pager"), rows.length, page);
+
+        const chartSection = $("#mainChartSection");
+        if (active === "by_date") {
+          $("#mainChartTitle").textContent = "京东 CPA 每日消耗与实际 ROI 趋势";
+          chartSection.classList.remove("hidden");
+          mainChart = renderTrend($("#mainChart"), mainChart, rows);
+          requestAnimationFrame(() => mainChart?.resize());
+        } else {
+          chartSection.classList.add("hidden");
+        }
+
+        renderOptimizerDrilldown();
+      }
+
+      function renderOptimizerDrilldown() {
+        const panel = $("#drillPanel");
+        if (active !== "by_optimizer") {
+          panel.classList.add("hidden");
+          return;
+        }
+
+        const optimizers = Array.isArray(report.by_optimizer) ? report.by_optimizer : [];
+        if (!optimizers.length) {
+          panel.classList.add("hidden");
+          return;
+        }
+
+        panel.classList.remove("hidden");
+        const select = $("#optimizerSelect");
+        const previous = select.value;
+        select.innerHTML = optimizers
+          .map((item) => `<option value="${escapeHtml(item.优化师)}">${escapeHtml(item.优化师)}</option>`)
+          .join("");
+        const selected = optimizers.some((item) => String(item.优化师) === previous)
+          ? previous
+          : String(optimizers[0].优化师);
+        select.value = selected;
+
+        const rows = (Array.isArray(report.by_optimizer_date) ? report.by_optimizer_date : [])
+          .filter((item) => String(item.优化师) === selected)
+          .sort((left, right) => String(right.日期 || "").localeCompare(String(left.日期 || "")));
+        const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+        drillPage = Math.min(drillPage, pages);
+
+        $("#drillNote").textContent = `${selected} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
+        $("#drillChartTitle").textContent = `${selected} 每日消耗与实际 ROI 趋势`;
+        drillChart = renderTrend($("#drillChart"), drillChart, rows);
+        requestAnimationFrame(() => drillChart?.resize());
+
+        const columns = ["日期", ...metricColumns];
+        const visibleRows = rows.slice((drillPage - 1) * pageSize, drillPage * pageSize);
+        renderTable($("#drillTable"), visibleRows, columns, "日期");
+        renderPager($("#drillPager"), rows.length, drillPage);
+      }
+
+      function showReport() {
+        $("#filterPanel").classList.remove("hidden");
+        $("#cards").classList.remove("hidden");
+        $("#tabs").classList.remove("hidden");
+        $("#content").classList.remove("hidden");
+        renderCards();
+        renderMain();
+      }
+
+      function cacheText() {
+        if (!report.cachedAt) return "已加载服务器缓存。";
+        return `已加载服务器缓存，更新时间：${new Date(report.cachedAt).toLocaleString("zh-CN")}。`;
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, options);
+        const raw = await response.text();
+        let result;
+        try {
+          result = JSON.parse(raw);
+        } catch {
+          throw new Error("服务端接口暂不可用，请确认已拉取最新代码并重启服务");
+        }
+        if (!response.ok) throw new Error(result.error || "请求失败");
+        return result;
+      }
+
+      function get(url) {
+        return requestJson(url);
+      }
+
+      function post(url, body) {
+        return requestJson(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+
+      async function loadLatest() {
+        const token = $("#token").value.trim();
+        if (!token) {
+          setStatus("请粘贴当前 x-token 后再更新数据。", "error");
+          $("#token").focus();
+          return;
+        }
+
+        const button = $("#load");
+        try {
+          button.disabled = true;
+          button.textContent = "加载中…";
+          setStatus("正在获取并保存京东全量报表…");
+          report = await post("/api/jd/load", {
+            token,
+            userId: $("#userId").value.trim() || "20",
+          });
+          $("#token").value = "";
+          page = 1;
+          drillPage = 1;
+          showReport();
+          setStatus(`京东数据已更新并保存。${cacheText()} Token 未保存。`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = "更新京东全量数据";
+        }
+      }
+
+      async function applyDateFilter(reset = false) {
+        const start = reset ? "" : $("#start").value;
+        const end = reset ? "" : $("#end").value;
+        if (start && end && start > end) {
+          $("#loading").textContent = "开始日期不能晚于结束日期。";
+          return;
+        }
+
+        const button = $("#apply");
+        try {
+          button.disabled = true;
+          $("#reset").disabled = true;
+          $("#loading").textContent = "计算中…";
+          report = await post("/api/jd/analyze", { start, end });
+          if (reset) {
+            $("#start").value = "";
+            $("#end").value = "";
+          }
+          page = 1;
+          drillPage = 1;
+          showReport();
+          $("#loading").textContent = "筛选已应用。";
+        } catch (error) {
+          $("#loading").textContent = error.message;
+        } finally {
+          button.disabled = false;
+          $("#reset").disabled = false;
+        }
+      }
+
+      $("#load").addEventListener("click", loadLatest);
+      $("#apply").addEventListener("click", () => applyDateFilter(false));
+      $("#reset").addEventListener("click", () => applyDateFilter(true));
+
+      $("#tabs").addEventListener("click", (event) => {
+        const tab = event.target.closest("button[data-key]");
+        if (!tab) return;
+        active = tab.dataset.key;
+        page = 1;
+        drillPage = 1;
+        document.querySelectorAll(".tab").forEach((item) => {
+          const selected = item === tab;
+          item.classList.toggle("active", selected);
+          item.setAttribute("aria-selected", String(selected));
+        });
+        renderMain();
+      });
+
+      $("#pager").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-step]");
+        if (!button) return;
+        page += Number(button.dataset.step);
+        renderMain();
+      });
+
+      $("#optimizerSelect").addEventListener("change", () => {
+        drillPage = 1;
+        renderOptimizerDrilldown();
+      });
+
+      $("#drillPager").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-step]");
+        if (!button) return;
+        drillPage += Number(button.dataset.step);
+        renderOptimizerDrilldown();
+      });
+
+      window.addEventListener("resize", () => {
+        mainChart?.resize();
+        drillChart?.resize();
+      });
+
+      get("/api/jd/current")
+        .then((result) => {
+          report = result;
+          showReport();
+          setStatus(cacheText(), "success");
+        })
+        .catch(() => {
+          setStatus("暂无京东服务器缓存，请粘贴 x-token 后加载一次。", "error");
+        });
+    })();
+  </script>
+</body>
+</html>

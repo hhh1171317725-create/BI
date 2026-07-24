@@ -8,10 +8,20 @@ const host = process.env.DHH_HOST || "127.0.0.1";
 const port = Number(process.env.DHH_PORT || 8765);
 const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
 const cachePath = path.join(runtimeDir, "report-cache.json");
+const jdCachePath = path.join(runtimeDir, "jd-report-cache.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
+const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
 const numericFields = ["消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数"];
+const jdNumericFields = [
+  "转化数", "计费转化数", "去重订单总数", "首购订单总数", "回流订单总数",
+  "首购有效订单数", "回流有效订单数", "首购无效订单数", "回流无效订单数",
+  "首购已完成订单", "回流已完成订单", "消耗", "条件内预估赔付金额",
+  "首购预估佣金", "回流预估佣金", "首购实际佣金", "回流实际佣金",
+];
 let rows = [];
 let cachedAt = "";
+let jdRows = [];
+let jdCachedAt = "";
 
 function number(value) {
   const parsed = Number(String(value ?? "0").replaceAll(",", ""));
@@ -88,6 +98,42 @@ async function fetchRows(token, userId) {
   });
 }
 
+async function fetchJdRows(token, userId) {
+  if (!token?.trim()) throw new Error("请粘贴当前 x-token");
+  const response = await fetch(jdExportUrl, {
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      Referer: "https://report.rockorca.com/",
+      "X-Token": token.trim(),
+      "X-User-Id": userId?.trim() || "20",
+      Cookie: `x-token=${token.trim()}`,
+    },
+  });
+  if (!response.ok) throw new Error(`京东报表接口请求失败：${response.status}`);
+  const raw = await response.text();
+  return parseJdCsv(raw);
+}
+
+function parseJdCsv(raw) {
+  return parseCsv(raw).flatMap((record) => {
+    const date = String(record.业务日期 || "").trim();
+    if (!date || date === "-") return [];
+    const row = {
+      日期: date.slice(0, 10),
+      推广位ID: String(record.推广位ID || "").trim() || "未填写",
+      推广位名称: String(record.推广位名称 || "").trim() || "未填写",
+      媒体: String(record.媒体 || "").trim() || "未填写",
+      媒体账户ID: String(record.媒体账户ID || "").trim() || "未填写",
+      媒体账户名称: String(record.媒体账户名称 || "").trim() || "未填写",
+      推客用户名: String(record.推客用户名 || "").trim() || "未填写",
+      优化师: String(record.优化师 || "").trim() || "未填写",
+    };
+    jdNumericFields.forEach((field) => { row[field] = number(record[field]); });
+    row.条件内预估赔付金额 = number(record["条件内预估赔付金额(当日)"]);
+    return [row];
+  });
+}
+
 async function saveCache() {
   await fs.mkdir(runtimeDir, { recursive: true });
   cachedAt = new Date().toISOString();
@@ -102,6 +148,22 @@ async function restoreCache() {
   if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的数据，请粘贴 x-token 后加载一次");
   rows = cached.rows;
   cachedAt = cached.cachedAt || "";
+}
+
+async function saveJdCache() {
+  await fs.mkdir(runtimeDir, { recursive: true });
+  jdCachedAt = new Date().toISOString();
+  const temporaryPath = `${jdCachePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify({ cachedAt: jdCachedAt, rows: jdRows }), "utf8");
+  await fs.rename(temporaryPath, jdCachePath);
+}
+
+async function restoreJdCache() {
+  if (jdRows.length) return;
+  const cached = JSON.parse(await fs.readFile(jdCachePath, "utf8"));
+  if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的京东数据，请粘贴 x-token 后加载一次");
+  jdRows = cached.rows;
+  jdCachedAt = cached.cachedAt || "";
 }
 
 function aggregate(data, fields) {
@@ -156,6 +218,66 @@ function buildAnalysis(start = "", end = "") {
   };
 }
 
+function jdMetrics(values) {
+  const spend = values.消耗 || 0;
+  const billableConversions = values.计费转化数 || 0;
+  const estimatedCommission = (values.首购预估佣金 || 0) + (values.回流预估佣金 || 0);
+  const actualCommission = (values.首购实际佣金 || 0) + (values.回流实际佣金 || 0);
+  const compensation = values.条件内预估赔付金额 || 0;
+  return {
+    ...Object.fromEntries(Object.entries(values).map(([key, value]) => [key, Number(value.toFixed(2))])),
+    转化成本: billableConversions ? Number((spend / billableConversions).toFixed(2)) : 0,
+    预估佣金合计: Number(estimatedCommission.toFixed(2)),
+    预估利润: Number((estimatedCommission + compensation - spend).toFixed(2)),
+    预估ROI: spend ? Number(((estimatedCommission + compensation) / spend).toFixed(4)) : 0,
+    实际佣金合计: Number(actualCommission.toFixed(2)),
+    实际利润: Number((actualCommission + compensation - spend).toFixed(2)),
+    实际ROI: spend ? Number(((actualCommission + compensation) / spend).toFixed(4)) : 0,
+  };
+}
+
+function aggregateJd(data, fields) {
+  const groupFields = Array.isArray(fields) ? fields : [fields];
+  const buckets = new Map();
+  for (const row of data) {
+    const key = groupFields.map((field) => row[field]).join("\u0001");
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        dimensions: Object.fromEntries(groupFields.map((field) => [field, row[field]])),
+        values: Object.fromEntries(jdNumericFields.map((field) => [field, 0])),
+      });
+    }
+    const bucket = buckets.get(key).values;
+    jdNumericFields.forEach((field) => { bucket[field] += row[field]; });
+  }
+  return [...buckets.values()]
+    .map(({ dimensions, values }) => ({ ...dimensions, ...jdMetrics(values) }))
+    .sort((left, right) => right.消耗 - left.消耗);
+}
+
+function buildJdAnalysis(start = "", end = "") {
+  const filtered = jdRows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
+  const emptyValues = Object.fromEntries(jdNumericFields.map((field) => [field, 0]));
+  const summary = aggregateJd(filtered, [])[0] || jdMetrics(emptyValues);
+  return {
+    cachedAt: jdCachedAt,
+    rows: filtered.length,
+    range: filtered.length
+      ? [
+          filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期),
+          filtered.reduce((max, row) => row.日期 > max ? row.日期 : max, filtered[0].日期),
+        ]
+      : ["-", "-"],
+    summary,
+    by_optimizer: aggregateJd(filtered, "优化师"),
+    by_date: aggregateJd(filtered, "日期").sort((left, right) => right.日期.localeCompare(left.日期)),
+    by_media: aggregateJd(filtered, "媒体"),
+    by_account: aggregateJd(filtered, "媒体账户名称"),
+    by_promoter: aggregateJd(filtered, "推客用户名"),
+    by_optimizer_date: aggregateJd(filtered, ["日期", "优化师"]),
+  };
+}
+
 function sendJson(response, payload, status = 200) {
   const body = Buffer.from(JSON.stringify(payload));
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": body.length });
@@ -177,6 +299,7 @@ async function serveFile(response, filename, contentType) {
 const server = http.createServer(async (request, response) => {
   try {
     if (request.method === "GET" && request.url === "/") return serveFile(response, "index.html", "text/html; charset=utf-8");
+    if (request.method === "GET" && (request.url === "/jd" || request.url === "/jd.html")) return serveFile(response, "jd.html", "text/html; charset=utf-8");
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
     if (request.method === "GET" && request.url === "/api/current") {
       await restoreCache();
@@ -193,6 +316,21 @@ const server = http.createServer(async (request, response) => {
       const payload = await readRequestBody(request);
       return sendJson(response, buildAnalysis(payload.start || "", payload.end || ""));
     }
+    if (request.method === "GET" && request.url === "/api/jd/current") {
+      await restoreJdCache();
+      return sendJson(response, buildJdAnalysis());
+    }
+    if (request.method === "POST" && request.url === "/api/jd/load") {
+      const payload = await readRequestBody(request);
+      jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
+      await saveJdCache();
+      return sendJson(response, buildJdAnalysis());
+    }
+    if (request.method === "POST" && request.url === "/api/jd/analyze") {
+      await restoreJdCache();
+      const payload = await readRequestBody(request);
+      return sendJson(response, buildJdAnalysis(payload.start || "", payload.end || ""));
+    }
     response.writeHead(404);
     response.end("Not found");
   } catch (error) {
@@ -200,4 +338,8 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host, () => console.log(`大航海分析系统已启动：http://${host}:${port}`));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  server.listen(port, host, () => console.log(`营销日报分析系统已启动：http://${host}:${port}`));
+}
+
+export { aggregateJd, jdMetrics, parseCsv, parseJdCsv };

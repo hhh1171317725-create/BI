@@ -115,7 +115,7 @@ function sessionCookie(request, token, maxAge) {
 }
 
 function number(value) {
-  const parsed = Number(String(value ?? "0").replaceAll(",", ""));
+  const parsed = Number(String(value ?? "0").replace(/,/gu, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
 

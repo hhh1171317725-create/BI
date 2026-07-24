@@ -458,8 +458,8 @@
       <p class="note" id="drillNote"></p>
     </div>
     <h2 class="chart-heading" id="drillChartTitle"></h2>
-    <p class="chart-subtitle">折线同时展示每日消耗与实际 ROI，便于定位投放效率变化。</p>
-    <div class="chart" id="drillChart" role="img" aria-label="优化师每日消耗与实际 ROI 趋势图"></div>
+    <p class="chart-subtitle">折线同时展示每日消耗、预估 ROI 与实际 ROI，便于定位投放效率变化。</p>
+    <div class="chart" id="drillChart" role="img" aria-label="优化师每日消耗、预估 ROI 与实际 ROI 趋势图"></div>
     <div class="table-wrap"><table id="drillTable"></table></div>
     <div class="pager" id="drillPager"></div>
   </section>
@@ -664,9 +664,9 @@
         const chart = instance || echarts.init(element);
         chart.setOption({
           animationDuration: 350,
-          color: ["#e1251b", "#1677ff"],
+          color: ["#e1251b", "#f59e0b", "#1677ff"],
           grid: { left: 72, right: 72, top: 38, bottom: 66 },
-          legend: { top: 6, right: 24, data: ["消耗", "实际 ROI"] },
+          legend: { top: 6, right: 24, data: ["消耗", "预估 ROI", "实际 ROI"] },
           tooltip: {
             trigger: "axis",
             formatter(params) {
@@ -675,6 +675,7 @@
                 escapeHtml(row.日期 || "-"),
                 `消耗：${formatNumber(row.消耗, 2)}`,
                 `计费转化数：${formatNumber(row.计费转化数)}`,
+                `预估 ROI：${formatPercent(row.预估ROI)}`,
                 `实际利润：${formatNumber(row.实际利润, 2)}`,
                 `实际 ROI：${formatPercent(row.实际ROI)}`,
               ].join("<br>");
@@ -691,6 +692,15 @@
               type: "value",
               name: "消耗",
               splitLine: { lineStyle: { color: "#e8eef5" } },
+            },
+            {
+              name: "预估 ROI",
+              type: "line",
+              yAxisIndex: 1,
+              data: ordered.map((row) => Number((number(row.预估ROI) * 100).toFixed(2))),
+              smooth: true,
+              symbolSize: 6,
+              lineStyle: { width: 2 },
             },
             {
               type: "value",
@@ -754,7 +764,7 @@
 
         const chartSection = $("#mainChartSection");
         if (active === "by_date") {
-          $("#mainChartTitle").textContent = "京东 CPA 每日消耗与实际 ROI 趋势";
+          $("#mainChartTitle").textContent = "京东 CPA 每日消耗、预估 ROI 与实际 ROI 趋势";
           chartSection.classList.remove("hidden");
           mainChart = renderTrend($("#mainChart"), mainChart, rows);
           requestAnimationFrame(() => mainChart?.resize());
@@ -796,7 +806,7 @@
         drillPage = Math.min(drillPage, pages);
 
         $("#drillNote").textContent = `${selected} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
-        $("#drillChartTitle").textContent = `${selected} 每日消耗与实际 ROI 趋势`;
+        $("#drillChartTitle").textContent = `${selected} 每日消耗、预估 ROI 与实际 ROI 趋势`;
         drillChart = renderTrend($("#drillChart"), drillChart, rows);
         requestAnimationFrame(() => drillChart?.resize());
 

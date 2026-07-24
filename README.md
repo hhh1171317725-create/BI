@@ -7,6 +7,19 @@
 
 两份报表使用独立的本地缓存，均支持日期筛选、分页和按日消耗折线图。
 
+## 数据分析宠物
+
+两个报表右下角都有“数数鲸”悬浮宠物。未配置 AI 时，它可在本地回答消耗、利润、ROI、有效订单、优化师排名和异常预警等问题。配置 OpenAI 后可进行更自然的多轮对话，报表上下文会由服务端发送给模型，API Key 只保存在服务器环境变量中。
+
+在服务器创建不纳入 Git 的 `/www/wwwroot/BI/.runtime/ai.env`：
+
+```env
+OPENAI_API_KEY=你的_OpenAI_API_Key
+OPENAI_MODEL=gpt-5.6-terra
+```
+
+随后执行 `systemctl restart dahanghai-analysis`。`OPENAI_MODEL` 可省略，默认使用兼顾质量与成本的模型。
+
 ## 宝塔部署
 
 1. 将仓库拉取到 `/www/wwwroot/BI`。

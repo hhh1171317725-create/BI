@@ -5,6 +5,7 @@ import {
   filterJdRows,
   isUnknownOptimizer,
   jdMetrics,
+  localPetReply,
   parseDhhAccounts,
 } from "./server.mjs";
 
@@ -178,4 +179,27 @@ test("JD effective orders combine first-purchase and returning effective orders"
   });
 
   assert.equal(result.有效订单数, 20);
+});
+
+test("data pet answers report metrics without an AI key", () => {
+  const context = {
+    reportType: "京东 CPA 日报",
+    range: ["2026-07-01", "2026-07-24"],
+    summary: {
+      消耗: 123456.78,
+      有效订单数: 321,
+      预估利润: 4567.89,
+      实际利润: 3456.78,
+      预估ROI: 1.12,
+      实际ROI: 1.05,
+    },
+    topOptimizers: [
+      { 优化师: "优化师B", 消耗: 200 },
+      { 优化师: "优化师A", 消耗: 300 },
+    ],
+  };
+
+  assert.match(localPetReply("有效订单有多少？", context), /321/);
+  assert.match(localPetReply("分析利润和ROI", context), /预估\/现金利润 4,567\.89 元/);
+  assert.match(localPetReply("哪个优化师消耗最高？", context), /1\. 优化师A：300 元/);
 });

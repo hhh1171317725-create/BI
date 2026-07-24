@@ -421,6 +421,112 @@ function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = true) {
   };
 }
 
+function formatMetric(value, fractionDigits = 2) {
+  const parsed = number(value);
+  return parsed.toLocaleString("zh-CN", { maximumFractionDigits: fractionDigits });
+}
+
+function localPetReply(message, context = {}) {
+  const query = String(message || "").trim();
+  const summary = context.summary || {};
+  const reportType = context.reportType || "当前";
+  const range = Array.isArray(context.range) ? `${context.range[0]} 至 ${context.range[1]}` : "当前筛选范围";
+  const topOptimizers = Array.isArray(context.topOptimizers) ? context.topOptimizers : [];
+  const alerts = context.alerts || {};
+
+  if (/^(你好|您好|嗨|hi|hello)/i.test(query)) {
+    return `你好，我是数数鲸！我正在查看${reportType}报表，可以问我消耗、利润、ROI、有效订单、优化师排名或异常预警。`;
+  }
+  if (/有效订单/.test(query)) {
+    if (summary.有效订单数 === undefined) return `${reportType}报表当前没有“有效订单数”指标。`;
+    return `${range}的有效订单数为 ${formatMetric(summary.有效订单数, 0)}。口径为首购有效订单数＋回流有效订单数。`;
+  }
+  if (/优化师|排名|最高|最多/.test(query) && topOptimizers.length) {
+    const ranked = [...topOptimizers]
+      .sort((left, right) => number(right.消耗) - number(left.消耗))
+      .slice(0, 5);
+    return `按消耗排名前 ${ranked.length} 的优化师：\n${ranked.map((item, index) => `${index + 1}. ${item.优化师}：${formatMetric(item.消耗)} 元`).join("\n")}`;
+  }
+  if (/异常|预警/.test(query)) {
+    const count = number(alerts.total);
+    if (!count) return `${range}当前没有需要展示的账户任务异常预警。`;
+    const selected = [alerts.optimizer, alerts.task].filter(Boolean).join(" / ") || "全部优化师和任务";
+    return `${range}共有 ${formatMetric(count, 0)} 条异常预警，当前范围：${selected}。建议优先检查高消耗无注册，以及结算数比注册数低 10% 以上的账户。`;
+  }
+  if (/利润|roi|回报/i.test(query)) {
+    const estimatedProfit = summary.预估利润 ?? summary.现金利润;
+    const actualProfit = summary.实际利润;
+    const estimatedRoi = summary.预估ROI ?? summary.现金ROI ?? summary.ROI;
+    const actualRoi = summary.实际ROI;
+    const parts = [];
+    if (estimatedProfit !== undefined) parts.push(`预估/现金利润 ${formatMetric(estimatedProfit)} 元`);
+    if (actualProfit !== undefined) parts.push(`实际利润 ${formatMetric(actualProfit)} 元`);
+    if (estimatedRoi !== undefined) parts.push(`预估/现金 ROI ${(number(estimatedRoi) * 100).toFixed(2)}%`);
+    if (actualRoi !== undefined) parts.push(`实际 ROI ${(number(actualRoi) * 100).toFixed(2)}%`);
+    return parts.length ? `${range}：${parts.join("，")}。` : `${reportType}报表当前没有利润或 ROI 数据。`;
+  }
+  if (/消耗|花费|成本/.test(query)) {
+    const spend = summary.消耗;
+    if (spend === undefined) return `${reportType}报表当前没有消耗数据。`;
+    const cashSpend = summary.现金消耗;
+    return `${range}总消耗 ${formatMetric(spend)} 元${cashSpend === undefined ? "" : `，其中现金消耗 ${formatMetric(cashSpend)} 元`}。`;
+  }
+
+  const overview = [`${reportType}报表（${range}）`];
+  if (summary.消耗 !== undefined) overview.push(`消耗 ${formatMetric(summary.消耗)} 元`);
+  if (summary.有效订单数 !== undefined) overview.push(`有效订单 ${formatMetric(summary.有效订单数, 0)}`);
+  if (summary.预估利润 !== undefined) overview.push(`预估利润 ${formatMetric(summary.预估利润)} 元`);
+  if (summary.实际利润 !== undefined) overview.push(`实际利润 ${formatMetric(summary.实际利润)} 元`);
+  if (summary.现金利润 !== undefined) overview.push(`现金利润 ${formatMetric(summary.现金利润)} 元`);
+  return `${overview.join("，")}。\n你还可以问：“哪个优化师消耗最高？”“分析利润和 ROI”“当前有多少异常？”`;
+}
+
+function responseOutputText(payload) {
+  return (payload?.output || [])
+    .flatMap((item) => item?.content || [])
+    .filter((item) => item?.type === "output_text")
+    .map((item) => item.text || "")
+    .join("")
+    .trim();
+}
+
+async function askOpenAIPet(message, context, history = []) {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return "";
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra";
+  const safeHistory = history.slice(-8).flatMap((item) => {
+    const role = item?.role === "assistant" ? "assistant" : "user";
+    const content = String(item?.content || "").slice(0, 1200);
+    return content ? [{ role, content }] : [];
+  });
+  const contextText = JSON.stringify(context).slice(0, 30000);
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      instructions: "你是营销日报网站里的小宠物“数数鲸”。用中文直接回答。只依据提供的报表上下文分析，不编造数据；先给结论，再给关键数字和一条可执行建议。回答控制在180字内。",
+      input: [
+        ...safeHistory,
+        {
+          role: "user",
+          content: `报表上下文：${contextText}\n\n用户问题：${String(message).slice(0, 500)}`,
+        },
+      ],
+      reasoning: { effort: "low" },
+      text: { verbosity: "low" },
+      max_output_tokens: 500,
+      store: false,
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!response.ok) throw new Error(`AI 服务请求失败：${response.status}`);
+  return responseOutputText(await response.json());
+}
+
 function sendJson(response, payload, status = 200) {
   const body = Buffer.from(JSON.stringify(payload));
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": body.length });
@@ -444,6 +550,8 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/") return serveFile(response, "index.html", "text/html; charset=utf-8");
     if (request.method === "GET" && (request.url === "/jd" || request.url === "/jd.html")) return serveFile(response, "jd.html", "text/html; charset=utf-8");
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
+    if (request.method === "GET" && request.url === "/pet.css") return serveFile(response, "pet.css", "text/css; charset=utf-8");
+    if (request.method === "GET" && request.url === "/pet.js") return serveFile(response, "pet.js", "application/javascript; charset=utf-8");
     if (request.method === "GET" && request.url === "/api/current") {
       await restoreCache();
       return sendJson(response, buildAnalysis());
@@ -478,6 +586,19 @@ const server = http.createServer(async (request, response) => {
         payload.excludeUnknownOptimizer !== false,
       ));
     }
+    if (request.method === "POST" && request.url === "/api/pet/chat") {
+      const payload = await readRequestBody(request);
+      const message = String(payload.message || "").trim().slice(0, 500);
+      if (!message) return sendJson(response, { error: "请输入问题" }, 400);
+      const context = payload.context && typeof payload.context === "object" ? payload.context : {};
+      try {
+        const aiReply = await askOpenAIPet(message, context, Array.isArray(payload.history) ? payload.history : []);
+        if (aiReply) return sendJson(response, { reply: aiReply, mode: "ai" });
+      } catch {
+        // AI 暂不可用时继续使用确定性的本地报表分析。
+      }
+      return sendJson(response, { reply: localPetReply(message, context), mode: "local" });
+    }
     response.writeHead(404);
     response.end("Not found");
   } catch (error) {
@@ -495,6 +616,7 @@ export {
   filterJdRows,
   isUnknownOptimizer,
   jdMetrics,
+  localPetReply,
   parseCsv,
   parseDhhAccounts,
   parseJdCsv,

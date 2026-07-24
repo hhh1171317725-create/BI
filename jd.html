@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>京东 CPA 日报分析</title>
+  <link rel="stylesheet" href="/pet.css" />
   <style>
     :root {
       --accent: #e1251b;
@@ -924,6 +925,17 @@
         drillChart?.resize();
       });
 
+      window.getPetReportContext = () => ({
+        reportType: "京东 CPA 日报",
+        range: report?.range || ["-", "-"],
+        summary: report?.summary || {},
+        excludeUnknownOptimizer: report?.excludeUnknownOptimizer ?? true,
+        currentDimension: dimensions[active]?.label || "优化师",
+        topOptimizers: (report?.by_optimizer || []).slice(0, 12),
+        currentRows: (report?.[active] || []).slice(0, 12),
+        alerts: { total: 0 },
+      });
+
       get("/api/jd/current")
         .then((result) => {
           report = result;
@@ -935,5 +947,6 @@
         });
     })();
   </script>
+  <script src="/pet.js"></script>
 </body>
 </html>

@@ -226,6 +226,13 @@ function previousBeijingDate(now = new Date()) {
 
 function buildDhhAlerts(data, date = previousBeijingDate()) {
   const dailyRows = data.filter((row) => row.日期 === date);
+  const optimizerTasks = new Map();
+  for (const row of dailyRows) {
+    const optimizer = String(row.优化师 || "").trim() || "未填写";
+    const task = String(row.任务名 || "").trim() || "未填写";
+    if (!optimizerTasks.has(optimizer)) optimizerTasks.set(optimizer, new Set());
+    optimizerTasks.get(optimizer).add(task);
+  }
   const buckets = new Map();
   for (const row of dailyRows) {
     const listedAccounts = Array.isArray(row.账户列表) ? row.账户列表 : [];
@@ -303,6 +310,12 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     accountCount: accounts.length,
     total: items.length,
     items,
+    filterOptions: [...optimizerTasks]
+      .map(([optimizer, tasks]) => ({
+        优化师: optimizer,
+        任务列表: [...tasks].sort((left, right) => left.localeCompare(right, "zh-CN")),
+      }))
+      .sort((left, right) => left.优化师.localeCompare(right.优化师, "zh-CN")),
   };
 }
 

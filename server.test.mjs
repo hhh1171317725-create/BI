@@ -90,6 +90,25 @@ test("alerts are separated by selected optimizer", () => {
   assert.deepEqual(result.items.map((item) => item.优化师).sort(), ["优化师A", "优化师B"]);
 });
 
+test("alert filter options include optimizers and tasks without anomalies", () => {
+  const account = {
+    账户ID: "1",
+    账户名称: "普通账户",
+    消耗: 10,
+  };
+  const result = buildDhhAlerts([
+    { 日期: "2026-07-23", 优化师: "优化师A", 任务名: "正常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师A", 任务名: "异常任务", 注册数: 100, 结算数: 80, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师B", 任务名: "无异常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
+  ], "2026-07-23");
+
+  assert.deepEqual(result.filterOptions, [
+    { 优化师: "优化师A", 任务列表: ["异常任务", "正常任务"] },
+    { 优化师: "优化师B", 任务列表: ["无异常任务"] },
+  ]);
+  assert.equal(result.total, 1);
+});
+
 test("Xianyu accounts and tasks are excluded from alerts", () => {
   const result = buildDhhAlerts([
     {

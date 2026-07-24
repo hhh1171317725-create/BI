@@ -39,24 +39,25 @@ test("buildDhhAlerts monitors real accounts instead of media names", () => {
   assert.equal(result.items[0].账户ID, "86784411");
   assert.equal(result.items[0].任务名, "淘宝闲鱼促活");
   assert.equal(result.items[0].闲鱼任务, true);
-  assert.equal(result.items[0].reasons.length, 2);
+  assert.equal(result.items[0].reasons.length, 1);
+  assert.equal(result.items[0].reasons[0].code, "spend_without_registration");
   assert.equal(result.items[0].账户名称 === "字节", false);
 });
 
-test("registration warning only fires when registrations are over 10 percent below settlements", () => {
+test("settlement warning only fires when settlements are over 10 percent below registrations", () => {
   const account = {
     账户ID: "1",
     账户名称: "闲鱼账户",
     消耗: 10,
   };
   const result = buildDhhAlerts([
-    { 日期: "2026-07-23", 任务名: "闲鱼任务A", 注册数: 91, 结算数: 100, 账户列表: [account] },
-    { 日期: "2026-07-23", 任务名: "闲鱼任务B", 注册数: 89, 结算数: 100, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "闲鱼任务A", 注册数: 100, 结算数: 91, 账户列表: [account] },
+    { 日期: "2026-07-23", 任务名: "闲鱼任务B", 注册数: 100, 结算数: 89, 账户列表: [account] },
   ], "2026-07-23");
 
   assert.equal(result.total, 1);
   assert.equal(result.items[0].任务名, "闲鱼任务B");
-  assert.equal(result.items[0].reasons[0].code, "registrations_below_settlements_10pct");
+  assert.equal(result.items[0].reasons[0].code, "settlements_below_registrations_10pct");
 });
 
 test("alerts are separated by account and task", () => {

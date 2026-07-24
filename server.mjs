@@ -267,24 +267,18 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     const settlements = account.关联结算数;
     const spend = account.消耗;
     const reasons = [];
-    if (settlements > 0 && registrations < settlements * 0.9) {
-      const lowerPercent = Number((((settlements - registrations) / settlements) * 100).toFixed(2));
-      reasons.push({
-        code: "registrations_below_settlements_10pct",
-        message: `关联注册数 ${registrations} 比关联结算数 ${settlements} 低 ${lowerPercent}%`,
-      });
-    }
     if (spend >= 100 && registrations === 0) {
       reasons.push({
         code: "spend_without_registration",
         message: `账户消耗 ${Number(spend.toFixed(2))} 元但关联注册数为 0`,
       });
     }
-    if (registrations > settlements * 1.1) {
-      const message = settlements
-        ? `关联注册数 ${registrations} 比关联结算数 ${settlements} 高 ${Number((((registrations - settlements) / settlements) * 100).toFixed(2))}%`
-        : `关联结算数为 0，但关联注册数为 ${registrations}`;
-      reasons.push({ code: "registrations_over_settlements_10pct", message });
+    if (registrations > 0 && settlements < registrations * 0.9) {
+      const lowerPercent = Number((((registrations - settlements) / registrations) * 100).toFixed(2));
+      reasons.push({
+        code: "settlements_below_registrations_10pct",
+        message: `关联结算数 ${settlements} 比关联注册数 ${registrations} 低 ${lowerPercent}%`,
+      });
     }
     if (!reasons.length) return [];
     return [{

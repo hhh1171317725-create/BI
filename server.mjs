@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.DHH_HOST || "127.0.0.1";
 const port = Number(process.env.DHH_PORT || 8765);
+const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
+const cachePath = path.join(runtimeDir, "report-cache.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const numericFields = ["消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数"];
 let rows = [];
+let cachedAt = "";
 
 function number(value) {
   const parsed = Number(String(value ?? "0").replaceAll(",", ""));
@@ -85,6 +88,22 @@ async function fetchRows(token, userId) {
   });
 }
 
+async function saveCache() {
+  await fs.mkdir(runtimeDir, { recursive: true });
+  cachedAt = new Date().toISOString();
+  const temporaryPath = `${cachePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify({ cachedAt, rows }), "utf8");
+  await fs.rename(temporaryPath, cachePath);
+}
+
+async function restoreCache() {
+  if (rows.length) return;
+  const cached = JSON.parse(await fs.readFile(cachePath, "utf8"));
+  if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的数据，请粘贴 x-token 后加载一次");
+  rows = cached.rows;
+  cachedAt = cached.cachedAt || "";
+}
+
 function aggregate(data, fields) {
   const groupFields = Array.isArray(fields) ? fields : [fields];
   const buckets = new Map();
@@ -122,6 +141,7 @@ function buildAnalysis(start = "", end = "") {
   summary.ROI = summary.消耗 ? Number((summary.预估佣金 / summary.消耗).toFixed(4)) : 0;
   summary.现金ROI = summary.现金消耗 ? Number((summary.预估佣金 / summary.现金消耗).toFixed(4)) : 0;
   return {
+    cachedAt,
     rows: filtered.length,
     range: filtered.length ? [filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期), filtered.reduce((max, row) => row.日期 > max ? row.日期 : max, filtered[0].日期)] : ["-", "-"],
     summary,
@@ -157,13 +177,18 @@ const server = http.createServer(async (request, response) => {
   try {
     if (request.method === "GET" && request.url === "/") return serveFile(response, "index.html", "text/html; charset=utf-8");
     if (request.method === "GET" && request.url === "/echarts.min.js") return serveFile(response, "echarts.min.js", "application/javascript; charset=utf-8");
+    if (request.method === "GET" && request.url === "/api/current") {
+      await restoreCache();
+      return sendJson(response, buildAnalysis());
+    }
     if (request.method === "POST" && request.url === "/api/load") {
       const payload = await readRequestBody(request);
       rows = await fetchRows(payload.token || "", payload.userId || "20");
+      await saveCache();
       return sendJson(response, buildAnalysis());
     }
     if (request.method === "POST" && request.url === "/api/analyze") {
-      if (!rows.length) throw new Error("请先加载数据");
+      await restoreCache();
       const payload = await readRequestBody(request);
       return sendJson(response, buildAnalysis(payload.start || "", payload.end || ""));
     }

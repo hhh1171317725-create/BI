@@ -1,4 +1,4 @@
-# 大航海日报分析系统
+# 大航海日报分析系统（Node.js）
 
 双击 `启动大航海分析.bat`，浏览器会打开本地面板。
 
@@ -16,4 +16,4 @@
 2. 将 `deploy/dahanghai-analysis.service` 复制到 `/etc/systemd/system/`，执行 `systemctl daemon-reload && systemctl enable --now dahanghai-analysis`。
 3. 在宝塔的网站配置中使用 `deploy/nginx-huanghaha.fun.conf` 的反向代理配置，并在 SSL 页面申请证书、强制 HTTPS。
 
-服务运行后访问 `http://www.huanghaha.fun`；证书启用后访问 `https://www.huanghaha.fun`。
+服务器需安装 Node.js 18 或更高版本。服务运行后访问 `http://www.huanghaha.fun`；证书启用后访问 `https://www.huanghaha.fun`。

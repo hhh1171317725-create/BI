@@ -7,6 +7,7 @@ import {
   jdMetrics,
   localPetReply,
   parseDhhAccounts,
+  resolveAiProvider,
 } from "./server.mjs";
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {
@@ -202,4 +203,15 @@ test("data pet answers report metrics without an AI key", () => {
   assert.match(localPetReply("有效订单有多少？", context), /321/);
   assert.match(localPetReply("分析利润和ROI", context), /预估\/现金利润 4,567\.89 元/);
   assert.match(localPetReply("哪个优化师消耗最高？", context), /1\. 优化师A：300 元/);
+});
+
+test("data pet resolves DeepSeek without exposing credentials to the browser", () => {
+  const config = resolveAiProvider({
+    AI_PROVIDER: "deepseek",
+    DEEPSEEK_API_KEY: "test-secret",
+  });
+
+  assert.equal(config.provider, "deepseek");
+  assert.equal(config.model, "deepseek-v4-flash");
+  assert.equal(config.baseUrl, "https://api.deepseek.com");
 });

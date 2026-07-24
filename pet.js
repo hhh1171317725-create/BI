@@ -88,7 +88,9 @@
       if (!response.ok) throw new Error(result.error || "分析失败");
       thinking.remove();
       addMessage("assistant", result.reply);
-      mode.textContent = result.mode === "ai" ? "AI 对话 · 当前报表数据" : "本地数据分析";
+      mode.textContent = result.mode === "ai"
+        ? `${result.provider === "deepseek" ? "DeepSeek" : "OpenAI"} 对话 · 当前报表数据`
+        : "本地数据分析";
       history.push({ role: "user", content: message }, { role: "assistant", content: result.reply });
     } catch (error) {
       thinking.textContent = error instanceof Error ? error.message : "分析失败，请稍后重试。";

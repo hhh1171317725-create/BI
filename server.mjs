@@ -69,6 +69,28 @@ function parseCsv(text) {
   return data.map((values) => Object.fromEntries(headers.map((header, index) => [header.trim(), values[index] ?? ""])));
 }
 
+function parseDhhAccounts(value) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(value || "[]"));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((account) => {
+    const id = String(account?.media_ad_account_id || "").trim();
+    const name = String(account?.media_ad_account_name || "").trim();
+    if (!id && !name) return [];
+    return [{
+      账户ID: id,
+      账户名称: name || `账户 ${id}`,
+      消耗: number(account?.media_total_cost),
+      现金消耗: number(account?.media_cash_cost),
+      赠款消耗: number(account?.media_reward_cost),
+    }];
+  });
+}
+
 async function fetchRows(token, userId) {
   if (!token?.trim()) throw new Error("请粘贴当前 x-token");
   const response = await fetch(exportUrl, {
@@ -86,23 +108,10 @@ async function fetchRows(token, userId) {
     const date = String(record.日期 || "").trim();
     if (!date || date === "-") return [];
     const task = String(record.任务名 || "").trim() || "未填写";
-    const account = [
-      record.媒体账户名称,
-      record.媒体账户名,
-      record.账户名称,
-      record.广告账户名称,
-      record.媒体账户,
-      record.推广账户,
-      record.广告账户,
-      record.账户,
-      record.媒体账户ID,
-      record.账户ID,
-      record.媒体,
-    ].map((value) => String(value || "").trim()).find((value) => value && value !== "-") || "未填写";
     const row = {
       日期: date.slice(0, 10),
       媒体: String(record.媒体 || "").trim() || "未填写",
-      账户: account,
+      账户列表: parseDhhAccounts(record.账户信息),
       优化师: String(record.优化师 || "").trim() || "未填写",
       任务名: task,
       项目: projectFromTask(task),
@@ -216,45 +225,77 @@ function previousBeijingDate(now = new Date()) {
 }
 
 function buildDhhAlerts(data, date = previousBeijingDate()) {
-  const dailyRows = data
-    .filter((row) => row.日期 === date)
-    .map((row) => ({ ...row, 账户: row.账户 || row.媒体 || "未填写" }));
-  const accounts = aggregate(dailyRows, "账户");
+  const dailyRows = data.filter((row) => row.日期 === date);
+  const buckets = new Map();
+  for (const row of dailyRows) {
+    const listedAccounts = Array.isArray(row.账户列表) ? row.账户列表 : [];
+    const positiveAccounts = listedAccounts.filter((account) => number(account.消耗) > 0);
+    const relatedAccounts = positiveAccounts.length === 0 && listedAccounts.length === 1
+      ? listedAccounts
+      : positiveAccounts;
+    for (const account of relatedAccounts) {
+      const id = String(account.账户ID || "").trim();
+      const name = String(account.账户名称 || "").trim() || (id ? `账户 ${id}` : "");
+      if (!id && !name) continue;
+      const key = id || name;
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          账户ID: id,
+          账户名称: name,
+          消耗: 0,
+          关联注册数: 0,
+          关联结算数: 0,
+        });
+      }
+      const bucket = buckets.get(key);
+      bucket.消耗 += number(account.消耗);
+      bucket.关联注册数 += number(row.注册数);
+      bucket.关联结算数 += number(row.结算数);
+    }
+  }
+  const accounts = [...buckets.values()].map((account) => ({
+    ...account,
+    消耗: Number(account.消耗.toFixed(2)),
+    关联注册数: Number(account.关联注册数.toFixed(2)),
+    关联结算数: Number(account.关联结算数.toFixed(2)),
+  }));
   const items = accounts.flatMap((account) => {
-    const registrations = account.注册数;
-    const settlements = account.结算数;
+    const registrations = account.关联注册数;
+    const settlements = account.关联结算数;
     const spend = account.消耗;
     const reasons = [];
     if (registrations < settlements) {
       reasons.push({
         code: "registrations_below_settlements",
-        message: `注册数 ${registrations} 少于结算数 ${settlements}`,
+        message: `关联注册数 ${registrations} 少于关联结算数 ${settlements}`,
       });
     }
     if (spend >= 100 && registrations === 0) {
       reasons.push({
         code: "spend_without_registration",
-        message: `消耗 ${Number(spend.toFixed(2))} 元但注册数为 0`,
+        message: `账户消耗 ${Number(spend.toFixed(2))} 元但关联注册数为 0`,
       });
     }
     if (registrations > settlements * 1.1) {
       const message = settlements
-        ? `注册数 ${registrations} 比结算数 ${settlements} 高 ${Number((((registrations - settlements) / settlements) * 100).toFixed(2))}%`
-        : `结算数为 0，但注册数为 ${registrations}`;
+        ? `关联注册数 ${registrations} 比关联结算数 ${settlements} 高 ${Number((((registrations - settlements) / settlements) * 100).toFixed(2))}%`
+        : `关联结算数为 0，但关联注册数为 ${registrations}`;
       reasons.push({ code: "registrations_over_settlements_10pct", message });
     }
     if (!reasons.length) return [];
     return [{
-      账户: account.账户,
+      账户ID: account.账户ID,
+      账户名称: account.账户名称,
       消耗: spend,
-      注册数: registrations,
-      结算数: settlements,
+      关联注册数: registrations,
+      关联结算数: settlements,
       reasons,
     }];
   }).sort((left, right) => right.reasons.length - left.reasons.length || right.消耗 - left.消耗);
   return {
     date,
     hasData: dailyRows.length > 0,
+    hasAccountData: dailyRows.some((row) => Array.isArray(row.账户列表)),
     accountCount: accounts.length,
     total: items.length,
     items,
@@ -409,4 +450,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   server.listen(port, host, () => console.log(`营销日报分析系统已启动：http://${host}:${port}`));
 }
 
-export { aggregateJd, buildDhhAlerts, jdMetrics, parseCsv, parseJdCsv, previousBeijingDate };
+export { aggregateJd, buildDhhAlerts, jdMetrics, parseCsv, parseDhhAccounts, parseJdCsv, previousBeijingDate };

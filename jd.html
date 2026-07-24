@@ -694,15 +694,6 @@
               splitLine: { lineStyle: { color: "#e8eef5" } },
             },
             {
-              name: "预估 ROI",
-              type: "line",
-              yAxisIndex: 1,
-              data: ordered.map((row) => Number((number(row.预估ROI) * 100).toFixed(2))),
-              smooth: true,
-              symbolSize: 6,
-              lineStyle: { width: 2 },
-            },
-            {
               type: "value",
               name: "ROI",
               axisLabel: { formatter: (value) => `${value}%` },
@@ -721,6 +712,15 @@
               smooth: true,
               symbolSize: 6,
               lineStyle: { width: 3 },
+            },
+            {
+              name: "预估 ROI",
+              type: "line",
+              yAxisIndex: 1,
+              data: ordered.map((row) => Number((number(row.预估ROI) * 100).toFixed(2))),
+              smooth: true,
+              symbolSize: 6,
+              lineStyle: { width: 2 },
             },
             {
               name: "实际 ROI",

@@ -2,7 +2,9 @@
 config.json
 settings.json
 .dahanghai_analysis_system/
-.runtime/
+.runtime/*
+!.runtime/
+!.runtime/settings.json
 
 # Python runtime output
 __pycache__/

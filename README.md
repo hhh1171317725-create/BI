@@ -20,7 +20,7 @@
 
 ### 服务端 token 配置
 
-不要将 token 提交到 Git。推荐在服务器创建 `/www/wwwroot/BI/.runtime/settings.json`：
+私有仓库已包含 `/www/wwwroot/BI/.runtime/settings.json`，服务会自动读取其中的 token。更新 token 时直接修改该文件后提交并推送。
 
 ```json
 {"token":"你的 x-token","userId":"20"}

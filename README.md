@@ -2,8 +2,8 @@
 
 双击 `启动大航海分析.bat`，浏览器会打开本地面板。
 
-1. 粘贴报表后台当前的 `x-token`，用户 ID 默认 `20`。
-2. 点击“加载全量数据”。请求不会携带 `startTime` 或 `endTime`。
+1. 服务端配置好 `x-token` 后，页面会自动加载全量数据。
+2. 点击“刷新全量数据”可重新读取报表；请求不会携带 `startTime` 或 `endTime`。
 3. 在“优化师 / 项目 / 时间 / 任务”四个维度间切换；日期过滤只在已加载的本机数据上重新汇总。
 
 项目口径由任务名自动识别：`淘宝闲鱼促活`、`淘宝闪购MCVR`、`淘宝促购CVR`、`淘宝促活UV`、`其他项目`。
@@ -17,3 +17,13 @@
 3. 在宝塔的网站配置中使用 `deploy/nginx-huanghaha.fun.conf` 的反向代理配置，并在 SSL 页面申请证书、强制 HTTPS。
 
 服务器需安装 Node.js 18 或更高版本。服务运行后访问 `http://www.huanghaha.fun`；证书启用后访问 `https://www.huanghaha.fun`。
+
+### 服务端 token 配置
+
+不要将 token 提交到 Git。推荐在服务器创建 `/www/wwwroot/BI/.runtime/settings.json`：
+
+```json
+{"token":"你的 x-token","userId":"20"}
+```
+
+该文件仅由 Node 服务读取，浏览器不会拿到 token。也可以在 systemd 服务中设置 `DHH_TOKEN` 与 `DHH_USER_ID` 环境变量。

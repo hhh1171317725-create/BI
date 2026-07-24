@@ -10,6 +10,7 @@ const port = Number(process.env.DHH_PORT || 8765);
 const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
 const cachePath = path.join(runtimeDir, "report-cache.json");
 const jdCachePath = path.join(runtimeDir, "jd-report-cache.json");
+const schedulerCredentialsPath = path.join(runtimeDir, "scheduler-credentials.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
 const loginUsername = process.env.REPORT_USERNAME || "hhh";
@@ -28,6 +29,8 @@ let rows = [];
 let cachedAt = "";
 let jdRows = [];
 let jdCachedAt = "";
+let nextScheduledRefreshAt = "";
+let scheduledRefreshRunning = false;
 
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -277,6 +280,73 @@ async function restoreJdCache() {
   jdCachedAt = cached.cachedAt || "";
 }
 
+async function saveSchedulerCredentials(token, userId) {
+  await fs.mkdir(runtimeDir, { recursive: true });
+  const temporaryPath = `${schedulerCredentialsPath}.tmp`;
+  const content = JSON.stringify({
+    token: String(token || "").trim(),
+    userId: String(userId || "20").trim() || "20",
+  });
+  await fs.writeFile(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
+  await fs.rename(temporaryPath, schedulerCredentialsPath);
+  await fs.chmod(schedulerCredentialsPath, 0o600).catch(() => {});
+}
+
+async function readSchedulerCredentials() {
+  const config = JSON.parse(await fs.readFile(schedulerCredentialsPath, "utf8"));
+  if (!String(config.token || "").trim()) throw new Error("尚未保存定时更新所需的 x-token");
+  return {
+    token: String(config.token).trim(),
+    userId: String(config.userId || "20").trim() || "20",
+  };
+}
+
+function nextBeijingNine(now = new Date()) {
+  const beijing = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  const next = new Date(Date.UTC(
+    beijing.getUTCFullYear(),
+    beijing.getUTCMonth(),
+    beijing.getUTCDate(),
+    1,
+  ));
+  if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+}
+
+async function refreshAllReports() {
+  if (scheduledRefreshRunning) throw new Error("已有全量更新任务正在运行");
+  scheduledRefreshRunning = true;
+  try {
+    const { token, userId } = await readSchedulerCredentials();
+    const [nextRows, nextJdRows] = await Promise.all([
+      fetchRows(token, userId),
+      fetchJdRows(token, userId),
+    ]);
+    rows = nextRows;
+    jdRows = nextJdRows;
+    await Promise.all([saveCache(), saveJdCache()]);
+    console.log(`定时全量更新成功：${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`);
+  } finally {
+    scheduledRefreshRunning = false;
+  }
+}
+
+function scheduleDailyRefresh(now = new Date()) {
+  const nextRun = nextBeijingNine(now);
+  nextScheduledRefreshAt = nextRun.toISOString();
+  const delay = Math.max(1, nextRun.getTime() - now.getTime());
+  console.log(`下一次全量数据更新：${nextRun.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`);
+  setTimeout(async () => {
+    try {
+      await refreshAllReports();
+    } catch (error) {
+      console.error(`定时全量更新失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      scheduleDailyRefresh(new Date());
+    }
+  }, delay);
+}
+
 function aggregate(data, fields) {
   const groupFields = Array.isArray(fields) ? fields : [fields];
   const buckets = new Map();
@@ -416,6 +486,7 @@ function buildAnalysis(start = "", end = "") {
   summary.现金ROI = summary.现金消耗 ? Number((summary.预估佣金 / summary.现金消耗).toFixed(4)) : 0;
   return {
     cachedAt,
+    nextScheduledRefreshAt,
     rows: filtered.length,
     range: filtered.length ? [filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期), filtered.reduce((max, row) => row.日期 > max ? row.日期 : max, filtered[0].日期)] : ["-", "-"],
     summary,
@@ -491,6 +562,7 @@ function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = true) {
   const summary = aggregateJd(filtered, [])[0] || jdMetrics(emptyValues);
   return {
     cachedAt: jdCachedAt,
+    nextScheduledRefreshAt,
     excludeUnknownOptimizer,
     rows: filtered.length,
     range: filtered.length
@@ -729,6 +801,7 @@ const server = http.createServer(async (request, response) => {
       const payload = await readRequestBody(request);
       rows = await fetchRows(payload.token || "", payload.userId || "20");
       await saveCache();
+      await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
       return sendJson(response, buildAnalysis());
     }
     if (request.method === "POST" && request.url === "/api/analyze") {
@@ -744,6 +817,7 @@ const server = http.createServer(async (request, response) => {
       const payload = await readRequestBody(request);
       jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
       await saveJdCache();
+      await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
       return sendJson(response, buildJdAnalysis("", "", payload.excludeUnknownOptimizer !== false));
     }
     if (request.method === "POST" && request.url === "/api/jd/analyze") {
@@ -781,7 +855,10 @@ const server = http.createServer(async (request, response) => {
 });
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  server.listen(port, host, () => console.log(`营销日报分析系统已启动：http://${host}:${port}`));
+  server.listen(port, host, () => {
+    console.log(`营销日报分析系统已启动：http://${host}:${port}`);
+    scheduleDailyRefresh();
+  });
 }
 
 export {
@@ -791,6 +868,7 @@ export {
   isUnknownOptimizer,
   jdMetrics,
   localPetReply,
+  nextBeijingNine,
   parseCsv,
   parseDhhAccounts,
   parseJdCsv,

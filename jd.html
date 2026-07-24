@@ -404,7 +404,7 @@
       </label>
       <button id="load" type="button">更新京东全量数据</button>
     </div>
-    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。Token 不会上传保存到服务器，仅保存在当前浏览器。</p>
+    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。成功更新后，Token 会安全保存在服务器运行目录，用于每天 09:00 自动更新。</p>
   </section>
 
   <section class="panel hidden" id="filterPanel">
@@ -802,8 +802,13 @@
       }
 
       function cacheText() {
-        if (!report.cachedAt) return "已加载服务器缓存。";
-        return `已加载服务器缓存，更新时间：${new Date(report.cachedAt).toLocaleString("zh-CN")}。`;
+        const updated = report.cachedAt
+          ? `已加载服务器缓存，更新时间：${new Date(report.cachedAt).toLocaleString("zh-CN")}。`
+          : "已加载服务器缓存。";
+        const next = report.nextScheduledRefreshAt
+          ? ` 下次自动更新：${new Date(report.nextScheduledRefreshAt).toLocaleString("zh-CN")}。`
+          : " 每天 09:00 自动更新。";
+        return updated + next;
       }
 
       async function requestJson(url, options) {
@@ -858,7 +863,7 @@
           page = 1;
           drillPage = 1;
           showReport();
-          setStatus(`京东数据已更新并保存。${cacheText()} Token 未保存。`, "success");
+          setStatus(`京东数据已更新并保存。${cacheText()} 已启用每日自动更新。`, "success");
         } catch (error) {
           setStatus(error.message, "error");
         } finally {

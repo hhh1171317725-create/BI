@@ -6,6 +6,7 @@ import {
   isUnknownOptimizer,
   jdMetrics,
   localPetReply,
+  nextBeijingNine,
   parseDhhAccounts,
   resolveAiProvider,
   createSessionToken,
@@ -25,6 +26,21 @@ test("signed login sessions reject tampering and expiry", () => {
   assert.equal(verifySessionToken(token, now), true);
   assert.equal(verifySessionToken(`${token}changed`, now), false);
   assert.equal(verifySessionToken(token, now + (8 * 24 * 60 * 60 * 1000)), false);
+});
+
+test("daily refresh schedules the next 09:00 in Beijing", () => {
+  assert.equal(
+    nextBeijingNine(new Date("2026-07-25T00:30:00.000Z")).toISOString(),
+    "2026-07-25T01:00:00.000Z",
+  );
+  assert.equal(
+    nextBeijingNine(new Date("2026-07-25T01:00:00.000Z")).toISOString(),
+    "2026-07-26T01:00:00.000Z",
+  );
+  assert.equal(
+    nextBeijingNine(new Date("2026-12-31T18:00:00.000Z")).toISOString(),
+    "2027-01-01T01:00:00.000Z",
+  );
 });
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {

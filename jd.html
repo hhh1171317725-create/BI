@@ -720,6 +720,18 @@
               smooth: true,
               symbolSize: 6,
               lineStyle: { width: 2 },
+              markLine: {
+                silent: true,
+                symbol: "none",
+                lineStyle: { type: "dashed", color: "#98a2b3", width: 1.5 },
+                label: {
+                  show: true,
+                  formatter: "ROI = 1",
+                  color: "#667085",
+                  position: "insideEndTop",
+                },
+                data: [{ yAxis: 100 }],
+              },
             },
           ],
         }, { notMerge: true });

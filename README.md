@@ -12,7 +12,7 @@
 
 域名 `www.huanghaha.fun` 使用 Nginx 反向代理到本机 `127.0.0.1:8765`。
 
-1. 将仓库拉取到 `/www/wwwroot/BI`。
+1. 将仓库拉取到 `/www/wwwroot/BI`，并执行 `mkdir -p /www/wwwroot/BI/.runtime && chown -R www:www /www/wwwroot/BI`。
 2. 将 `deploy/dahanghai-analysis.service` 复制到 `/etc/systemd/system/`，执行 `systemctl daemon-reload && systemctl enable --now dahanghai-analysis`。
 3. 在宝塔的网站配置中使用 `deploy/nginx-huanghaha.fun.conf` 的反向代理配置，并在 SSL 页面申请证书、强制 HTTPS。
 

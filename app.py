@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 import threading
 import webbrowser
@@ -16,8 +17,8 @@ from urllib.request import Request, urlopen
 
 APP_DIR = Path(__file__).resolve().parent
 SETTINGS_PATH = Path.home() / ".dahanghai_analysis_system" / "settings.json"
-HOST = "127.0.0.1"
-PORT = 8765
+HOST = os.getenv("DHH_HOST", "127.0.0.1")
+PORT = int(os.getenv("DHH_PORT", "8765"))
 EXPORT_URL = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport"
 NUMERIC_FIELDS = ("消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数")
 
@@ -204,7 +205,8 @@ def main() -> None:
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     url = f"http://{HOST}:{PORT}"
     print(f"大航海分析系统已启动：{url}")
-    threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    if os.getenv("DHH_OPEN_BROWSER", "1") == "1":
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     server.serve_forever()
 
 

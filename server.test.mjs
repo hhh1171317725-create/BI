@@ -1,14 +1,71 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  attachMobgiProjectMetrics,
   buildDhhAlerts,
   filterJdRows,
   isUnknownOptimizer,
   jdMetrics,
   localPetReply,
+  normalizeMobgiProject,
+  parseMobgiDownloadUrl,
+  parseMobgiCsv,
   parseDhhAccounts,
   resolveAiProvider,
 } from "./server.mjs";
+
+test("Mobgi CSV normalizes project aliases and skips total rows", () => {
+  const rows = parseMobgiCsv([
+    "日期,优化师,项目,新建广告(创意)数,有消耗广告(创意)数,过学习期计划数,总消耗,展示数,点击数,转化数",
+    "总计,--,--,100,90,80,1000,10000,500,50",
+    "20260724,优化师A,闲鱼,10,8,6,120.5,1000,100,20",
+    "20260724,优化师B,淘宝营销CVR,5,4,3,80,800,80,10",
+  ].join("\n"));
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].日期, "2026-07-24");
+  assert.equal(rows[0].项目, "淘宝闲鱼促活");
+  assert.equal(rows[0].创量消耗, 120.5);
+  assert.equal(rows[1].项目, "淘宝促购CVR");
+  assert.equal(normalizeMobgiProject("大航海淘宝促活UV"), "淘宝促活UV");
+});
+
+test("Mobgi metrics attach only to matching project dimensions", () => {
+  const base = [
+    { 项目: "淘宝闲鱼促活", 消耗: 200 },
+    { 项目: "淘宝闪购MCVR", 消耗: 300 },
+  ];
+  const related = [{
+    日期: "2026-07-24",
+    项目: "淘宝闲鱼促活",
+    新建创意数: 10,
+    有消耗创意数: 8,
+    过学习期计划数: 6,
+    创量消耗: 120,
+    展示数: 1000,
+    点击数: 100,
+    创量转化数: 20,
+  }];
+  const result = attachMobgiProjectMetrics(base, related, "项目");
+
+  assert.equal(result[0].创量关联, "已关联");
+  assert.equal(result[0].平均千次展示费用, 120);
+  assert.equal(result[0].平均点击单价, 1.2);
+  assert.equal(result[0].创量转化成本, 6);
+  assert.equal(result[1].创量关联, "未关联");
+  assert.equal(result[1].创量消耗, 0);
+});
+
+test("Mobgi download parser accepts cmd curl text but rejects other hosts", () => {
+  const url = parseMobgiDownloadUrl(
+    'curl ^"https://cls.mobgi.com/download/report/^%^E4^%^BC^%^98-report.csv^" ^',
+  );
+  assert.match(url, /^https:\/\/cls\.mobgi\.com\/download\/report\//);
+  assert.throws(
+    () => parseMobgiDownloadUrl("https://example.com/download/report/test.csv"),
+    /仅支持|请粘贴/,
+  );
+});
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {
   const accounts = parseDhhAccounts(JSON.stringify([{

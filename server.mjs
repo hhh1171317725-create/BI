@@ -349,6 +349,7 @@ function jdMetrics(values) {
   const estimatedCommission = (values.首购预估佣金 || 0) + (values.回流预估佣金 || 0);
   const actualCommission = (values.首购实际佣金 || 0) + (values.回流实际佣金 || 0);
   const compensation = values.条件内预估赔付金额 || 0;
+  const effectiveOrders = (values.首购有效订单数 || 0) + (values.回流有效订单数 || 0);
   return {
     ...Object.fromEntries(Object.entries(values).map(([key, value]) => [key, Number(value.toFixed(2))])),
     转化成本: billableConversions ? Number((spend / billableConversions).toFixed(2)) : 0,
@@ -358,6 +359,7 @@ function jdMetrics(values) {
     实际佣金合计: Number(actualCommission.toFixed(2)),
     实际利润: Number((actualCommission + compensation - spend).toFixed(2)),
     实际ROI: spend ? Number(((actualCommission + compensation) / spend).toFixed(4)) : 0,
+    有效订单数: Number(effectiveOrders.toFixed(2)),
   };
 }
 

@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDhhAlerts, filterJdRows, isUnknownOptimizer, parseDhhAccounts } from "./server.mjs";
+import {
+  buildDhhAlerts,
+  filterJdRows,
+  isUnknownOptimizer,
+  jdMetrics,
+  parseDhhAccounts,
+} from "./server.mjs";
 
 test("parseDhhAccounts reads account identity and spend from account detail JSON", () => {
   const accounts = parseDhhAccounts(JSON.stringify([{
@@ -163,4 +169,13 @@ test("JD unknown optimizer filter applies to every downstream dataset", () => {
     [{ 日期: "2026-07-23", 优化师: "优化师A" }],
   );
   assert.equal(filterJdRows(data, "2026-07-23", "2026-07-23", false).length, 4);
+});
+
+test("JD effective orders combine first-purchase and returning effective orders", () => {
+  const result = jdMetrics({
+    首购有效订单数: 12,
+    回流有效订单数: 8,
+  });
+
+  assert.equal(result.有效订单数, 20);
 });

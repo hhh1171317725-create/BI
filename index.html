@@ -47,7 +47,7 @@
   <section class="cards hidden" id="cards"></section>
   <nav class="tabs hidden" id="tabs"><button class="tab active" data-key="by_optimizer">优化师</button><button class="tab" data-key="by_project">项目</button><button class="tab" data-key="by_date">时间</button><button class="tab" data-key="by_task">任务</button></nav>
   <main class="content hidden" id="content"><div class="insight" id="insight"></div><section class="hidden" id="mainChartSection" aria-labelledby="chartTitle"><h2 class="chart-heading" id="chartTitle"></h2><p class="chart-subtitle">横向拖动底部滑块可查看较长日期范围。</p><div class="chart" id="chart" role="img" aria-label="大航海日报日期趋势图"></div></section><div class="table-tools" id="mainTableTools"></div><div class="table-wrap"><table id="table"></table></div><div class="pager" id="pager"></div></main>
-  <section class="panel hidden" id="drillPanel"><div class="filters"><label id="drillLabel">关联对象<select id="drillSelect"></select></label><label class="hidden" id="projectFilter">项目<select id="projectSelect"></select></label><label class="hidden" id="taskFilter">任务<select id="taskSelect"></select></label></div><p class="note" id="drillNote"></p><h2 class="chart-heading" id="drillChartTitle"></h2><p class="chart-subtitle">折线同时展示每日消耗与现金 ROI，便于定位投放效率变化。</p><div class="chart" id="drillChart" role="img" aria-label="每日消耗与现金 ROI 趋势图"></div><div class="table-tools" id="drillTableTools"></div><div class="table-wrap"><table id="drillTable"></table></div><div class="pager" id="drillPager"></div></section>
+  <section class="panel hidden" id="drillPanel"><div class="filters"><label id="drillLabel">关联对象<select id="drillSelect"></select></label><label class="hidden" id="optimizerFilter">优化师<select id="optimizerSelect"></select></label><label class="hidden" id="projectFilter">项目<select id="projectSelect"></select></label><label class="hidden" id="taskFilter">任务<select id="taskSelect"></select></label></div><p class="note" id="drillNote"></p><h2 class="chart-heading" id="drillChartTitle"></h2><p class="chart-subtitle">折线同时展示每日消耗与现金 ROI，便于定位投放效率变化。</p><div class="chart" id="drillChart" role="img" aria-label="每日消耗与现金 ROI 趋势图"></div><div class="table-tools" id="drillTableTools"></div><div class="table-wrap"><table id="drillTable"></table></div><div class="pager" id="drillPager"></div></section>
   <script src="/echarts.min.js"></script>
   <script>
     let data=null,active='by_optimizer',page=1,drillPage=1,mainChart,detailChart,alertOptimizer='__all__',alertProject='__all__',alertTask='__all__',alertsExpanded=false;
@@ -100,9 +100,10 @@
       const select=$('#drillSelect'),previous=select.value;
       setSelectOptions(select,choices.map(item=>[item[key],item[key]]));
       select.value=choices.some(item=>item[key]===previous)?previous:choices[0][key];
-      let rows=(data[source]||[]).filter(item=>item[key]===select.value),title=select.value,noteSuffix='';
-      const projectFilter=$('#projectFilter'),projectSelect=$('#projectSelect'),taskFilter=$('#taskFilter'),taskSelect=$('#taskSelect');
+      let rows=(data[source]||[]).filter(item=>item[key]===select.value),title=select.value,noteSuffix='',showOptimizerColumn=false;
+      const optimizerFilter=$('#optimizerFilter'),optimizerSelect=$('#optimizerSelect'),projectFilter=$('#projectFilter'),projectSelect=$('#projectSelect'),taskFilter=$('#taskFilter'),taskSelect=$('#taskSelect');
       if(active==='by_optimizer'){
+        optimizerFilter.classList.add('hidden');
         projectFilter.classList.remove('hidden');taskFilter.classList.remove('hidden');
         const optimizerProjectRows=(data.by_optimizer_project_date||[]).filter(item=>item.优化师===select.value),projects=[...new Set(optimizerProjectRows.map(item=>item.项目))].sort((a,b)=>a.localeCompare(b,'zh-CN')),previousProject=projectSelect.value;
         setSelectOptions(projectSelect,[['','全部项目'],...projects.map(project=>[project,project])]);
@@ -113,9 +114,15 @@
         setSelectOptions(taskSelect,[['','全部任务'],...tasks.map(task=>[task,task])]);
         taskSelect.value=tasks.includes(previousTask)?previousTask:'';
         if(taskSelect.value){rows=taskRows.filter(item=>item.任务名===taskSelect.value);title=`${select.value}${project?` - ${project}`:''} - ${taskSelect.value}`;noteSuffix+=`，任务：${taskSelect.value}`}
-      }else{projectFilter.classList.add('hidden');taskFilter.classList.add('hidden')}
+      }else{
+        projectFilter.classList.add('hidden');taskFilter.classList.add('hidden');optimizerFilter.classList.remove('hidden');
+        const optimizerSource=active==='by_project'?data.by_optimizer_project_date:data.by_optimizer_task_date,dimensionRows=(optimizerSource||[]).filter(item=>item[key]===select.value),optimizers=[...new Set(dimensionRows.map(item=>item.优化师))].sort((a,b)=>a.localeCompare(b,'zh-CN')),previousOptimizer=optimizerSelect.value;
+        setSelectOptions(optimizerSelect,[['','全部优化师'],...optimizers.map(optimizer=>[optimizer,optimizer])]);
+        optimizerSelect.value=optimizers.includes(previousOptimizer)?previousOptimizer:'';
+        if(optimizerSelect.value){rows=dimensionRows.filter(item=>item.优化师===optimizerSelect.value);title=`${select.value} - ${optimizerSelect.value}`;noteSuffix=`，优化师：${optimizerSelect.value}`;showOptimizerColumn=true}
+      }
       rows.sort((a,b)=>b.日期.localeCompare(a.日期));
-      const allColumns=['日期','消耗','现金消耗','预估佣金','现金利润','ROI','现金ROI','结算数','结算单价','转化数','注册数','转化成本','注册成本'],scope=`drill:${active}`,view=tableView(rows,allColumns,['日期'],scope,$('#drillTableTools')),pages=Math.max(1,Math.ceil(rows.length/pageSize));
+      const allColumns=['日期',...(showOptimizerColumn?['优化师']:[]),'消耗','现金消耗','预估佣金','现金利润','ROI','现金ROI','结算数','结算单价','转化数','注册数','转化成本','注册成本'],fixedColumns=['日期',...(showOptimizerColumn?['优化师']:[])],scope=`drill:${active}`,view=tableView(rows,allColumns,fixedColumns,scope,$('#drillTableTools')),pages=Math.max(1,Math.ceil(rows.length/pageSize));
       drillPage=Math.min(drillPage,pages);
       $('#drillNote').textContent=`${select.value} 的关联日期数据${noteSuffix}，共 ${rows.length} 天，按日期降序。`;
       $('#drillChartTitle').textContent=`${title} 每日消耗与现金 ROI 趋势`;
@@ -136,13 +143,14 @@
     $('#apply').onclick=async()=>{const button=$('#apply'),start=$('#start').value,end=$('#end').value;if(start&&end&&start>end){$('#loading').textContent='开始日期不能晚于结束日期。';return}try{button.disabled=true;$('#content').setAttribute('aria-busy','true');$('#loading').textContent='计算中...';data=await analyzeSelectedRange();page=1;drillPage=1;renderAlerts();summaryCards();renderMain();$('#loading').textContent='筛选已应用。'}catch(error){$('#loading').textContent=error.message}finally{button.disabled=false;$('#content').removeAttribute('aria-busy')}};
     $('#tabs').onclick=event=>{if(!event.target.dataset.key)return;active=event.target.dataset.key;page=1;drillPage=1;document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('active',tab===event.target));renderMain()};
     $('#pager').onclick=event=>{if(!event.target.dataset.step)return;page+=Number(event.target.dataset.step);renderMain()};
-    $('#table').onclick=event=>{const sortButton=event.target.closest('button[data-sort-column]');if(sortButton){toggleSort(`main:${active}`,sortButton.dataset.sortColumn);page=1;renderMain();return}const link=event.target.closest('button[data-dhh-drill-value]');if(!link)return;const select=$('#drillSelect');select.value=link.dataset.dhhDrillValue||'';if(active==='by_optimizer'){$('#projectSelect').value='';$('#taskSelect').value=''}drillPage=1;renderDetail();requestAnimationFrame(()=>$('#drillPanel').scrollIntoView({behavior:'smooth',block:'start'}))};
+    $('#table').onclick=event=>{const sortButton=event.target.closest('button[data-sort-column]');if(sortButton){toggleSort(`main:${active}`,sortButton.dataset.sortColumn);page=1;renderMain();return}const link=event.target.closest('button[data-dhh-drill-value]');if(!link)return;const select=$('#drillSelect');select.value=link.dataset.dhhDrillValue||'';if(active==='by_optimizer'){$('#projectSelect').value='';$('#taskSelect').value=''}else $('#optimizerSelect').value='';drillPage=1;renderDetail();requestAnimationFrame(()=>$('#drillPanel').scrollIntoView({behavior:'smooth',block:'start'}))};
     $('#drillTable').onclick=event=>{const sortButton=event.target.closest('button[data-sort-column]');if(!sortButton)return;toggleSort(`drill:${active}`,sortButton.dataset.sortColumn);drillPage=1;renderDetail()};
     $('#mainTableTools').onchange=()=>{updateColumnsFromTools($('#mainTableTools'));page=1;renderMain()};
     $('#drillTableTools').onchange=()=>{updateColumnsFromTools($('#drillTableTools'));drillPage=1;renderDetail()};
     $('#mainTableTools').onclick=event=>{if(!event.target.closest('[data-reset-columns]'))return;delete tableSetting(`main:${active}`).columns;saveTableSettings();page=1;renderMain()};
     $('#drillTableTools').onclick=event=>{if(!event.target.closest('[data-reset-columns]'))return;delete tableSetting(`drill:${active}`).columns;saveTableSettings();drillPage=1;renderDetail()};
     $('#drillSelect').onchange=()=>{drillPage=1;renderDetail()};
+    $('#optimizerSelect').onchange=()=>{drillPage=1;renderDetail()};
     $('#projectSelect').onchange=()=>{drillPage=1;$('#taskSelect').value='';renderDetail()};
     $('#taskSelect').onchange=()=>{drillPage=1;renderDetail()};
     $('#drillPager').onclick=event=>{if(!event.target.dataset.step)return;drillPage+=Number(event.target.dataset.step);renderDetail()};

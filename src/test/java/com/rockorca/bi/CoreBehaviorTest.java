@@ -153,6 +153,25 @@ class CoreBehaviorTest {
     assertFalse(maps(analysis.get("by_account_date")).isEmpty());
   }
 
+  @Test
+  void projectAndTaskDateDrilldownsKeepOptimizerDimension() {
+    List<Map<String, Object>> rows = List.of(
+        map("日期", "2026-07-23", "优化师", "优化师A", "项目", "项目A", "任务名", "任务A",
+            "消耗", 100, "现金消耗", 80, "预估佣金", 120),
+        map("日期", "2026-07-23", "优化师", "优化师B", "项目", "项目A", "任务名", "任务A",
+            "消耗", 200, "现金消耗", 160, "预估佣金", 240));
+
+    Map<String, Object> analysis =
+        reports.buildDhhAnalysis(rows, "2026-07-01", "2026-07-31", "now");
+    List<Map<String, Object>> byProject = maps(analysis.get("by_optimizer_project_date"));
+    List<Map<String, Object>> byTask = maps(analysis.get("by_optimizer_task_date"));
+
+    assertEquals(List.of("优化师A", "优化师B"),
+        byProject.stream().map(item -> String.valueOf(item.get("优化师"))).sorted().toList());
+    assertEquals(List.of("优化师A", "优化师B"),
+        byTask.stream().map(item -> String.valueOf(item.get("优化师"))).sorted().toList());
+  }
+
   private static Map<String, Object> jdRow(
       String date,
       String optimizer,

@@ -344,6 +344,77 @@
       outline: none;
     }
 
+    .table-tools {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+      padding: 7px 14px;
+      border-top: 1px solid #edf1f5;
+      background: #fafcff;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .column-menu { position: relative; }
+    .column-menu summary {
+      padding: 5px 10px;
+      border: 1px solid #cbd8e6;
+      border-radius: 5px;
+      background: #fff;
+      color: #526d8c;
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+    }
+    .column-menu summary::-webkit-details-marker { display: none; }
+    .column-picker {
+      position: absolute;
+      z-index: 8;
+      top: calc(100% + 5px);
+      left: 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(145px, 1fr));
+      gap: 7px 12px;
+      width: min(620px, calc(100vw - 64px));
+      max-height: 310px;
+      padding: 12px;
+      overflow: auto;
+      border: 1px solid #cbd8e6;
+      border-radius: 7px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgba(23, 43, 77, .15);
+    }
+    .column-picker label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 400;
+    }
+    .column-picker input { width: auto; height: auto; }
+    .column-reset {
+      height: 27px;
+      padding: 0 9px;
+      border: 1px solid #cbd8e6;
+      background: #fff;
+      color: #526d8c;
+      font-size: 12px;
+    }
+    .sort-button {
+      height: auto;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .sort-button:hover,
+    .sort-button:focus-visible { color: #315f91; background: transparent; outline: none; }
+    .sort-indicator { margin-left: 3px; color: #5d7fa7; }
+
     .empty-cell {
       height: 100px;
       color: var(--muted);
@@ -397,6 +468,8 @@
       .header-row { flex-direction: column; }
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .card .v { font-size: 17px; }
+      .table-tools { align-items: flex-start; flex-wrap: wrap; }
+      .column-picker { grid-template-columns: 1fr; width: calc(100vw - 48px); }
     }
   </style>
 </head>
@@ -464,6 +537,7 @@
       <p class="chart-subtitle">横向拖动底部滑块可查看较长日期范围。</p>
       <div class="chart" id="mainChart" role="img" aria-label="京东日报日期趋势图"></div>
     </section>
+    <div class="table-tools" id="mainTableTools"></div>
     <div class="table-wrap"><table id="table"></table></div>
     <div class="pager" id="pager"></div>
   </main>
@@ -480,6 +554,7 @@
     <h2 class="chart-heading" id="drillChartTitle"></h2>
     <p class="chart-subtitle">折线同时展示每日消耗、预估 ROI 与实际 ROI，便于定位投放效率变化。</p>
     <div class="chart" id="drillChart" role="img" aria-label="优化师每日消耗、预估 ROI 与实际 ROI 趋势图"></div>
+    <div class="table-tools" id="drillTableTools"></div>
     <div class="table-wrap"><table id="drillTable"></table></div>
     <div class="pager" id="drillPager"></div>
   </section>
@@ -588,6 +663,15 @@
         by_promoter: "",
       };
       const tokenStorageKey = "marketing-report-x-token";
+      const tableSettingsStorageKey = "jd-table-settings-v1";
+      let tableSettings = (() => {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(tableSettingsStorageKey) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      })();
 
       const $ = (selector) => document.querySelector(selector);
       const number = (value) => {
@@ -658,6 +742,87 @@
         }
       }
 
+      function saveTableSettings() {
+        try {
+          localStorage.setItem(tableSettingsStorageKey, JSON.stringify(tableSettings));
+        } catch {
+          // 浏览器禁用本地存储时，设置仅在当前页面生效。
+        }
+      }
+
+      function tableSetting(scope) {
+        tableSettings[scope] ??= {};
+        return tableSettings[scope];
+      }
+
+      function sortRows(rows, scope) {
+        const setting = tableSetting(scope);
+        if (!setting.sortColumn) return [...rows];
+        const direction = setting.sortDirection === "desc" ? -1 : 1;
+        return [...rows].sort((left, right) => {
+          const leftValue = left[setting.sortColumn];
+          const rightValue = right[setting.sortColumn];
+          const leftNumber = Number(leftValue);
+          const rightNumber = Number(rightValue);
+          if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+            return (leftNumber - rightNumber) * direction;
+          }
+          return String(leftValue ?? "").localeCompare(String(rightValue ?? ""), "zh-CN", {
+            numeric: true,
+            sensitivity: "base",
+          }) * direction;
+        });
+      }
+
+      function renderTableTools(target, scope, allColumns, fixedColumns) {
+        const setting = tableSetting(scope);
+        const selectedColumns = Array.isArray(setting.columns) ? setting.columns : allColumns;
+        const wasOpen = target.querySelector("details")?.open;
+        const selectedCount = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column)).length;
+        target.dataset.tableScope = scope;
+        target.innerHTML = `
+          <details class="column-menu" ${wasOpen ? "open" : ""}>
+            <summary>选择列（${selectedCount}/${allColumns.length}）</summary>
+            <div class="column-picker">
+              ${allColumns.map((column) => {
+                const fixed = fixedColumns.includes(column);
+                const checked = fixed || selectedColumns.includes(column);
+                return `<label><input type="checkbox" data-table-column="${escapeHtml(column)}" ${checked ? "checked" : ""} ${fixed ? "disabled" : ""}>${escapeHtml(column)}</label>`;
+              }).join("")}
+            </div>
+          </details>
+          <button class="column-reset" type="button" data-reset-columns>恢复默认列</button>
+          <span>点击表头可切换升序/降序</span>
+        `;
+      }
+
+      function tableView(rows, allColumns, fixedColumns, scope, tools) {
+        const setting = tableSetting(scope);
+        const selectedColumns = Array.isArray(setting.columns) ? setting.columns : allColumns;
+        const columns = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column));
+        renderTableTools(tools, scope, allColumns, fixedColumns);
+        return { rows: sortRows(rows, scope), columns };
+      }
+
+      function toggleSort(scope, column) {
+        const setting = tableSetting(scope);
+        if (setting.sortColumn === column) {
+          setting.sortDirection = setting.sortDirection === "asc" ? "desc" : "asc";
+        } else {
+          setting.sortColumn = column;
+          setting.sortDirection = "asc";
+        }
+        saveTableSettings();
+      }
+
+      function updateColumnsFromTools(tools) {
+        const scope = tools.dataset.tableScope;
+        const checked = [...tools.querySelectorAll("input[data-table-column]:checked")]
+          .map((input) => input.dataset.tableColumn);
+        tableSetting(scope).columns = checked;
+        saveTableSettings();
+      }
+
       function formatCell(value, column, dimensionKey, row) {
         if (column === "优化师" && dimensionKey === "优化师") {
           return `<button class="drill-link" type="button" data-drill-dimension="by_optimizer" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
@@ -685,8 +850,14 @@
         return number(row[column]) < 0 ? "bad" : "good";
       }
 
-      function renderTable(target, rows, columns, dimensionKey) {
-        const head = `<thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>`;
+      function renderTable(target, rows, columns, dimensionKey, scope) {
+        const setting = tableSetting(scope);
+        const head = `<thead><tr>${columns.map((column) => {
+          const indicator = setting.sortColumn === column
+            ? `<span class="sort-indicator">${setting.sortDirection === "desc" ? "▼" : "▲"}</span>`
+            : "";
+          return `<th><button class="sort-button" type="button" data-sort-column="${escapeHtml(column)}">${escapeHtml(column)}${indicator}</button></th>`;
+        }).join("")}</tr></thead>`;
         const body = rows.length
           ? rows.map((row) => `<tr>${columns.map((column) => `<td class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey, row)}</td>`).join("")}</tr>`).join("")
           : `<tr><td class="empty-cell" colspan="${columns.length}">当前条件下暂无数据</td></tr>`;
@@ -831,11 +1002,13 @@
         const optimizerFilterText = report.excludeUnknownOptimizer ? "，已排除未知优化师" : "，包含未知优化师";
         $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条${optimizerFilterText}。`;
 
-        const columns = active === "by_account"
+        const allColumns = active === "by_account"
           ? [config.key, "媒体账户ID", ...metricColumns]
           : [config.key, ...metricColumns];
-        const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
-        renderTable($("#table"), visibleRows, columns, config.key);
+        const scope = `main:${active}`;
+        const view = tableView(rows, allColumns, [config.key], scope, $("#mainTableTools"));
+        const visibleRows = view.rows.slice((page - 1) * pageSize, page * pageSize);
+        renderTable($("#table"), visibleRows, view.columns, config.key, scope);
         renderPager($("#pager"), rows.length, page);
 
         const chartSection = $("#mainChartSection");
@@ -897,9 +1070,11 @@
         drillChart = renderTrend($("#drillChart"), drillChart, rows);
         requestAnimationFrame(() => drillChart?.resize());
 
-        const columns = ["日期", ...metricColumns];
-        const visibleRows = rows.slice((drillPage - 1) * pageSize, drillPage * pageSize);
-        renderTable($("#drillTable"), visibleRows, columns, "日期");
+        const allColumns = ["日期", ...metricColumns];
+        const scope = `drill:${active}`;
+        const view = tableView(rows, allColumns, ["日期"], scope, $("#drillTableTools"));
+        const visibleRows = view.rows.slice((drillPage - 1) * pageSize, drillPage * pageSize);
+        renderTable($("#drillTable"), visibleRows, view.columns, "日期", scope);
         renderPager($("#drillPager"), rows.length, drillPage);
       }
 
@@ -1049,6 +1224,13 @@
       });
 
       $("#table").addEventListener("click", (event) => {
+        const sortButton = event.target.closest("button[data-sort-column]");
+        if (sortButton) {
+          toggleSort(`main:${active}`, sortButton.dataset.sortColumn);
+          page = 1;
+          renderMain();
+          return;
+        }
         const link = event.target.closest("button[data-drill-dimension]");
         if (!link) return;
         const dimension = link.dataset.drillDimension;
@@ -1057,6 +1239,40 @@
         drillPage = 1;
         renderDrilldown();
         requestAnimationFrame(() => $("#drillPanel").scrollIntoView({ behavior: "smooth", block: "start" }));
+      });
+
+      $("#drillTable").addEventListener("click", (event) => {
+        const sortButton = event.target.closest("button[data-sort-column]");
+        if (!sortButton) return;
+        toggleSort(`drill:${active}`, sortButton.dataset.sortColumn);
+        drillPage = 1;
+        renderDrilldown();
+      });
+
+      $("#mainTableTools").addEventListener("change", () => {
+        updateColumnsFromTools($("#mainTableTools"));
+        page = 1;
+        renderMain();
+      });
+
+      $("#drillTableTools").addEventListener("change", () => {
+        updateColumnsFromTools($("#drillTableTools"));
+        drillPage = 1;
+        renderDrilldown();
+      });
+
+      $("#mainTableTools").addEventListener("click", (event) => {
+        if (!event.target.closest("[data-reset-columns]")) return;
+        delete tableSetting(`main:${active}`).columns;
+        saveTableSettings();
+        renderMain();
+      });
+
+      $("#drillTableTools").addEventListener("click", (event) => {
+        if (!event.target.closest("[data-reset-columns]")) return;
+        delete tableSetting(`drill:${active}`).columns;
+        saveTableSettings();
+        renderDrilldown();
       });
 
       $("#drillSelect").addEventListener("change", (event) => {

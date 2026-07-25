@@ -66,3 +66,7 @@ MYSQL_CONNECTION_LIMIT=5
 可复制 [`database/mysql.env.example`](database/mysql.env.example) 后修改。更新 systemd 服务文件并执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 
 程序启动时也会主动读取 `.runtime/mysql.env` 和 `.runtime/ai.env`，因此使用宝塔 Node 项目、PM2 或直接运行 `node server.mjs` 时无需手动 `source`。密码包含 `#`、空格或 `=` 时请使用双引号包裹。
+
+## 报表列与排序
+
+大航海、京东的所有汇总表和日期明细表均支持自定义显示列。点击表格上方的“选择列”勾选指标，点击任意表头可在升序和降序之间切换；排序会先作用于全部查询结果，再进行分页。各报表、各维度的选择与排序设置会分别保存在当前浏览器中，可随时点击“恢复默认列”重置。

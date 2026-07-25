@@ -582,9 +582,11 @@ function buildJdAnalysis(sourceRows, start = "", end = "", excludeUnknownOptimiz
     by_optimizer: aggregateJd(filtered, "优化师"),
     by_date: aggregateJd(filtered, "日期").sort((left, right) => right.日期.localeCompare(left.日期)),
     by_media: aggregateJd(filtered, "媒体"),
-    by_account: aggregateJd(filtered, "媒体账户名称"),
+    by_account: aggregateJd(filtered, ["媒体账户名称", "媒体账户ID"]),
     by_promoter: aggregateJd(filtered, "推客用户名"),
     by_optimizer_date: aggregateJd(filtered, ["日期", "优化师"]),
+    by_account_date: aggregateJd(filtered, ["日期", "媒体账户名称", "媒体账户ID"])
+      .sort((left, right) => right.日期.localeCompare(left.日期)),
   };
 }
 
@@ -996,6 +998,7 @@ export {
   aggregateJd,
   beijingMonthStart,
   buildDhhAlerts,
+  buildJdAnalysis,
   buildPetBottomData,
   filterJdRows,
   isUnknownOptimizer,

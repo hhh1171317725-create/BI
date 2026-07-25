@@ -9,6 +9,7 @@ import {
 } from "./database-store.mjs";
 import {
   buildDhhAlerts,
+  buildJdAnalysis,
   buildPetBottomData,
   beijingMonthStart,
   filterJdRows,
@@ -17,6 +18,7 @@ import {
   localPetReply,
   nextBeijingNine,
   parseDhhAccounts,
+  parseJdCsv,
   parseEnvironmentFile,
   resolveAiProvider,
   createSessionToken,
@@ -337,6 +339,20 @@ test("JD effective orders combine first-purchase and returning effective orders"
   });
 
   assert.equal(result.有效订单数, 20);
+});
+
+test("JD analysis exposes account identity and account-date drilldown rows", () => {
+  const rows = parseJdCsv([
+    "业务日期,媒体账户ID,媒体账户名称,优化师,消耗,首购预估佣金",
+    "2026-07-23,A-135,广州云联-京东-135,优化师A,100,120",
+    "2026-07-24,A-135,广州云联-京东-135,优化师A,200,220",
+  ].join("\n"));
+  const result = buildJdAnalysis(rows, "2026-07-01", "2026-07-31", true);
+
+  assert.equal(result.by_account.length, 1);
+  assert.equal(result.by_account[0].媒体账户ID, "A-135");
+  assert.deepEqual(result.by_account_date.map((row) => row.日期), ["2026-07-24", "2026-07-23"]);
+  assert.equal(result.by_account_date[0].媒体账户名称, "广州云联-京东-135");
 });
 
 test("data pet answers report metrics without an AI key", () => {

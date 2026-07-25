@@ -324,6 +324,26 @@
     tr:hover td { background: #fafcff; }
     tr:hover td:first-child { background: #fafcff; }
 
+    .account-link {
+      height: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: #1756a9;
+      font: inherit;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .account-link:hover,
+    .account-link:focus-visible {
+      color: #e1251b;
+      background: transparent;
+      outline: none;
+    }
+
     .empty-cell {
       height: 100px;
       color: var(--muted);
@@ -451,8 +471,8 @@
   <section class="panel drill-panel hidden" id="drillPanel">
     <div class="drill-header">
       <div class="filters">
-        <label>优化师关联日期
-          <select id="optimizerSelect" aria-label="选择优化师"></select>
+        <label id="drillSelectLabel">优化师关联日期
+          <select id="drillSelect" aria-label="选择下钻对象"></select>
         </label>
       </div>
       <p class="note" id="drillNote"></p>
@@ -529,6 +549,7 @@
       let drillPage = 1;
       let mainChart = null;
       let drillChart = null;
+      let selectedAccountId = "";
       const tokenStorageKey = "marketing-report-x-token";
 
       const $ = (selector) => document.querySelector(selector);
@@ -600,7 +621,10 @@
         }
       }
 
-      function formatCell(value, column, dimensionKey) {
+      function formatCell(value, column, dimensionKey, row) {
+        if (column === "媒体账户ID" && dimensionKey === "媒体账户名称") {
+          return `<button class="account-link" type="button" data-account-id="${escapeHtml(value)}" data-account-name="${escapeHtml(row.媒体账户名称)}">${escapeHtml(value)}</button>`;
+        }
         if (column === dimensionKey || column === "日期") return escapeHtml(value);
         if (percentFields.has(column)) return formatPercent(value);
         if (moneyFields.has(column)) return formatNumber(value, 2);
@@ -615,7 +639,7 @@
       function renderTable(target, rows, columns, dimensionKey) {
         const head = `<thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>`;
         const body = rows.length
-          ? rows.map((row) => `<tr>${columns.map((column) => `<td class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey)}</td>`).join("")}</tr>`).join("")
+          ? rows.map((row) => `<tr>${columns.map((column) => `<td class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey, row)}</td>`).join("")}</tr>`).join("")
           : `<tr><td class="empty-cell" colspan="${columns.length}">当前条件下暂无数据</td></tr>`;
         target.innerHTML = `${head}<tbody>${body}</tbody>`;
       }
@@ -757,7 +781,9 @@
         const optimizerFilterText = report.excludeUnknownOptimizer ? "，已排除未知优化师" : "，包含未知优化师";
         $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条${optimizerFilterText}。`;
 
-        const columns = [config.key, ...metricColumns];
+        const columns = active === "by_account"
+          ? [config.key, "媒体账户ID", ...metricColumns]
+          : [config.key, ...metricColumns];
         const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
         renderTable($("#table"), visibleRows, columns, config.key);
         renderPager($("#pager"), rows.length, page);
@@ -772,41 +798,55 @@
           chartSection.classList.add("hidden");
         }
 
-        renderOptimizerDrilldown();
+        renderDrilldown();
       }
 
-      function renderOptimizerDrilldown() {
+      function renderDrilldown() {
         const panel = $("#drillPanel");
-        if (active !== "by_optimizer") {
+        if (!["by_optimizer", "by_account"].includes(active)) {
           panel.classList.add("hidden");
           return;
         }
 
-        const optimizers = Array.isArray(report.by_optimizer) ? report.by_optimizer : [];
-        if (!optimizers.length) {
+        const isAccount = active === "by_account";
+        const choices = isAccount
+          ? (Array.isArray(report.by_account) ? report.by_account : [])
+          : (Array.isArray(report.by_optimizer) ? report.by_optimizer : []);
+        if (!choices.length || (isAccount && !selectedAccountId)) {
           panel.classList.add("hidden");
           return;
         }
 
         panel.classList.remove("hidden");
-        const select = $("#optimizerSelect");
+        const select = $("#drillSelect");
         const previous = select.value;
-        select.innerHTML = optimizers
-          .map((item) => `<option value="${escapeHtml(item.优化师)}">${escapeHtml(item.优化师)}</option>`)
+        select.innerHTML = choices
+          .map((item) => {
+            const value = isAccount ? String(item.媒体账户ID) : String(item.优化师);
+            const label = isAccount ? `${item.媒体账户名称}（${item.媒体账户ID}）` : item.优化师;
+            return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+          })
           .join("");
-        const selected = optimizers.some((item) => String(item.优化师) === previous)
-          ? previous
-          : String(optimizers[0].优化师);
+        const requested = isAccount ? selectedAccountId : previous;
+        const selected = choices.some((item) => String(isAccount ? item.媒体账户ID : item.优化师) === requested)
+          ? requested
+          : String(isAccount ? choices[0].媒体账户ID : choices[0].优化师);
+        if (isAccount) selectedAccountId = selected;
         select.value = selected;
 
-        const rows = (Array.isArray(report.by_optimizer_date) ? report.by_optimizer_date : [])
-          .filter((item) => String(item.优化师) === selected)
+        const source = isAccount ? report.by_account_date : report.by_optimizer_date;
+        const rows = (Array.isArray(source) ? source : [])
+          .filter((item) => String(isAccount ? item.媒体账户ID : item.优化师) === selected)
           .sort((left, right) => String(right.日期 || "").localeCompare(String(left.日期 || "")));
         const pages = Math.max(1, Math.ceil(rows.length / pageSize));
         drillPage = Math.min(drillPage, pages);
 
-        $("#drillNote").textContent = `${selected} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
-        $("#drillChartTitle").textContent = `${selected} 每日消耗、预估 ROI 与实际 ROI 趋势`;
+        const selectedChoice = choices.find((item) => String(isAccount ? item.媒体账户ID : item.优化师) === selected);
+        const title = isAccount ? `${selectedChoice?.媒体账户名称 || "媒体账户"}（${selected}）` : selected;
+        $("#drillSelectLabel").childNodes[0].textContent = isAccount ? "媒体账户关联日期 " : "优化师关联日期 ";
+        $("#drillNote").textContent = `${title} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
+        $("#drillChartTitle").textContent = `${title} 每日消耗、预估 ROI 与实际 ROI 趋势`;
+        $("#drillChart").setAttribute("aria-label", `${title} 每日消耗、预估 ROI 与实际 ROI 趋势图`);
         drillChart = renderTrend($("#drillChart"), drillChart, rows);
         requestAnimationFrame(() => drillChart?.resize());
 
@@ -961,16 +1001,26 @@
         renderMain();
       });
 
-      $("#optimizerSelect").addEventListener("change", () => {
+      $("#table").addEventListener("click", (event) => {
+        const link = event.target.closest("button[data-account-id]");
+        if (!link) return;
+        selectedAccountId = link.dataset.accountId || "";
         drillPage = 1;
-        renderOptimizerDrilldown();
+        renderDrilldown();
+        requestAnimationFrame(() => $("#drillPanel").scrollIntoView({ behavior: "smooth", block: "start" }));
+      });
+
+      $("#drillSelect").addEventListener("change", (event) => {
+        if (active === "by_account") selectedAccountId = event.target.value;
+        drillPage = 1;
+        renderDrilldown();
       });
 
       $("#drillPager").addEventListener("click", (event) => {
         const button = event.target.closest("button[data-step]");
         if (!button) return;
         drillPage += Number(button.dataset.step);
-        renderOptimizerDrilldown();
+        renderDrilldown();
       });
 
       window.addEventListener("resize", () => {

@@ -10,7 +10,6 @@ const host = process.env.DHH_HOST || "127.0.0.1";
 const port = Number(process.env.DHH_PORT || 8765);
 const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
 const schedulerCredentialsPath = path.join(runtimeDir, "scheduler-credentials.json");
-const jdRatioCredentialsPath = path.join(runtimeDir, "jd-ratio-credentials.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
 const loginUsername = process.env.REPORT_USERNAME || "hhh";
@@ -278,106 +277,6 @@ function parseJdCsv(raw) {
   });
 }
 
-function parseJdRatioCurl(curlText) {
-  const normalized = String(curlText || "").replaceAll("^", "");
-  const firstRequest = normalized.split(/\r?\ncurl\s+/iu)[0];
-  const url = firstRequest.match(/\bcurl\s+["']([^"']+)["']/iu)?.[1] || "";
-  const cookie = firstRequest.match(/\s(?:-b|--cookie)\s+["']([^"']+)["']/iu)?.[1] || "";
-  if (!url || !cookie) throw new Error("无法解析扣量 API 请求，请粘贴浏览器“复制为 cURL”得到的完整请求");
-  const parsedUrl = new URL(url);
-  if (parsedUrl.hostname !== "api.m.jd.com"
-    || parsedUrl.searchParams.get("functionId") !== "marketing_gateway_api") {
-    throw new Error("扣量 API 请求地址不正确");
-  }
-  let body;
-  try {
-    body = JSON.parse(parsedUrl.searchParams.get("body") || "");
-  } catch {
-    throw new Error("扣量 API 请求中的 body 无法解析");
-  }
-  if (body?.funName !== "cpsCallbackStrategyService.fetchCallbackStrategyListPage") {
-    throw new Error("请提供京东回传策略列表 API 请求");
-  }
-  return { url: parsedUrl.toString(), cookie };
-}
-
-function chooseJdAccountRatios(strategies) {
-  const selected = new Map();
-  const priority = (item) => (
-    (Number(item.status) === 1 ? 2 : 0)
-    + (Number(item.callbackEventType) === 4 ? 1 : 0)
-  );
-  for (const item of Array.isArray(strategies) ? strategies : []) {
-    const accountId = String(item?.accountId || "").trim();
-    const accountName = String(item?.accountName || "").trim();
-    if (item?.configRatio === null || item?.configRatio === undefined) continue;
-    const configRatio = Number(item.configRatio);
-    if ((!accountId && !accountName) || !Number.isFinite(configRatio)) continue;
-    const key = accountId || accountName;
-    const previous = selected.get(key);
-    const isPreferred = !previous
-      || priority(item) > priority(previous)
-      || (
-        priority(item) === priority(previous)
-        && Number(item.updateTime || item.createTime || item.id || 0)
-          > Number(previous.updateTime || previous.createTime || previous.id || 0)
-      );
-    if (isPreferred) selected.set(key, item);
-  }
-  return [...selected.values()].map((item) => ({
-    accountId: String(item.accountId || item.accountName).trim(),
-    accountName: String(item.accountName || "").trim(),
-    configRatio: Number(item.configRatio),
-    callbackEventType: Number(item.callbackEventType || 0),
-    status: Number(item.status || 0),
-    updateTime: Number(item.updateTime || item.createTime || 0) || null,
-  }));
-}
-
-async function fetchJdAccountRatios(credentials) {
-  const requestUrl = new URL(credentials.url);
-  let requestBody;
-  try {
-    requestBody = JSON.parse(requestUrl.searchParams.get("body") || "");
-  } catch {
-    throw new Error("扣量 API 请求中的 body 无法解析");
-  }
-  requestBody.param ??= {};
-  requestBody.param.data ??= {};
-  requestBody.param.data.pageNo = 1;
-  requestBody.param.data.pageSize = 1000;
-  const strategies = [];
-  let completed = false;
-  for (let page = 1; page <= 100; page += 1) {
-    requestBody.param.data.pageNo = page;
-    requestUrl.searchParams.set("body", JSON.stringify(requestBody));
-    const response = await fetch(requestUrl, {
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        Cookie: credentials.cookie,
-        Origin: "https://union.jd.com",
-        Referer: "https://union.jd.com/",
-        "X-Referer-Page": "https://union.jd.com/order",
-        "X-Rp-Client": "h5_1.0.0",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!response.ok) throw new Error(`京东扣量 API 请求失败：${response.status}`);
-    const payload = await response.json();
-    if (String(payload?.code) !== "200" || payload?.success === false || !Array.isArray(payload?.data?.list)) {
-      throw new Error(payload?.message || "京东扣量 API 返回异常");
-    }
-    strategies.push(...payload.data.list);
-    if (!payload.data.hasNext) {
-      completed = true;
-      break;
-    }
-  }
-  if (!completed) throw new Error("京东扣量 API 分页超过安全上限，未覆盖数据库");
-  return chooseJdAccountRatios(strategies);
-}
-
 async function saveSchedulerCredentials(token, userId) {
   await fs.mkdir(runtimeDir, { recursive: true });
   const temporaryPath = `${schedulerCredentialsPath}.tmp`;
@@ -388,25 +287,6 @@ async function saveSchedulerCredentials(token, userId) {
   await fs.writeFile(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
   await fs.rename(temporaryPath, schedulerCredentialsPath);
   await fs.chmod(schedulerCredentialsPath, 0o600).catch(() => {});
-}
-
-async function saveJdRatioCredentials(credentials) {
-  await fs.mkdir(runtimeDir, { recursive: true });
-  const temporaryPath = `${jdRatioCredentialsPath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify(credentials), { encoding: "utf8", mode: 0o600 });
-  await fs.rename(temporaryPath, jdRatioCredentialsPath);
-  await fs.chmod(jdRatioCredentialsPath, 0o600).catch(() => {});
-}
-
-async function readJdRatioCredentials() {
-  try {
-    const config = JSON.parse(await fs.readFile(jdRatioCredentialsPath, "utf8"));
-    if (!config.url || !config.cookie) return null;
-    return { url: String(config.url), cookie: String(config.cookie) };
-  } catch (error) {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  }
 }
 
 async function readSchedulerCredentials() {
@@ -447,15 +327,6 @@ async function refreshAllReports() {
       fetchJdRows(token, userId),
     ]);
     await getDatabase().replaceAll(nextRows, nextJdRows, "scheduled");
-    const ratioCredentials = await readJdRatioCredentials();
-    if (ratioCredentials) {
-      try {
-        const ratios = await fetchJdAccountRatios(ratioCredentials);
-        await getDatabase().replaceJdAccountRatios(ratios);
-      } catch (error) {
-        console.error(`京东扣量比例自动更新失败，继续保留上次数据：${error instanceof Error ? error.message : "未知错误"}`);
-      }
-    }
     console.log(`定时全量更新成功：${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`);
   } finally {
     scheduledRefreshRunning = false;
@@ -664,25 +535,13 @@ function aggregateJd(data, fields) {
       buckets.set(key, {
         dimensions: Object.fromEntries(groupFields.map((field) => [field, row[field]])),
         values: Object.fromEntries(jdNumericFields.map((field) => [field, 0])),
-        ratios: new Set(),
       });
     }
-    const current = buckets.get(key);
-    const bucket = current.values;
+    const bucket = buckets.get(key).values;
     jdNumericFields.forEach((field) => { bucket[field] += row[field]; });
-    if (Number.isFinite(Number(row.扣量比例)) && row.扣量比例 !== null) {
-      current.ratios.add(Number(row.扣量比例));
-    }
   }
   return [...buckets.values()]
-    .map(({ dimensions, values, ratios }) => ({
-      ...dimensions,
-      扣量比例: [...ratios]
-        .sort((left, right) => left - right)
-        .map((value) => `${Number(value.toFixed(2))}%`)
-        .join(" / ") || "-",
-      ...jdMetrics(values),
-    }))
+    .map(({ dimensions, values }) => ({ ...dimensions, ...jdMetrics(values) }))
     .sort((left, right) => right.消耗 - left.消耗);
 }
 
@@ -710,9 +569,6 @@ function buildJdAnalysis(sourceRows, start = "", end = "", excludeUnknownOptimiz
     nextScheduledRefreshAt,
     excludeUnknownOptimizer,
     rows: filtered.length,
-    ratioAccounts: new Set(filtered
-      .filter((row) => row.扣量比例 !== null)
-      .map((row) => row.媒体账户ID)).size,
     range: filtered.length
       ? [
           filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期),
@@ -1052,16 +908,8 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && request.url === "/api/jd/load") {
       const payload = await readRequestBody(request);
       const database = getDatabase();
-      const ratioCredentials = payload.ratioCurl ? parseJdRatioCurl(payload.ratioCurl) : null;
-      const [importedRows, ratios] = await Promise.all([
-        fetchJdRows(payload.token || "", payload.userId || "20"),
-        ratioCredentials ? fetchJdAccountRatios(ratioCredentials) : Promise.resolve(null),
-      ]);
+      const importedRows = await fetchJdRows(payload.token || "", payload.userId || "20");
       await database.replaceOne("jd", importedRows, "manual");
-      if (ratios) {
-        await database.replaceJdAccountRatios(ratios);
-        await saveJdRatioCredentials(ratioCredentials);
-      }
       await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
       const [sourceRows, cachedAt] = await Promise.all([
         database.readJdRows(),
@@ -1089,14 +937,6 @@ const server = http.createServer(async (request, response) => {
         payload.excludeUnknownOptimizer !== false,
         cachedAt,
       ));
-    }
-    if (request.method === "POST" && request.url === "/api/jd/ratios/load") {
-      const payload = await readRequestBody(request);
-      const ratioCredentials = parseJdRatioCurl(payload.ratioCurl || "");
-      const ratios = await fetchJdAccountRatios(ratioCredentials);
-      await getDatabase().replaceJdAccountRatios(ratios);
-      await saveJdRatioCredentials(ratioCredentials);
-      return sendJson(response, { ok: true, ratioCount: ratios.length });
     }
     if (request.method === "POST" && request.url === "/api/pet/chat") {
       const payload = await readRequestBody(request);
@@ -1162,9 +1002,6 @@ export {
   parseCsv,
   parseDhhAccounts,
   parseJdCsv,
-  parseJdRatioCurl,
-  chooseJdAccountRatios,
-  fetchJdAccountRatios,
   previousBeijingDate,
   parseEnvironmentFile,
   resolveAiProvider,

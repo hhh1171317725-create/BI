@@ -123,52 +123,6 @@ class ReportDatabase {
     const connection = await this.pool.getConnection();
     try {
       await connection.ping();
-      await this.ensureJdRatioTable(connection);
-    } finally {
-      connection.release();
-    }
-  }
-
-  async ensureJdRatioTable(connection = this.pool) {
-    await connection.query(
-      `CREATE TABLE IF NOT EXISTS jd_account_ratios (
-        account_id VARCHAR(100) NOT NULL COMMENT '京东媒体账户ID，对应日报媒体账户ID',
-        account_name VARCHAR(500) NOT NULL DEFAULT '' COMMENT '京东媒体账户名称',
-        config_ratio DECIMAL(8, 2) NOT NULL DEFAULT 0 COMMENT 'API返回的扣量比例configRatio，数值15表示15%',
-        callback_event_type INT NOT NULL DEFAULT 0 COMMENT '回传事件类型，优先保存订单事件4',
-        status TINYINT NOT NULL DEFAULT 0 COMMENT '策略状态，1为启用',
-        source_updated_at BIGINT NULL COMMENT '京东策略更新时间戳（毫秒）',
-        fetched_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '本系统最近拉取时间',
-        PRIMARY KEY (account_id),
-        KEY idx_jd_ratio_account_name (account_name(191))
-      ) ENGINE=InnoDB COMMENT='京东媒体账户扣量比例配置'`,
-    );
-  }
-
-  async replaceJdAccountRatios(rows) {
-    if (!Array.isArray(rows) || rows.length === 0) throw new Error("京东扣量比例数据为空，已取消数据库覆盖");
-    const connection = await this.pool.getConnection();
-    try {
-      await this.ensureJdRatioTable(connection);
-      await connection.beginTransaction();
-      await connection.query("DELETE FROM `jd_account_ratios`");
-      await this.insertChunks(
-        connection,
-        "jd_account_ratios",
-        ["account_id", "account_name", "config_ratio", "callback_event_type", "status", "source_updated_at"],
-        rows.map((row) => [
-          row.accountId,
-          row.accountName,
-          row.configRatio,
-          row.callbackEventType,
-          row.status,
-          row.updateTime || null,
-        ]),
-      );
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
     } finally {
       connection.release();
     }
@@ -285,30 +239,17 @@ class ReportDatabase {
   }
 
   async readJdRows() {
-    await this.ensureJdRatioTable();
     const [records] = await this.pool.query(
       `SELECT
-        j.business_date, j.promotion_id, j.promotion_name, j.media, j.media_account_id,
-        j.media_account_name, j.promoter_username, j.optimizer, j.conversion_count,
+        business_date, promotion_id, promotion_name, media, media_account_id,
+        media_account_name, promoter_username, optimizer, conversion_count,
         billable_conversion_count, deduplicated_order_count, first_purchase_order_count,
         return_order_count, first_purchase_effective_orders, return_effective_orders,
         first_purchase_invalid_orders, return_invalid_orders, first_purchase_completed_orders,
         return_completed_orders, spend, estimated_compensation,
         first_purchase_estimated_commission, return_estimated_commission,
-        first_purchase_actual_commission, return_actual_commission,
-        COALESCE(
-          ratio.config_ratio,
-          (
-            SELECT fallback_ratio.config_ratio
-            FROM jd_account_ratios AS fallback_ratio
-            WHERE fallback_ratio.account_name = j.media_account_name
-            ORDER BY fallback_ratio.status DESC, fallback_ratio.source_updated_at DESC
-            LIMIT 1
-          )
-        ) AS config_ratio
-       FROM jd_daily_rows AS j
-       LEFT JOIN jd_account_ratios AS ratio
-         ON ratio.account_id = j.media_account_id`,
+        first_purchase_actual_commission, return_actual_commission
+       FROM jd_daily_rows`,
     );
     return records.map((record) => ({
       日期: String(record.business_date).slice(0, 10),
@@ -319,9 +260,6 @@ class ReportDatabase {
       媒体账户名称: record.media_account_name,
       推客用户名: record.promoter_username,
       优化师: record.optimizer,
-      扣量比例: record.config_ratio === null || record.config_ratio === undefined
-        ? null
-        : Number(record.config_ratio),
       转化数: Number(record.conversion_count),
       计费转化数: Number(record.billable_conversion_count),
       去重订单总数: Number(record.deduplicated_order_count),

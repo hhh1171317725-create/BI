@@ -76,6 +76,18 @@ CREATE TABLE IF NOT EXISTS `jd_daily_rows` (
   KEY `idx_jd_promoter_date` (`promoter_username`, `business_date`)
 ) ENGINE=InnoDB COMMENT='京东CPA日报原始底表数据';
 
+CREATE TABLE IF NOT EXISTS `jd_account_ratios` (
+  `account_id` VARCHAR(100) NOT NULL COMMENT '京东媒体账户ID，对应日报媒体账户ID',
+  `account_name` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '京东媒体账户名称',
+  `config_ratio` DECIMAL(8, 2) NOT NULL DEFAULT 0 COMMENT 'API返回的扣量比例configRatio，数值15表示15%',
+  `callback_event_type` INT NOT NULL DEFAULT 0 COMMENT '回传事件类型，优先保存订单事件4',
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '策略状态，1为启用',
+  `source_updated_at` BIGINT NULL COMMENT '京东策略更新时间戳（毫秒）',
+  `fetched_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '本系统最近拉取时间',
+  PRIMARY KEY (`account_id`),
+  KEY `idx_jd_ratio_account_name` (`account_name`(191))
+) ENGINE=InnoDB COMMENT='京东媒体账户扣量比例配置';
+
 CREATE OR REPLACE VIEW `jd_daily_metrics` AS
 SELECT
   `business_date`,

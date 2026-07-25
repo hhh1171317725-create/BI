@@ -356,6 +356,37 @@
 
     .drill-panel .note { margin-bottom: 0; }
 
+    .ratio-import {
+      margin-top: 12px;
+      color: #475467;
+    }
+
+    .ratio-import summary {
+      width: max-content;
+      cursor: pointer;
+      color: #1756a9;
+      font-weight: 600;
+    }
+
+    .ratio-import-row {
+      display: flex;
+      align-items: end;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .ratio-import label { flex: 1; }
+
+    .ratio-import textarea {
+      width: 100%;
+      min-height: 86px;
+      padding: 9px 10px;
+      resize: vertical;
+      border: 1px solid #c7d3df;
+      border-radius: 5px;
+      font: 12px/1.5 Consolas, monospace;
+    }
+
     @media (max-width: 950px) {
       header,
       .panel,
@@ -370,6 +401,7 @@
       .header-row { align-items: flex-start; }
       input, select { width: 100%; }
       .controls > label, .filters > label { flex: 1 1 100%; }
+      .ratio-import-row { align-items: stretch; flex-direction: column; }
       .chart { height: 280px; }
     }
 
@@ -405,6 +437,16 @@
       <button id="load" type="button">更新京东全量数据</button>
     </div>
     <p class="note status" id="status" aria-live="polite">正在查询 MySQL 数据库。成功更新后，Token 会安全保存在服务器运行目录，用于每天 09:00 自动更新。</p>
+    <details class="ratio-import">
+      <summary>同步京东扣量比例</summary>
+      <div class="ratio-import-row">
+        <label>回传策略 API 的完整 cURL
+          <textarea id="ratioCurl" autocomplete="off" placeholder="在京东联盟回传策略页面复制该 API 的 cURL 请求并粘贴到这里；内容不会返回浏览器或写入 Git。"></textarea>
+        </label>
+        <button class="secondary" id="loadRatios" type="button">仅更新扣量比例</button>
+      </div>
+      <p class="note">系统会全量查询策略，按媒体账户 ID 关联；同一账户存在多条配置时，优先使用启用中的订单回传策略。</p>
+    </details>
   </section>
 
   <section class="panel hidden" id="filterPanel">
@@ -485,6 +527,7 @@
         "转化数",
         "计费转化数",
         "有效订单数",
+        "扣量比例",
         "转化成本",
         "条件内预估赔付金额",
         "首购预估佣金",
@@ -602,6 +645,7 @@
 
       function formatCell(value, column, dimensionKey) {
         if (column === dimensionKey || column === "日期") return escapeHtml(value);
+        if (column === "扣量比例") return escapeHtml(value || "-");
         if (percentFields.has(column)) return formatPercent(value);
         if (moneyFields.has(column)) return formatNumber(value, 2);
         return formatNumber(value);
@@ -832,7 +876,10 @@
         const next = report.nextScheduledRefreshAt
           ? ` 下次自动更新：${new Date(report.nextScheduledRefreshAt).toLocaleString("zh-CN")}。`
           : " 每天 09:00 自动更新。";
-        return updated + next;
+        const ratios = report.ratioAccounts
+          ? ` 已关联 ${report.ratioAccounts} 个账户的扣量比例。`
+          : "";
+        return updated + next + ratios;
       }
 
       async function requestJson(url, options) {
@@ -880,6 +927,7 @@
           await post("/api/jd/load", {
             token,
             userId: $("#userId").value.trim() || "20",
+            ratioCurl: $("#ratioCurl").value.trim(),
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
           report = await post("/api/jd/analyze", {
@@ -889,6 +937,7 @@
           });
           rememberToken(token);
           $("#token").value = "";
+          $("#ratioCurl").value = "";
           page = 1;
           drillPage = 1;
           showReport();
@@ -898,6 +947,37 @@
         } finally {
           button.disabled = false;
           button.textContent = "更新京东全量数据";
+        }
+      }
+
+      async function loadRatios() {
+        const ratioCurl = $("#ratioCurl").value.trim();
+        if (!ratioCurl) {
+          setStatus("请粘贴京东回传策略 API 的完整 cURL 请求。", "error");
+          $("#ratioCurl").focus();
+          return;
+        }
+        const button = $("#loadRatios");
+        try {
+          button.disabled = true;
+          button.textContent = "查询中…";
+          setStatus("正在全量查询并保存京东账户扣量比例…");
+          const result = await post("/api/jd/ratios/load", { ratioCurl });
+          report = await post("/api/jd/analyze", {
+            start: $("#start").value,
+            end: $("#end").value,
+            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
+          });
+          $("#ratioCurl").value = "";
+          page = 1;
+          drillPage = 1;
+          showReport();
+          setStatus(`扣量比例已更新，共保存 ${result.ratioCount} 个账户配置。${cacheText()}`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = "仅更新扣量比例";
         }
       }
 
@@ -936,6 +1016,7 @@
       }
 
       $("#load").addEventListener("click", loadLatest);
+      $("#loadRatios").addEventListener("click", loadRatios);
       $("#copyToken").addEventListener("click", copyToken);
       $("#apply").addEventListener("click", () => applyDateFilter(false));
       $("#reset").addEventListener("click", () => applyDateFilter(true));

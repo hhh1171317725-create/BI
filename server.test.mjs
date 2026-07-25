@@ -8,6 +8,7 @@ import {
   uniqueValues,
 } from "./database-store.mjs";
 import {
+  aggregateJd,
   buildDhhAlerts,
   buildPetBottomData,
   beijingMonthStart,
@@ -17,6 +18,8 @@ import {
   localPetReply,
   nextBeijingNine,
   parseDhhAccounts,
+  parseJdRatioCurl,
+  chooseJdAccountRatios,
   parseEnvironmentFile,
   resolveAiProvider,
   createSessionToken,
@@ -320,6 +323,36 @@ test("JD effective orders combine first-purchase and returning effective orders"
   });
 
   assert.equal(result.有效订单数, 20);
+});
+
+test("JD ratio curl parser accepts a copied Windows curl request without exposing credentials", () => {
+  const body = encodeURIComponent(JSON.stringify({
+    funName: "cpsCallbackStrategyService.fetchCallbackStrategyListPage",
+    param: { data: { pageNo: 1, pageSize: 10 } },
+  }));
+  const parsed = parseJdRatioCurl(
+    `curl ^"https://api.m.jd.com/api?functionId=marketing_gateway_api^&body=${body}^" ^\n`
+    + `  -b ^"session=secret^" ^\n`
+    + `  -H ^"accept: application/json^"`,
+  );
+  assert.equal(new URL(parsed.url).hostname, "api.m.jd.com");
+  assert.equal(parsed.cookie, "session=secret");
+});
+
+test("JD ratio selection prefers enabled order callbacks and aggregation displays configRatio with percent", () => {
+  const ratios = chooseJdAccountRatios([
+    { accountId: "A1", accountName: "账户A", configRatio: 10, callbackEventType: 1, status: 1, updateTime: 20 },
+    { accountId: "A1", accountName: "账户A", configRatio: 15, callbackEventType: 4, status: 1, updateTime: 10 },
+    { accountId: "A2", accountName: "账户B", configRatio: 20, callbackEventType: 4, status: 1, updateTime: 30 },
+  ]);
+  assert.equal(ratios.length, 2);
+  assert.equal(ratios.find((item) => item.accountId === "A1").configRatio, 15);
+
+  const aggregated = aggregateJd([
+    { 优化师: "优化师A", 扣量比例: 15, 消耗: 100 },
+    { 优化师: "优化师A", 扣量比例: 20, 消耗: 200 },
+  ], "优化师");
+  assert.equal(aggregated[0].扣量比例, "15% / 20%");
 });
 
 test("data pet answers report metrics without an AI key", () => {

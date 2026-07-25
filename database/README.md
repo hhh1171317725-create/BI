@@ -4,6 +4,7 @@
 
 - `dhh_daily_rows`：大航海日报底表；
 - `jd_daily_rows`：京东日报底表；
+- `jd_account_ratios`：京东媒体账户扣量比例；
 - `report_sync_runs`：手动及定时同步记录；
 - `jd_daily_metrics`：京东有效订单、佣金和利润计算视图。
 

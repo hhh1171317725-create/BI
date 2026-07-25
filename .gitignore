@@ -4,6 +4,7 @@ settings.json
 .dahanghai_analysis_system/
 .runtime/
 node_modules/
+target/
 
 # Python runtime output
 __pycache__/

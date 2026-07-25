@@ -1,4 +1,4 @@
-# 营销日报分析（Node.js）
+# 营销日报分析（Java / Spring Boot）
 
 访问页面后，粘贴当前的报表 `x-token` 并点击“加载全量数据”。成功更新后，Token 会保存在不纳入 Git 的服务器 `.runtime/scheduler-credentials.json`（Linux 权限为 `600`）以及当前浏览器的本地存储中。点击大航海的“海”或京东的“京”可以复制，两个页面共用同一份本地 Token。
 
@@ -8,6 +8,8 @@
 两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 
 服务进程会按北京时间每天 09:00 自动拉取大航海和京东全量数据，并在同一数据库事务中更新两张底表。首次部署或 Token 失效后，在任一报表页面手动成功更新一次即可刷新定时任务凭据；自动更新失败会回滚事务，不会覆盖已有数据。
+
+后端已完全迁移为 Java 21 + Spring Boot，原有页面文件和 `/api/*` 接口地址保持不变。页面资源会在 Maven 构建时原样打入可执行 JAR。
 
 ## 登录
 
@@ -39,13 +41,20 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 2. 将 `deploy/dahanghai-analysis.service` 复制到 `/etc/systemd/system/`，执行 `systemctl daemon-reload && systemctl enable --now dahanghai-analysis`。
 3. 在宝塔网站配置中，将 `www.huanghaha.fun` 反向代理到 `http://127.0.0.1:8765`，并配置 SSL。
 
-服务器需安装 Node.js 18 或更高版本。每次更新代码后执行：
+服务器需安装 Java 21。项目提供 Maven Wrapper，无需单独安装 Maven。首次部署及每次更新代码后执行：
 
 ```bash
 cd /www/wwwroot/BI
 git pull origin main
-npm ci --omit=dev
+chmod +x mvnw
+./mvnw clean package -DskipTests
 systemctl restart dahanghai-analysis
+```
+
+构建产物为 `target/marketing-reports-1.0.0.jar`。也可以在宝塔“Java 项目”中直接选择该 JAR，端口设为 `8765`，启动命令使用：
+
+```bash
+java -jar /www/wwwroot/BI/target/marketing-reports-1.0.0.jar
 ```
 
 ## MySQL 数据库
@@ -65,7 +74,7 @@ MYSQL_CONNECTION_LIMIT=5
 
 可复制 [`database/mysql.env.example`](database/mysql.env.example) 后修改。更新 systemd 服务文件并执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 
-程序启动时也会主动读取 `.runtime/mysql.env` 和 `.runtime/ai.env`，因此使用宝塔 Node 项目、PM2 或直接运行 `node server.mjs` 时无需手动 `source`。密码包含 `#`、空格或 `=` 时请使用双引号包裹。
+程序启动时会主动读取 `.runtime/mysql.env` 和 `.runtime/ai.env`，因此使用宝塔 Java 项目或直接运行 JAR 时无需手动 `source`。密码包含 `#`、空格或 `=` 时请使用双引号包裹。
 
 ## 报表列与排序
 

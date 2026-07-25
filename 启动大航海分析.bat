@@ -1,4 +1,5 @@
 @echo off
 chcp 65001 >nul
-node "%~dp0server.mjs"
+cd /d "%~dp0"
+call mvnw.cmd spring-boot:run
 pause

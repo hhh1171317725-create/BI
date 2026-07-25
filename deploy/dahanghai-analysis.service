@@ -1,5 +1,5 @@
 [Unit]
-Description=Dahanghai analysis dashboard
+Description=Dahanghai Java analysis dashboard
 After=network.target
 
 [Service]
@@ -9,11 +9,10 @@ Group=www
 WorkingDirectory=/www/wwwroot/BI
 Environment=DHH_HOST=127.0.0.1
 Environment=DHH_PORT=8765
-Environment=DHH_OPEN_BROWSER=0
 Environment=DHH_RUNTIME_DIR=/www/wwwroot/BI/.runtime
 EnvironmentFile=-/www/wwwroot/BI/.runtime/ai.env
 EnvironmentFile=-/www/wwwroot/BI/.runtime/mysql.env
-ExecStart=/usr/bin/node /www/wwwroot/BI/server.mjs
+ExecStart=/usr/bin/java -jar /www/wwwroot/BI/target/marketing-reports-1.0.0.jar
 Restart=always
 RestartSec=3
 

@@ -41,7 +41,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 2. 将 `deploy/dahanghai-analysis.service` 复制到 `/etc/systemd/system/`，执行 `systemctl daemon-reload && systemctl enable --now dahanghai-analysis`。
 3. 在宝塔网站配置中，将 `www.huanghaha.fun` 反向代理到 `http://127.0.0.1:8765`，并配置 SSL。
 
-服务器需安装 Java 21。项目提供 Maven Wrapper，无需单独安装 Maven。首次部署及每次更新代码后执行：
+服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：
 
 ```bash
 cd /www/wwwroot/BI

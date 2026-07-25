@@ -353,6 +353,8 @@ test("JD analysis exposes account identity and account-date drilldown rows", () 
   assert.equal(result.by_account[0].媒体账户ID, "A-135");
   assert.deepEqual(result.by_account_date.map((row) => row.日期), ["2026-07-24", "2026-07-23"]);
   assert.equal(result.by_account_date[0].媒体账户名称, "广州云联-京东-135");
+  assert.deepEqual(result.by_media_date.map((row) => row.日期), ["2026-07-24", "2026-07-23"]);
+  assert.deepEqual(result.by_promoter_date.map((row) => row.日期), ["2026-07-24", "2026-07-23"]);
 });
 
 test("data pet answers report metrics without an AI key", () => {

@@ -587,6 +587,10 @@ function buildJdAnalysis(sourceRows, start = "", end = "", excludeUnknownOptimiz
     by_optimizer_date: aggregateJd(filtered, ["日期", "优化师"]),
     by_account_date: aggregateJd(filtered, ["日期", "媒体账户名称", "媒体账户ID"])
       .sort((left, right) => right.日期.localeCompare(left.日期)),
+    by_media_date: aggregateJd(filtered, ["日期", "媒体"])
+      .sort((left, right) => right.日期.localeCompare(left.日期)),
+    by_promoter_date: aggregateJd(filtered, ["日期", "推客用户名"])
+      .sort((left, right) => right.日期.localeCompare(left.日期)),
   };
 }
 

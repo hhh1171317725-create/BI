@@ -324,7 +324,7 @@
     tr:hover td { background: #fafcff; }
     tr:hover td:first-child { background: #fafcff; }
 
-    .account-link {
+    .drill-link {
       height: auto;
       padding: 0;
       border: 0;
@@ -337,8 +337,8 @@
       text-underline-offset: 3px;
     }
 
-    .account-link:hover,
-    .account-link:focus-visible {
+    .drill-link:hover,
+    .drill-link:focus-visible {
       color: #e1251b;
       background: transparent;
       outline: none;
@@ -500,6 +500,37 @@
         by_account: { label: "媒体账户", key: "媒体账户名称" },
         by_promoter: { label: "推客", key: "推客用户名" },
       };
+      const drilldowns = {
+        by_optimizer: {
+          source: "by_optimizer",
+          dateSource: "by_optimizer_date",
+          valueKey: "优化师",
+          selectorLabel: "优化师关联日期",
+          autoOpen: true,
+          title: (item) => String(item.优化师),
+        },
+        by_account: {
+          source: "by_account",
+          dateSource: "by_account_date",
+          valueKey: "媒体账户ID",
+          selectorLabel: "媒体账户关联日期",
+          title: (item) => `${item.媒体账户名称}（${item.媒体账户ID}）`,
+        },
+        by_media: {
+          source: "by_media",
+          dateSource: "by_media_date",
+          valueKey: "媒体",
+          selectorLabel: "媒体关联日期",
+          title: (item) => String(item.媒体),
+        },
+        by_promoter: {
+          source: "by_promoter",
+          dateSource: "by_promoter_date",
+          valueKey: "推客用户名",
+          selectorLabel: "推客关联日期",
+          title: (item) => String(item.推客用户名),
+        },
+      };
       const metricColumns = [
         "消耗",
         "转化数",
@@ -549,7 +580,12 @@
       let drillPage = 1;
       let mainChart = null;
       let drillChart = null;
-      let selectedAccountId = "";
+      const selectedDrillValues = {
+        by_optimizer: "",
+        by_account: "",
+        by_media: "",
+        by_promoter: "",
+      };
       const tokenStorageKey = "marketing-report-x-token";
 
       const $ = (selector) => document.querySelector(selector);
@@ -623,7 +659,13 @@
 
       function formatCell(value, column, dimensionKey, row) {
         if (column === "媒体账户ID" && dimensionKey === "媒体账户名称") {
-          return `<button class="account-link" type="button" data-account-id="${escapeHtml(value)}" data-account-name="${escapeHtml(row.媒体账户名称)}">${escapeHtml(value)}</button>`;
+          return `<button class="drill-link" type="button" data-drill-dimension="by_account" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
+        }
+        if (column === "媒体" && dimensionKey === "媒体") {
+          return `<button class="drill-link" type="button" data-drill-dimension="by_media" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
+        }
+        if (column === "推客用户名" && dimensionKey === "推客用户名") {
+          return `<button class="drill-link" type="button" data-drill-dimension="by_promoter" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
         }
         if (column === dimensionKey || column === "日期") return escapeHtml(value);
         if (percentFields.has(column)) return formatPercent(value);
@@ -803,47 +845,44 @@
 
       function renderDrilldown() {
         const panel = $("#drillPanel");
-        if (!["by_optimizer", "by_account"].includes(active)) {
+        const config = drilldowns[active];
+        if (!config) {
           panel.classList.add("hidden");
           return;
         }
 
-        const isAccount = active === "by_account";
-        const choices = isAccount
-          ? (Array.isArray(report.by_account) ? report.by_account : [])
-          : (Array.isArray(report.by_optimizer) ? report.by_optimizer : []);
-        if (!choices.length || (isAccount && !selectedAccountId)) {
+        const choices = Array.isArray(report[config.source]) ? report[config.source] : [];
+        const requested = selectedDrillValues[active];
+        if (!choices.length || (!config.autoOpen && !requested)) {
           panel.classList.add("hidden");
           return;
         }
 
         panel.classList.remove("hidden");
         const select = $("#drillSelect");
-        const previous = select.value;
         select.innerHTML = choices
           .map((item) => {
-            const value = isAccount ? String(item.媒体账户ID) : String(item.优化师);
-            const label = isAccount ? `${item.媒体账户名称}（${item.媒体账户ID}）` : item.优化师;
+            const value = String(item[config.valueKey]);
+            const label = config.title(item);
             return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
           })
           .join("");
-        const requested = isAccount ? selectedAccountId : previous;
-        const selected = choices.some((item) => String(isAccount ? item.媒体账户ID : item.优化师) === requested)
+        const selected = choices.some((item) => String(item[config.valueKey]) === requested)
           ? requested
-          : String(isAccount ? choices[0].媒体账户ID : choices[0].优化师);
-        if (isAccount) selectedAccountId = selected;
+          : String(choices[0][config.valueKey]);
+        selectedDrillValues[active] = selected;
         select.value = selected;
 
-        const source = isAccount ? report.by_account_date : report.by_optimizer_date;
+        const source = report[config.dateSource];
         const rows = (Array.isArray(source) ? source : [])
-          .filter((item) => String(isAccount ? item.媒体账户ID : item.优化师) === selected)
+          .filter((item) => String(item[config.valueKey]) === selected)
           .sort((left, right) => String(right.日期 || "").localeCompare(String(left.日期 || "")));
         const pages = Math.max(1, Math.ceil(rows.length / pageSize));
         drillPage = Math.min(drillPage, pages);
 
-        const selectedChoice = choices.find((item) => String(isAccount ? item.媒体账户ID : item.优化师) === selected);
-        const title = isAccount ? `${selectedChoice?.媒体账户名称 || "媒体账户"}（${selected}）` : selected;
-        $("#drillSelectLabel").childNodes[0].textContent = isAccount ? "媒体账户关联日期 " : "优化师关联日期 ";
+        const selectedChoice = choices.find((item) => String(item[config.valueKey]) === selected);
+        const title = selectedChoice ? config.title(selectedChoice) : selected;
+        $("#drillSelectLabel").childNodes[0].textContent = `${config.selectorLabel} `;
         $("#drillNote").textContent = `${title} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
         $("#drillChartTitle").textContent = `${title} 每日消耗、预估 ROI 与实际 ROI 趋势`;
         $("#drillChart").setAttribute("aria-label", `${title} 每日消耗、预估 ROI 与实际 ROI 趋势图`);
@@ -1002,16 +1041,18 @@
       });
 
       $("#table").addEventListener("click", (event) => {
-        const link = event.target.closest("button[data-account-id]");
+        const link = event.target.closest("button[data-drill-dimension]");
         if (!link) return;
-        selectedAccountId = link.dataset.accountId || "";
+        const dimension = link.dataset.drillDimension;
+        if (dimension !== active || !drilldowns[dimension]) return;
+        selectedDrillValues[dimension] = link.dataset.drillValue || "";
         drillPage = 1;
         renderDrilldown();
         requestAnimationFrame(() => $("#drillPanel").scrollIntoView({ behavior: "smooth", block: "start" }));
       });
 
       $("#drillSelect").addEventListener("change", (event) => {
-        if (active === "by_account") selectedAccountId = event.target.value;
+        if (drilldowns[active]) selectedDrillValues[active] = event.target.value;
         drillPage = 1;
         renderDrilldown();
       });

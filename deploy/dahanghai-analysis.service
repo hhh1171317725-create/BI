@@ -10,9 +10,11 @@ WorkingDirectory=/www/wwwroot/BI
 Environment=DHH_HOST=127.0.0.1
 Environment=DHH_PORT=8765
 Environment=DHH_RUNTIME_DIR=/www/wwwroot/BI/.runtime
+Environment=JAVA_HOME=/www/server/java/jdk-21.0.2
 EnvironmentFile=-/www/wwwroot/BI/.runtime/ai.env
 EnvironmentFile=-/www/wwwroot/BI/.runtime/mysql.env
-ExecStart=/usr/bin/java -jar /www/wwwroot/BI/target/marketing-reports-1.0.0.jar
+# 使用宝塔安装的 Java 21；不要依赖仍可能指向 Java 7 的 /usr/bin/java。
+ExecStart=/www/server/java/jdk-21.0.2/bin/java -jar /www/wwwroot/BI/target/marketing-reports-1.0.0.jar
 Restart=always
 RestartSec=3
 

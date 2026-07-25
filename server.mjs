@@ -526,6 +526,9 @@ function jdMetrics(values) {
     实际利润: Number((actualCommission + compensation - spend).toFixed(2)),
     实际ROI: spend ? Number(((actualCommission + compensation) / spend).toFixed(4)) : 0,
     有效订单数: Number(effectiveOrders.toFixed(2)),
+    有效首购率: effectiveOrders
+      ? Number(((values.首购有效订单数 || 0) / effectiveOrders).toFixed(4))
+      : 0,
   };
 }
 

@@ -339,6 +339,7 @@ test("JD effective orders combine first-purchase and returning effective orders"
   });
 
   assert.equal(result.有效订单数, 20);
+  assert.equal(result.有效首购率, 0.6);
 });
 
 test("JD analysis exposes account identity and account-date drilldown rows", () => {

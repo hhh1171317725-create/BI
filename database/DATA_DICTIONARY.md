@@ -71,6 +71,7 @@
 京东常用计算指标视图：
 
 - `effective_order_count`：首购有效订单数＋回流有效订单数；
+- `effective_first_purchase_rate`：首购有效订单数÷有效订单数；
 - `estimated_commission`：首购预估佣金＋回流预估佣金；
 - `actual_commission`：首购实际佣金＋回流实际佣金；
 - `estimated_profit`：预估佣金＋预估赔付－消耗；

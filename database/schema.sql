@@ -84,6 +84,10 @@ SELECT
   `promoter_username`,
   `spend`,
   (`first_purchase_effective_orders` + `return_effective_orders`) AS `effective_order_count`,
+  (
+    `first_purchase_effective_orders`
+    / NULLIF(`first_purchase_effective_orders` + `return_effective_orders`, 0)
+  ) AS `effective_first_purchase_rate`,
   (`first_purchase_estimated_commission` + `return_estimated_commission`) AS `estimated_commission`,
   (`first_purchase_actual_commission` + `return_actual_commission`) AS `actual_commission`,
   (

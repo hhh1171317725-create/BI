@@ -536,6 +536,7 @@
         "转化数",
         "计费转化数",
         "有效订单数",
+        "有效首购率",
         "转化成本",
         "条件内预估赔付金额",
         "首购预估佣金",
@@ -571,7 +572,7 @@
         "实际佣金合计",
         "实际利润",
       ]);
-      const percentFields = new Set(["预估ROI", "实际ROI"]);
+      const percentFields = new Set(["有效首购率", "预估ROI", "实际ROI"]);
       const profitFields = new Set(["预估利润", "实际利润"]);
 
       let report = null;
@@ -709,6 +710,7 @@
           { label: "转化数", value: summary.转化数, type: "number" },
           { label: "计费转化数", value: summary.计费转化数, type: "number" },
           { label: "有效订单数", value: summary.有效订单数, type: "number" },
+          { label: "有效首购率", value: summary.有效首购率, type: "percent" },
           { label: "转化成本", value: summary.转化成本, type: "money" },
           { label: "条件内预估赔付", value: summary.条件内预估赔付金额, type: "money" },
           { label: "预估佣金合计", value: summary.预估佣金合计, type: "money" },

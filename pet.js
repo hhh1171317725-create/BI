@@ -271,13 +271,17 @@
   window.addEventListener("pointermove", movePet);
   window.addEventListener("pointerup", finishPetDrag);
   window.addEventListener("pointercancel", finishPetDrag);
+  let resizeFrame = 0;
   window.addEventListener("resize", () => {
-    if (root.style.left) {
-      const rect = root.getBoundingClientRect();
-      setPetPosition(rect.left, rect.top, true);
-    } else {
-      updatePanelDirection();
-    }
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      if (root.style.left) {
+        const rect = root.getBoundingClientRect();
+        setPetPosition(rect.left, rect.top, true);
+      } else {
+        updatePanelDirection();
+      }
+    });
   });
   toggle.addEventListener("click", (event) => {
     if (event.detail === 0) panel.hidden ? openPet() : closePet();

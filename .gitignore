@@ -11,5 +11,6 @@ __pycache__/
 *.py[cod]
 
 # Editor and OS files
+.idea/
 .DS_Store
 Thumbs.db

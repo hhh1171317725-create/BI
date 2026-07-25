@@ -17,6 +17,10 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class SessionService {
+  /*
+   * 登录 Cookie 是自包含的 HMAC 会话，不在服务端保存会话表。
+   * 校验同时检查签名、当前用户名和过期时间；修改用户名或会话密钥会使旧 Cookie 失效。
+   */
   public static final String COOKIE_NAME = "report_session";
   public static final Duration LIFETIME = Duration.ofDays(7);
 
@@ -69,6 +73,7 @@ public class SessionService {
   }
 
   public ResponseCookie cookie(HttpServletRequest request, String token, Duration maxAge) {
+    // 生产环境位于 Nginx 后方，必须透传 X-Forwarded-Proto 才能正确设置 Secure。
     boolean secure = request.isSecure() || "https".equalsIgnoreCase(firstHeader(request, "X-Forwarded-Proto"));
     return ResponseCookie.from(COOKIE_NAME, token)
         .path("/")

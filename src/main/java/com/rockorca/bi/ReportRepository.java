@@ -67,13 +67,18 @@ public class ReportRepository {
 
   public void replaceOne(String reportType, List<Map<String, Object>> rows, String triggerType) {
     if (rows == null || rows.isEmpty()) throw new IllegalArgumentException("全量数据为空，已取消数据库覆盖");
-    boolean dhh = "dhh".equals(reportType);
+    boolean dhh = switch (reportType) {
+      case "dhh" -> true;
+      case "jd" -> false;
+      default -> throw new IllegalArgumentException("未知报表类型：" + reportType);
+    };
     String table = dhh ? "dhh_daily_rows" : "jd_daily_rows";
     List<String> columns = dhh ? DHH_COLUMNS : JD_COLUMNS;
     List<List<Object>> values = uniqueValues(rows, dhh);
     try (Connection connection = dataSource.getConnection()) {
       connection.setAutoCommit(false);
       try {
+        // DELETE 与批量 INSERT 位于同一事务；任何插入失败都会恢复原底表。
         long runId = startRun(connection, reportType, triggerType);
         try (Statement statement = connection.createStatement()) {
           statement.executeUpdate("DELETE FROM `" + table + "`");
@@ -104,6 +109,7 @@ public class ReportRepository {
     try (Connection connection = dataSource.getConnection()) {
       connection.setAutoCommit(false);
       try {
+        // 每日调度对两张底表做原子替换，避免只更新其中一张造成口径不一致。
         long runId = startRun(connection, "all", triggerType);
         try (Statement statement = connection.createStatement()) {
           statement.executeUpdate("DELETE FROM `dhh_daily_rows`");
@@ -268,6 +274,7 @@ public class ReportRepository {
   }
 
   private List<List<Object>> uniqueValues(List<Map<String, Object>> rows, boolean dhh) {
+    // row_hash 对规范化后的整行 JSON 做 SHA-256；重复行保留最后一次出现的值。
     Map<String, List<Object>> unique = new LinkedHashMap<>();
     for (Map<String, Object> row : rows) {
       List<Object> values = dhh ? dhhValues(row) : jdValues(row);
@@ -307,6 +314,7 @@ public class ReportRepository {
   private void insertRows(
       Connection connection, String table, List<String> columns, List<List<Object>> rows)
       throws SQLException {
+    // table/columns 只来自本类静态白名单，不能传入用户输入。
     String placeholders = String.join(", ", java.util.Collections.nCopies(columns.size(), "?"));
     String sql = "INSERT INTO `" + table + "` (`" + String.join("`, `", columns)
         + "`) VALUES (" + placeholders + ")";
@@ -322,6 +330,7 @@ public class ReportRepository {
   }
 
   private void recordFailedRun(String reportType, String triggerType, Exception error) {
+    // 主事务回滚后使用独立连接记录失败，否则失败日志也会随主事务一起回滚。
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement("""
              INSERT INTO report_sync_runs

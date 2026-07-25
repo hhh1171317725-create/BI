@@ -75,6 +75,10 @@ public class PetService {
       Map<String, Object> context,
       List<Map<String, Object>> sourceRows,
       boolean jd) {
+    /*
+     * 维度匹配规则：同一字段命中多个值时是 OR，不同字段之间是 AND；短于 2 字符的值
+     * 不参与匹配。维度汇总反映整个日期范围，明细才按问题命中的对象筛选并限制为 40/120 行。
+     */
     List<String> range = stringList(context.get("range"));
     String start = range.isEmpty() ? "" : range.getFirst();
     String end = range.size() < 2 ? "" : range.get(1);
@@ -234,6 +238,7 @@ public class PetService {
       Map<String, Object> context,
       List<Map<String, Object>> history,
       Map<String, Object> clientConfig) throws Exception {
+    // 仅保留最近 8 条对话，并限制单条和底表上下文长度，控制数据外发范围与请求体大小。
     AiConfig ai = resolveAiConfig(clientConfig);
     if (ai.apiKey().isBlank()) return ReportService.mapOf("text", "", "provider", "local");
     List<Map<String, Object>> safeHistory = new ArrayList<>();

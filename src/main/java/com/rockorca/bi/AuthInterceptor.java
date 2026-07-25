@@ -22,12 +22,14 @@ public class AuthInterceptor implements HandlerInterceptor {
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
       throws Exception {
     String path = request.getRequestURI();
+    // 该白名单是登录边界；其他页面、脚本、样式和 API 均必须持有有效会话。
     if (path.equals("/login") || path.equals("/api/login") || path.equals("/api/logout")
         || path.equals("/assets/miku-pet.png")) {
       return true;
     }
     if (sessions.authenticated(request)) return true;
     if (path.startsWith("/api/")) {
+      // API 返回 JSON 401，页面请求则 302 到登录页，避免 fetch 收到 HTML。
       response.setStatus(401);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding("UTF-8");

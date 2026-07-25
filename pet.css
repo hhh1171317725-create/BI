@@ -62,7 +62,7 @@
   display: grid;
   width: min(370px, calc(100vw - 28px));
   height: min(520px, calc(100vh - 120px));
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   overflow: hidden;
   border: 1px solid #d9e2ec;
   border-radius: 16px;
@@ -90,6 +90,7 @@
 .data-pet-panel[hidden] { display: none; }
 
 .data-pet-head {
+  grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -136,6 +137,7 @@
 
 .data-pet-settings-toggle { font-size: 15px; }
 .data-pet-settings {
+  grid-row: 2;
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr) auto;
   gap: 7px;
@@ -176,6 +178,8 @@
 }
 
 .data-pet-messages {
+  grid-row: 3;
+  min-height: 0;
   overflow-y: auto;
   padding: 14px;
   background: #f8fafc;
@@ -208,6 +212,7 @@
 
 .data-pet-message.thinking { color: #667085; }
 .data-pet-quick {
+  grid-row: 4;
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -229,6 +234,7 @@
 }
 
 .data-pet-form {
+  grid-row: 5;
   display: flex;
   gap: 8px;
   padding: 10px 12px 12px;
@@ -259,6 +265,21 @@
 }
 
 .data-pet-send:disabled { opacity: .55; cursor: wait; }
+.data-pet .data-pet-close:hover:not(:disabled),
+.data-pet .data-pet-settings-toggle:hover:not(:disabled) {
+  background: #eaf3ff;
+  color: #1756a9;
+}
+.data-pet .data-pet-quick button:hover:not(:disabled) {
+  border-color: #8bbcff;
+  background: #e7f1ff;
+  color: #174f96;
+}
+.data-pet .data-pet-settings-save:hover:not(:disabled),
+.data-pet .data-pet-send:hover:not(:disabled) {
+  background: #0958d9;
+  color: #fff;
+}
 .data-pet-dragging,
 .data-pet-dragging * { cursor: grabbing !important; }
 .data-pet-dragging .data-pet-toggle { animation: none; }

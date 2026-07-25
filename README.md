@@ -79,3 +79,24 @@ MYSQL_CONNECTION_LIMIT=5
 ## 报表列与排序
 
 大航海、京东的所有汇总表和日期明细表均支持自定义显示列。点击表格上方的“选择列”勾选指标，点击任意表头可在升序和降序之间切换；排序会先作用于全部查询结果，再进行分页。各报表、各维度的选择与排序设置会分别保存在当前浏览器中，可随时点击“恢复默认列”重置。
+
+## 接口回归
+
+纯本地测试不访问生产接口，也不需要 token：
+
+```bash
+./mvnw test
+```
+
+真实接口检查脚本不会保存或打印 token。只在服务器当前终端会话设置环境变量后运行：
+
+```bash
+export REPORT_X_TOKEN='当前有效的 x-token'
+export REPORT_USER_ID='20'
+APP_BASE_URL=http://127.0.0.1:8765 ./scripts/test-all-apis.sh
+```
+
+默认检查两个 RockOrca CSV 导出接口，以及登录、查询、分析、AI 本地分析和退出接口。
+如需同时验证两个会全量覆盖数据库的更新接口，请明确追加
+`--include-load`；运行前应确认数据库已有备份。Windows 也可运行等价的
+`scripts/Test-AllApis.ps1`，并使用 `-IncludeLoadEndpoints` 开启更新接口。

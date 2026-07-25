@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -62,10 +63,13 @@ public class ReportService {
   }
 
   public Map<String, Object> loadDhh(String token, String userId) {
-    List<Map<String, Object>> rows = importer.fetchDhhRows(token, userId);
-    repository.replaceOne("dhh", rows, "manual");
-    saveSchedulerCredentials(token, userId);
-    return currentDhh();
+    return runExclusiveRefresh(() -> {
+      List<Map<String, Object>> rows = importer.fetchDhhRows(token, userId);
+      // 凭据文件先原子写入；若保存失败，不开始破坏性的全量表替换。
+      saveSchedulerCredentials(token, userId);
+      repository.replaceOne("dhh", rows, "manual");
+      return currentDhh();
+    });
   }
 
   public Map<String, Object> currentJd() {
@@ -82,12 +86,14 @@ public class ReportService {
 
   public Map<String, Object> loadJd(
       String token, String userId, boolean excludeUnknownOptimizer) {
-    List<Map<String, Object>> rows = importer.fetchJdRows(token, userId);
-    repository.replaceOne("jd", rows, "manual");
-    saveSchedulerCredentials(token, userId);
-    return buildJdAnalysis(
-        repository.readJdRows(), beijingMonthStart(Instant.now()), "", excludeUnknownOptimizer,
-        repository.latestSyncTime("jd"));
+    return runExclusiveRefresh(() -> {
+      List<Map<String, Object>> rows = importer.fetchJdRows(token, userId);
+      saveSchedulerCredentials(token, userId);
+      repository.replaceOne("jd", rows, "manual");
+      return buildJdAnalysis(
+          repository.readJdRows(), beijingMonthStart(Instant.now()), "", excludeUnknownOptimizer,
+          repository.latestSyncTime("jd"));
+    });
   }
 
   @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Shanghai")
@@ -101,16 +107,25 @@ public class ReportService {
   }
 
   public void refreshAllReports() {
-    if (!refreshRunning.compareAndSet(false, true)) {
-      throw new IllegalStateException("已有全量更新任务正在运行");
-    }
-    try {
+    runExclusiveRefresh(() -> {
       Map<String, String> credentials = readSchedulerCredentials();
+      // 两份上游数据必须都拉取成功，随后才在一个数据库事务中同时替换。
       List<Map<String, Object>> dhhRows =
           importer.fetchDhhRows(credentials.get("token"), credentials.get("userId"));
       List<Map<String, Object>> jdRows =
           importer.fetchJdRows(credentials.get("token"), credentials.get("userId"));
       repository.replaceAll(dhhRows, jdRows, "scheduled");
+      return null;
+    });
+  }
+
+  private <T> T runExclusiveRefresh(Supplier<T> action) {
+    // 手动更新和 09:00 定时更新共用同一把进程锁，避免 DELETE+INSERT 互相覆盖。
+    if (!refreshRunning.compareAndSet(false, true)) {
+      throw new IllegalStateException("已有全量更新任务正在运行");
+    }
+    try {
+      return action.get();
     } finally {
       refreshRunning.set(false);
     }
@@ -189,6 +204,12 @@ public class ReportService {
 
   public Map<String, Object> buildDhhAlerts(
       List<Map<String, Object>> rows, String date) {
+    /*
+     * 账户归因口径：
+     * 1. 一行有消耗账户时只关联这些账户；全部零消耗且仅一个账户时仍保留关联。
+     * 2. 行级注册/结算完整计入每个相关账户，这是现有业务口径，不做账户间摊分。
+     * 3. 闲鱼/咸鱼任务或账户不参与预警；阈值是消耗 >= 100 无注册，或结算严格低于注册的 90%。
+     */
     List<Map<String, Object>> daily = rows.stream()
         .filter(row -> date.equals(text(row.get("日期")))).toList();
     Map<String, Map<String, Object>> combinations = new LinkedHashMap<>();
@@ -333,6 +354,7 @@ public class ReportService {
     double actual = number(values.get("首购实际佣金")) + number(values.get("回流实际佣金"));
     double compensation = number(values.get("条件内预估赔付金额"));
     double effective = number(values.get("首购有效订单数")) + number(values.get("回流有效订单数"));
+    // 预估和实际 ROI 均把条件内赔付计入收益；有效首购率以全部有效订单为分母。
     result.put("转化成本", billable == 0 ? 0 : round(spend / billable, 2));
     result.put("预估佣金合计", round(estimated, 2));
     result.put("预估利润", round(estimated + compensation - spend, 2));
@@ -397,20 +419,25 @@ public class ReportService {
           "token", text(token),
           "userId", text(userId).isBlank() ? "20" : text(userId)));
       Files.writeString(temporary, content, StandardCharsets.UTF_8);
+      setOwnerOnlyPermissions(temporary);
       try {
         Files.move(
             temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       } catch (AtomicMoveNotSupportedException ignored) {
         Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
       }
-      try {
-        Files.setPosixFilePermissions(
-            target, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
-      } catch (UnsupportedOperationException ignored) {
-        // Windows 等非 POSIX 文件系统不支持 Unix 权限。
-      }
+      setOwnerOnlyPermissions(target);
     } catch (Exception error) {
       throw new IllegalStateException("保存定时更新凭据失败：" + error.getMessage(), error);
+    }
+  }
+
+  private static void setOwnerOnlyPermissions(Path path) throws Exception {
+    try {
+      Files.setPosixFilePermissions(
+          path, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+    } catch (UnsupportedOperationException ignored) {
+      // Windows 等非 POSIX 文件系统不支持 Unix 权限。
     }
   }
 

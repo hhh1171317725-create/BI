@@ -164,6 +164,7 @@
       color: #fff;
       font: 600 14px inherit;
       cursor: pointer;
+      transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
     }
 
     button:hover:not(:disabled) { background: var(--accent-dark); }
@@ -204,6 +205,13 @@
       border: 1px solid var(--line);
       border-radius: 7px;
       background: #fff;
+      box-shadow: 0 2px 10px rgba(23, 43, 77, .035);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 7px 18px rgba(23, 43, 77, .08);
     }
 
     .card .k {
@@ -563,7 +571,8 @@
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     const now = new Date();
-    document.querySelector("#start").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const defaultMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    document.querySelector("#start").value = defaultMonthStart;
     (() => {
       "use strict";
 
@@ -684,15 +693,33 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
-      const formatNumber = (value, minimumFractionDigits = 0) => new Intl.NumberFormat("zh-CN", {
-        minimumFractionDigits,
-        maximumFractionDigits: 2,
-      }).format(number(value));
-      const formatPercent = (value) => number(value).toLocaleString("zh-CN", {
+      // 下钻名称来自底表，使用 DOM Option，避免将数据文本解释为 HTML。
+      function setSelectOptions(select, entries) {
+        const fragment = document.createDocumentFragment();
+        for (const [value, label] of entries) {
+          const option = document.createElement("option");
+          option.value = String(value ?? "");
+          option.textContent = String(label ?? value ?? "");
+          fragment.appendChild(option);
+        }
+        select.replaceChildren(fragment);
+      }
+      const numberFormatters = new Map();
+      const formatNumber = (value, minimumFractionDigits = 0) => {
+        if (!numberFormatters.has(minimumFractionDigits)) {
+          numberFormatters.set(minimumFractionDigits, new Intl.NumberFormat("zh-CN", {
+            minimumFractionDigits,
+            maximumFractionDigits: 2,
+          }));
+        }
+        return numberFormatters.get(minimumFractionDigits).format(number(value));
+      };
+      const percentFormatter = new Intl.NumberFormat("zh-CN", {
         style: "percent",
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
+      const formatPercent = (value) => percentFormatter.format(number(value));
 
       function setStatus(message, tone = "") {
         const status = $("#status");
@@ -1041,13 +1068,10 @@
 
         panel.classList.remove("hidden");
         const select = $("#drillSelect");
-        select.innerHTML = choices
-          .map((item) => {
-            const value = String(item[config.valueKey]);
-            const label = config.title(item);
-            return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
-          })
-          .join("");
+        setSelectOptions(
+          select,
+          choices.map((item) => [item[config.valueKey], config.title(item)]),
+        );
         const selected = choices.some((item) => String(item[config.valueKey]) === requested)
           ? requested
           : String(choices[0][config.valueKey]);
@@ -1139,16 +1163,18 @@
           button.disabled = true;
           button.textContent = "加载中…";
           setStatus("正在获取并保存京东全量报表…");
-          await post("/api/jd/load", {
+          const loaded = await post("/api/jd/load", {
             token,
             userId: $("#userId").value.trim() || "20",
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
-          report = await post("/api/jd/analyze", {
-            start: $("#start").value,
-            end: $("#end").value,
-            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
-          });
+          report = $("#start").value === defaultMonthStart && !$("#end").value
+            ? loaded
+            : await post("/api/jd/analyze", {
+                start: $("#start").value,
+                end: $("#end").value,
+                excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
+              });
           rememberToken(token);
           $("#token").value = "";
           page = 1;
@@ -1288,9 +1314,13 @@
         renderDrilldown();
       });
 
+      let resizeFrame = 0;
       window.addEventListener("resize", () => {
-        mainChart?.resize();
-        drillChart?.resize();
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          mainChart?.resize();
+          drillChart?.resize();
+        });
       });
 
       window.getPetReportContext = () => ({
@@ -1305,12 +1335,8 @@
       });
 
       get("/api/jd/current")
-        .then(async () => {
-          report = await post("/api/jd/analyze", {
-            start: $("#start").value,
-            end: $("#end").value,
-            excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
-          });
+        .then((current) => {
+          report = current;
           showReport();
           setStatus(cacheText(), "success");
         })

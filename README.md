@@ -49,4 +49,4 @@ systemctl restart dahanghai-analysis
 
 ## MySQL 数据库
 
-项目已提供 [`database/schema.sql`](database/schema.sql) 初始化脚本，可创建 `marketing_reports` 数据库、大航海与京东底表、同步日志和京东指标视图。数据库结构准备完成，但当前报表仍使用 JSON 缓存；配置 MySQL 连接后再启用数据库写入和读取，避免在没有可用数据库时影响线上报表。
+项目已提供 [`database/schema.sql`](database/schema.sql) 初始化脚本。先创建并选中目标数据库，再导入脚本，即可建立大航海与京东底表、同步日志和京东指标视图。数据库结构准备完成，但当前报表仍使用 JSON 缓存；配置 MySQL 连接后再启用数据库写入和读取，避免在没有可用数据库时影响线上报表。

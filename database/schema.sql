@@ -1,9 +1,3 @@
-CREATE DATABASE IF NOT EXISTS `marketing_reports`
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE `marketing_reports`;
-
 CREATE TABLE IF NOT EXISTS `report_sync_runs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `report_type` ENUM('dhh', 'jd', 'all') NOT NULL,

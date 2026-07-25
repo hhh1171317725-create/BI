@@ -185,6 +185,7 @@ test("buildDhhAlerts monitors real accounts instead of media names", () => {
   assert.equal(result.total, 1);
   assert.equal(result.items[0].账户名称, "0723.1亿典促购");
   assert.equal(result.items[0].账户ID, "86784411");
+  assert.equal(result.items[0].项目, "淘宝促购CVR");
   assert.equal(result.items[0].任务名, "淘宝促购CVR");
   assert.equal(result.items[0].闲鱼任务, false);
   assert.equal(result.items[0].reasons.length, 1);
@@ -238,6 +239,21 @@ test("alerts are separated by selected optimizer", () => {
   assert.deepEqual(result.items.map((item) => item.优化师).sort(), ["优化师A", "优化师B"]);
 });
 
+test("alerts and filter options are separated by project", () => {
+  const account = {
+    账户ID: "1",
+    账户名称: "普通账户",
+    消耗: 120,
+  };
+  const result = buildDhhAlerts([
+    { 日期: "2026-07-23", 优化师: "优化师A", 项目: "项目A", 任务名: "普通任务", 注册数: 0, 结算数: 0, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师A", 项目: "项目B", 任务名: "普通任务", 注册数: 0, 结算数: 0, 账户列表: [account] },
+  ], "2026-07-23");
+
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.items.map((item) => item.项目).sort(), ["项目A", "项目B"]);
+});
+
 test("alert filter options include optimizers and tasks without anomalies", () => {
   const account = {
     账户ID: "1",
@@ -245,14 +261,15 @@ test("alert filter options include optimizers and tasks without anomalies", () =
     消耗: 10,
   };
   const result = buildDhhAlerts([
-    { 日期: "2026-07-23", 优化师: "优化师A", 任务名: "正常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
-    { 日期: "2026-07-23", 优化师: "优化师A", 任务名: "异常任务", 注册数: 100, 结算数: 80, 账户列表: [account] },
-    { 日期: "2026-07-23", 优化师: "优化师B", 任务名: "无异常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师A", 项目: "项目A", 任务名: "正常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师A", 项目: "项目B", 任务名: "异常任务", 注册数: 100, 结算数: 80, 账户列表: [account] },
+    { 日期: "2026-07-23", 优化师: "优化师B", 项目: "项目C", 任务名: "无异常任务", 注册数: 100, 结算数: 100, 账户列表: [account] },
   ], "2026-07-23");
 
   assert.deepEqual(result.filterOptions, [
-    { 优化师: "优化师A", 任务列表: ["异常任务", "正常任务"] },
-    { 优化师: "优化师B", 任务列表: ["无异常任务"] },
+    { 优化师: "优化师A", 项目: "项目A", 任务名: "正常任务" },
+    { 优化师: "优化师A", 项目: "项目B", 任务名: "异常任务" },
+    { 优化师: "优化师B", 项目: "项目C", 任务名: "无异常任务" },
   ]);
   assert.equal(result.total, 1);
 });

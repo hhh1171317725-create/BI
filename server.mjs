@@ -386,12 +386,13 @@ function previousBeijingDate(now = new Date()) {
 
 function buildDhhAlerts(data, date = previousBeijingDate()) {
   const dailyRows = data.filter((row) => row.日期 === date);
-  const optimizerTasks = new Map();
+  const filterCombinations = new Map();
   for (const row of dailyRows) {
     const optimizer = String(row.优化师 || "").trim() || "未填写";
     const task = String(row.任务名 || "").trim() || "未填写";
-    if (!optimizerTasks.has(optimizer)) optimizerTasks.set(optimizer, new Set());
-    optimizerTasks.get(optimizer).add(task);
+    const project = String(row.项目 || "").trim() || projectFromTask(task);
+    const key = JSON.stringify([optimizer, project, task]);
+    filterCombinations.set(key, { 优化师: optimizer, 项目: project, 任务名: task });
   }
   const buckets = new Map();
   for (const row of dailyRows) {
@@ -405,12 +406,14 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
       const name = String(account.账户名称 || "").trim() || (id ? `账户 ${id}` : "");
       const task = String(row.任务名 || "").trim() || "未填写";
       const optimizer = String(row.优化师 || "").trim() || "未填写";
+      const project = String(row.项目 || "").trim() || projectFromTask(task);
       if (!id && !name) continue;
       if (["闲鱼", "咸鱼"].some((keyword) => task.includes(keyword) || name.includes(keyword))) continue;
-      const key = JSON.stringify([optimizer, id || name, task]);
+      const key = JSON.stringify([optimizer, project, id || name, task]);
       if (!buckets.has(key)) {
         buckets.set(key, {
           优化师: optimizer,
+          项目: project,
           账户ID: id,
           账户名称: name,
           任务名: task,
@@ -453,6 +456,7 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     if (!reasons.length) return [];
     return [{
       优化师: account.优化师,
+      项目: account.项目,
       账户ID: account.账户ID,
       账户名称: account.账户名称,
       任务名: account.任务名,
@@ -470,12 +474,11 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
     accountCount: accounts.length,
     total: items.length,
     items,
-    filterOptions: [...optimizerTasks]
-      .map(([optimizer, tasks]) => ({
-        优化师: optimizer,
-        任务列表: [...tasks].sort((left, right) => left.localeCompare(right, "zh-CN")),
-      }))
-      .sort((left, right) => left.优化师.localeCompare(right.优化师, "zh-CN")),
+    filterOptions: [...filterCombinations.values()].sort((left, right) => (
+      left.优化师.localeCompare(right.优化师, "zh-CN")
+      || left.项目.localeCompare(right.项目, "zh-CN")
+      || left.任务名.localeCompare(right.任务名, "zh-CN")
+    )),
   };
 }
 
@@ -685,7 +688,7 @@ function localPetReply(message, context = {}) {
   if (/异常|预警/.test(query)) {
     const count = number(alerts.total);
     if (!count) return `${range}当前没有需要展示的账户任务异常预警。`;
-    const selected = [alerts.optimizer, alerts.task].filter(Boolean).join(" / ") || "全部优化师和任务";
+    const selected = [alerts.optimizer, alerts.project, alerts.task].filter(Boolean).join(" / ") || "全部优化师、项目和任务";
     return `${range}共有 ${formatMetric(count, 0)} 条异常预警，当前范围：${selected}。建议优先检查高消耗无注册，以及结算数比注册数低 10% 以上的账户。`;
   }
   if (/利润|roi|回报/i.test(query)) {

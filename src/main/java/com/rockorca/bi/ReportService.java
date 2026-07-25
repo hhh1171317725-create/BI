@@ -156,6 +156,11 @@ public class ReportService {
     response.put("by_project", byProject);
     response.put("by_date", dateDescending(aggregateDhh(filtered, List.of("日期"))));
     response.put("by_task", aggregateDhh(filtered, List.of("任务名")));
+    // 项目、任务下钻时直接返回优化师汇总，前端无需再次拼接或累加日报指标。
+    response.put("by_optimizer_project",
+        aggregateDhh(filtered, List.of("项目", "优化师")));
+    response.put("by_optimizer_task",
+        aggregateDhh(filtered, List.of("任务名", "优化师")));
     response.put("by_optimizer_date", aggregateDhh(filtered, List.of("日期", "优化师")));
     response.put("by_optimizer_project_date",
         aggregateDhh(filtered, List.of("日期", "优化师", "项目")));

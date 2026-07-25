@@ -17,6 +17,7 @@ import {
   localPetReply,
   nextBeijingNine,
   parseDhhAccounts,
+  parseEnvironmentFile,
   resolveAiProvider,
   createSessionToken,
   validateCredentials,
@@ -36,6 +37,18 @@ test("MySQL configuration uses environment values without embedding credentials"
     database: "BI",
     user: "bi_app",
     password: "secret",
+  });
+});
+
+test("runtime env parser supports comments, quoted passwords, and equals signs", () => {
+  assert.deepEqual(parseEnvironmentFile(`
+    # MySQL connection
+    MYSQL_HOST=127.0.0.1
+    MYSQL_PASSWORD="p@ss=word#2026"
+    invalid-key=ignored
+  `), {
+    MYSQL_HOST: "127.0.0.1",
+    MYSQL_PASSWORD: "p@ss=word#2026",
   });
 });
 

@@ -27,6 +27,40 @@ const jdNumericFields = [
 let nextScheduledRefreshAt = "";
 let scheduledRefreshRunning = false;
 
+function parseEnvironmentFile(content) {
+  const values = {};
+  for (const rawLine of String(content || "").split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator < 1) continue;
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (/^[A-Z_][A-Z0-9_]*$/u.test(key)) values[key] = value;
+  }
+  return values;
+}
+
+async function loadRuntimeEnvironment(filename) {
+  try {
+    const values = parseEnvironmentFile(await fs.readFile(path.join(runtimeDir, filename), "utf8"));
+    for (const [key, value] of Object.entries(values)) {
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") console.error(`读取 ${filename} 失败：${error.message}`);
+  }
+}
+
+await Promise.all([
+  loadRuntimeEnvironment("mysql.env"),
+  loadRuntimeEnvironment("ai.env"),
+]);
+
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left));
   const rightBuffer = Buffer.from(String(right));
@@ -969,6 +1003,7 @@ export {
   parseDhhAccounts,
   parseJdCsv,
   previousBeijingDate,
+  parseEnvironmentFile,
   resolveAiProvider,
   createSessionToken,
   validateCredentials,

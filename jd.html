@@ -658,6 +658,9 @@
       }
 
       function formatCell(value, column, dimensionKey, row) {
+        if (column === "优化师" && dimensionKey === "优化师") {
+          return `<button class="drill-link" type="button" data-drill-dimension="by_optimizer" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
+        }
         if (column === "媒体账户ID" && dimensionKey === "媒体账户名称") {
           return `<button class="drill-link" type="button" data-drill-dimension="by_account" data-drill-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`;
         }

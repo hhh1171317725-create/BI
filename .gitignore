@@ -3,6 +3,7 @@ config.json
 settings.json
 .dahanghai_analysis_system/
 .runtime/
+node_modules/
 
 # Python runtime output
 __pycache__/

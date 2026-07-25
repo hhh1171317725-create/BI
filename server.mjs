@@ -3,13 +3,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { getDatabase } from "./database-store.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.DHH_HOST || "127.0.0.1";
 const port = Number(process.env.DHH_PORT || 8765);
 const runtimeDir = process.env.DHH_RUNTIME_DIR || path.join(appDir, ".runtime");
-const cachePath = path.join(runtimeDir, "report-cache.json");
-const jdCachePath = path.join(runtimeDir, "jd-report-cache.json");
 const schedulerCredentialsPath = path.join(runtimeDir, "scheduler-credentials.json");
 const exportUrl = "https://report.rockorca.com/api/dcMarketingDhhDaily/getDcMarketingDhhDailyExport";
 const jdExportUrl = "https://report.rockorca.com/api/marketingJdCpaDaily/getMarketingJdCpaDailyExport?dimType=detail";
@@ -25,10 +24,6 @@ const jdNumericFields = [
   "首购已完成订单", "回流已完成订单", "消耗", "条件内预估赔付金额",
   "首购预估佣金", "回流预估佣金", "首购实际佣金", "回流实际佣金",
 ];
-let rows = [];
-let cachedAt = "";
-let jdRows = [];
-let jdCachedAt = "";
 let nextScheduledRefreshAt = "";
 let scheduledRefreshRunning = false;
 
@@ -248,38 +243,6 @@ function parseJdCsv(raw) {
   });
 }
 
-async function saveCache() {
-  await fs.mkdir(runtimeDir, { recursive: true });
-  cachedAt = new Date().toISOString();
-  const temporaryPath = `${cachePath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify({ cachedAt, rows }), "utf8");
-  await fs.rename(temporaryPath, cachePath);
-}
-
-async function restoreCache() {
-  if (rows.length) return;
-  const cached = JSON.parse(await fs.readFile(cachePath, "utf8"));
-  if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的数据，请粘贴 x-token 后加载一次");
-  rows = cached.rows;
-  cachedAt = cached.cachedAt || "";
-}
-
-async function saveJdCache() {
-  await fs.mkdir(runtimeDir, { recursive: true });
-  jdCachedAt = new Date().toISOString();
-  const temporaryPath = `${jdCachePath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify({ cachedAt: jdCachedAt, rows: jdRows }), "utf8");
-  await fs.rename(temporaryPath, jdCachePath);
-}
-
-async function restoreJdCache() {
-  if (jdRows.length) return;
-  const cached = JSON.parse(await fs.readFile(jdCachePath, "utf8"));
-  if (!Array.isArray(cached.rows) || !cached.rows.length) throw new Error("暂无已保存的京东数据，请粘贴 x-token 后加载一次");
-  jdRows = cached.rows;
-  jdCachedAt = cached.cachedAt || "";
-}
-
 async function saveSchedulerCredentials(token, userId) {
   await fs.mkdir(runtimeDir, { recursive: true });
   const temporaryPath = `${schedulerCredentialsPath}.tmp`;
@@ -329,9 +292,7 @@ async function refreshAllReports() {
       fetchRows(token, userId),
       fetchJdRows(token, userId),
     ]);
-    rows = nextRows;
-    jdRows = nextJdRows;
-    await Promise.all([saveCache(), saveJdCache()]);
+    await getDatabase().replaceAll(nextRows, nextJdRows, "scheduled");
     console.log(`定时全量更新成功：${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`);
   } finally {
     scheduledRefreshRunning = false;
@@ -484,8 +445,8 @@ function buildDhhAlerts(data, date = previousBeijingDate()) {
   };
 }
 
-function buildAnalysis(start = "", end = "") {
-  const filtered = rows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
+function buildAnalysis(sourceRows, start = "", end = "", cachedAt = "") {
+  const filtered = sourceRows.filter((row) => (!start || row.日期 >= start) && (!end || row.日期 <= end));
   const byProject = aggregate(filtered, "项目");
   const summary = Object.fromEntries(numericFields.map((field) => [field, Number(byProject.reduce((total, item) => total + item[field], 0).toFixed(2))]));
   summary.现金利润 = Number((summary.预估佣金 - summary.现金消耗).toFixed(2));
@@ -497,7 +458,7 @@ function buildAnalysis(start = "", end = "") {
     rows: filtered.length,
     range: filtered.length ? [filtered.reduce((min, row) => row.日期 < min ? row.日期 : min, filtered[0].日期), filtered.reduce((max, row) => row.日期 > max ? row.日期 : max, filtered[0].日期)] : ["-", "-"],
     summary,
-    alerts: buildDhhAlerts(rows),
+    alerts: buildDhhAlerts(sourceRows),
     by_optimizer: aggregate(filtered, "优化师"),
     by_project: byProject,
     by_date: aggregate(filtered, "日期").sort((left, right) => right.日期.localeCompare(left.日期)),
@@ -565,12 +526,12 @@ function filterJdRows(data, start = "", end = "", excludeUnknownOptimizer = fals
   ));
 }
 
-function buildJdAnalysis(start = "", end = "", excludeUnknownOptimizer = true) {
-  const filtered = filterJdRows(jdRows, start, end, excludeUnknownOptimizer);
+function buildJdAnalysis(sourceRows, start = "", end = "", excludeUnknownOptimizer = true, cachedAt = "") {
+  const filtered = filterJdRows(sourceRows, start, end, excludeUnknownOptimizer);
   const emptyValues = Object.fromEntries(jdNumericFields.map((field) => [field, 0]));
   const summary = aggregateJd(filtered, [])[0] || jdMetrics(emptyValues);
   return {
-    cachedAt: jdCachedAt,
+    cachedAt,
     nextScheduledRefreshAt,
     excludeUnknownOptimizer,
     rows: filtered.length,
@@ -603,7 +564,7 @@ function petRowsInRange(data, context) {
   ));
 }
 
-function buildPetBottomData(message, context = {}, dhhData = rows, jdData = jdRows) {
+function buildPetBottomData(message, context = {}, dhhData = [], jdData = []) {
   const query = String(message || "").trim();
   const isJd = String(context.reportType || "").includes("京东");
   const source = petRowsInRange(isJd ? jdData : dhhData, context)
@@ -647,7 +608,7 @@ function buildPetBottomData(message, context = {}, dhhData = rows, jdData = jdRo
         按日期: aggregate(source, "日期").sort((left, right) => right.日期.localeCompare(left.日期)).slice(0, 80),
       };
   return {
-    说明: "来自服务器缓存的当前日期范围底表；明细优先按用户问题中的维度值筛选。",
+    说明: "来自MySQL数据库的当前日期范围底表；明细优先按用户问题中的维度值筛选。",
     底表总行数: source.length,
     问题匹配行数: relevant.length,
     已提供明细行数: Math.min(relevant.length, limit),
@@ -874,39 +835,73 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/pet.js") return serveFile(response, "pet.js", "application/javascript; charset=utf-8");
     if (request.method === "GET" && request.url === "/assets/miku-pet.png") return serveFile(response, "assets/miku-pet.png", "image/png");
     if (request.method === "GET" && request.url === "/api/current") {
-      await restoreCache();
-      return sendJson(response, buildAnalysis(beijingMonthStart()));
+      const database = getDatabase();
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readDhhRows(),
+        database.latestSyncTime("dhh"),
+      ]);
+      return sendJson(response, buildAnalysis(sourceRows, beijingMonthStart(), "", cachedAt));
     }
     if (request.method === "POST" && request.url === "/api/load") {
       const payload = await readRequestBody(request);
-      rows = await fetchRows(payload.token || "", payload.userId || "20");
-      await saveCache();
+      const database = getDatabase();
+      const importedRows = await fetchRows(payload.token || "", payload.userId || "20");
+      await database.replaceOne("dhh", importedRows, "manual");
       await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
-      return sendJson(response, buildAnalysis(beijingMonthStart()));
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readDhhRows(),
+        database.latestSyncTime("dhh"),
+      ]);
+      return sendJson(response, buildAnalysis(sourceRows, beijingMonthStart(), "", cachedAt));
     }
     if (request.method === "POST" && request.url === "/api/analyze") {
-      await restoreCache();
       const payload = await readRequestBody(request);
-      return sendJson(response, buildAnalysis(payload.start || "", payload.end || ""));
+      const database = getDatabase();
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readDhhRows(),
+        database.latestSyncTime("dhh"),
+      ]);
+      return sendJson(response, buildAnalysis(sourceRows, payload.start || "", payload.end || "", cachedAt));
     }
     if (request.method === "GET" && request.url === "/api/jd/current") {
-      await restoreJdCache();
-      return sendJson(response, buildJdAnalysis(beijingMonthStart()));
+      const database = getDatabase();
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readJdRows(),
+        database.latestSyncTime("jd"),
+      ]);
+      return sendJson(response, buildJdAnalysis(sourceRows, beijingMonthStart(), "", true, cachedAt));
     }
     if (request.method === "POST" && request.url === "/api/jd/load") {
       const payload = await readRequestBody(request);
-      jdRows = await fetchJdRows(payload.token || "", payload.userId || "20");
-      await saveJdCache();
+      const database = getDatabase();
+      const importedRows = await fetchJdRows(payload.token || "", payload.userId || "20");
+      await database.replaceOne("jd", importedRows, "manual");
       await saveSchedulerCredentials(payload.token || "", payload.userId || "20");
-      return sendJson(response, buildJdAnalysis(beijingMonthStart(), "", payload.excludeUnknownOptimizer !== false));
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readJdRows(),
+        database.latestSyncTime("jd"),
+      ]);
+      return sendJson(response, buildJdAnalysis(
+        sourceRows,
+        beijingMonthStart(),
+        "",
+        payload.excludeUnknownOptimizer !== false,
+        cachedAt,
+      ));
     }
     if (request.method === "POST" && request.url === "/api/jd/analyze") {
-      await restoreJdCache();
       const payload = await readRequestBody(request);
+      const database = getDatabase();
+      const [sourceRows, cachedAt] = await Promise.all([
+        database.readJdRows(),
+        database.latestSyncTime("jd"),
+      ]);
       return sendJson(response, buildJdAnalysis(
+        sourceRows,
         payload.start || "",
         payload.end || "",
         payload.excludeUnknownOptimizer !== false,
+        cachedAt,
       ));
     }
     if (request.method === "POST" && request.url === "/api/pet/chat") {
@@ -914,15 +909,18 @@ const server = http.createServer(async (request, response) => {
       const message = String(payload.message || "").trim().slice(0, 500);
       if (!message) return sendJson(response, { error: "请输入问题" }, 400);
       const context = payload.context && typeof payload.context === "object" ? payload.context : {};
-      try {
-        if (String(context.reportType || "").includes("京东")) await restoreJdCache();
-        else await restoreCache();
-      } catch {
-        // 没有缓存时仍可使用浏览器提供的当前汇总。
-      }
+      const isJd = String(context.reportType || "").includes("京东");
+      const sourceRows = isJd
+        ? await getDatabase().readJdRows()
+        : await getDatabase().readDhhRows();
       const enrichedContext = {
         ...context,
-        底表数据: buildPetBottomData(message, context),
+        底表数据: buildPetBottomData(
+          message,
+          context,
+          isJd ? [] : sourceRows,
+          isJd ? sourceRows : [],
+        ),
       };
       try {
         const aiReply = await askAiPet(
@@ -945,8 +943,14 @@ const server = http.createServer(async (request, response) => {
 });
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  server.listen(port, host, () => {
+  server.listen(port, host, async () => {
     console.log(`营销日报分析系统已启动：http://${host}:${port}`);
+    try {
+      await getDatabase().ping();
+      console.log("MySQL 数据库连接成功");
+    } catch (error) {
+      console.error(`MySQL 数据库连接失败：${error instanceof Error ? error.message : "未知错误"}`);
+    }
     scheduleDailyRefresh();
   });
 }

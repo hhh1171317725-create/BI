@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  databaseConfig,
+  dhhValues,
+  jdValues,
+  rowHash,
+  uniqueValues,
+} from "./database-store.mjs";
+import {
   buildDhhAlerts,
   buildPetBottomData,
   beijingMonthStart,
@@ -15,6 +22,85 @@ import {
   validateCredentials,
   verifySessionToken,
 } from "./server.mjs";
+
+test("MySQL configuration uses environment values without embedding credentials", () => {
+  assert.deepEqual(databaseConfig({
+    MYSQL_HOST: "db.internal",
+    MYSQL_PORT: "3307",
+    MYSQL_DATABASE: "BI",
+    MYSQL_USER: "bi_app",
+    MYSQL_PASSWORD: "secret",
+  }), {
+    host: "db.internal",
+    port: 3307,
+    database: "BI",
+    user: "bi_app",
+    password: "secret",
+  });
+});
+
+test("DHH source rows map to MySQL columns with account JSON and stable hash", () => {
+  const row = {
+    日期: "2026-07-25",
+    媒体: "字节",
+    优化师: "陈灵灿",
+    项目: "淘宝促购CVR",
+    任务名: "任务A",
+    账户列表: [{ 账户ID: "1", 账户名称: "账户A", 消耗: 100 }],
+    消耗: 100,
+    现金消耗: 80,
+    赠款消耗: 20,
+    预估佣金: 120,
+    结算数: 10,
+    转化数: 12,
+    注册数: 11,
+  };
+  const values = dhhValues(row);
+  assert.equal(values[0], "2026-07-25");
+  assert.deepEqual(JSON.parse(values[5]), row.账户列表);
+  assert.equal(values[13], rowHash(row));
+  assert.equal(values[13].length, 64);
+});
+
+test("JD source rows map all order and commission fields to MySQL", () => {
+  const row = {
+    日期: "2026-07-25",
+    推广位ID: "P1",
+    推广位名称: "推广位A",
+    媒体: "京东",
+    媒体账户ID: "A1",
+    媒体账户名称: "账户A",
+    推客用户名: "推客A",
+    优化师: "陈灵灿",
+    转化数: 1,
+    计费转化数: 2,
+    去重订单总数: 3,
+    首购订单总数: 4,
+    回流订单总数: 5,
+    首购有效订单数: 6,
+    回流有效订单数: 7,
+    首购无效订单数: 8,
+    回流无效订单数: 9,
+    首购已完成订单: 10,
+    回流已完成订单: 11,
+    消耗: 12,
+    条件内预估赔付金额: 13,
+    首购预估佣金: 14,
+    回流预估佣金: 15,
+    首购实际佣金: 16,
+    回流实际佣金: 17,
+  };
+  const values = jdValues(row);
+  assert.equal(values.length, 26);
+  assert.deepEqual(values.slice(8, 25), Array.from({ length: 17 }, (_, index) => index + 1));
+  assert.equal(values[25], rowHash(row));
+});
+
+test("MySQL full import removes exact duplicate source rows", () => {
+  const row = { 日期: "2026-07-25", 优化师: "陈灵灿", 消耗: 100 };
+  const values = uniqueValues([row, { ...row }, { ...row, 消耗: 101 }], dhhValues);
+  assert.equal(values.length, 2);
+});
 
 test("login accepts only the configured report credentials", () => {
   assert.equal(validateCredentials("hhh", "123456"), true);

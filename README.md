@@ -5,9 +5,9 @@
 - `/`：大航海日报，提供优化师、项目、日期、任务四个维度的汇总。利润口径为“预估佣金 - 现金消耗”。首页会按北京时间检查前一天的账户＋任务数据，并在结算数比注册数低 10% 以上，或账户消耗达到 100 元但无注册时显示异常预警。预警下拉框包含前一天日报中的全部优化师及其任务，并提供“全部优化师”和“全部任务”选项；明细默认收起，闲鱼相关账户和任务不参与预警，其他预警支持在当前浏览器取消和恢复。
 - `/jd`：京东 CPA 日报，提供优化师、日期、媒体、媒体账户和推客维度的汇总，以及优化师－日期下钻。京东预估/实际利润和 ROI 均包含“条件内预估赔付金额（当日）”，“有效订单数”口径为首购有效订单数与回流有效订单数之和。日期筛选区默认排除未知优化师，也可切换为保留全部数据；该条件会作用于汇总卡片、全部分析维度、趋势图和下钻数据。
 
-两份报表使用独立的本地缓存，均支持日期筛选、分页和按日消耗折线图。
+两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 
-服务进程会按北京时间每天 09:00 自动拉取大航海和京东全量数据，并原子更新两份缓存。首次部署或 Token 失效后，在任一报表页面手动成功更新一次即可刷新定时任务凭据；自动更新失败不会覆盖已有缓存。
+服务进程会按北京时间每天 09:00 自动拉取大航海和京东全量数据，并在同一数据库事务中更新两张底表。首次部署或 Token 失效后，在任一报表页面手动成功更新一次即可刷新定时任务凭据；自动更新失败会回滚事务，不会覆盖已有数据。
 
 ## 登录
 
@@ -44,9 +44,23 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 ```bash
 cd /www/wwwroot/BI
 git pull origin main
+npm ci --omit=dev
 systemctl restart dahanghai-analysis
 ```
 
 ## MySQL 数据库
 
-项目已提供 [`database/schema.sql`](database/schema.sql) 初始化脚本。先创建并选中目标数据库，再导入脚本，即可建立大航海与京东底表、同步日志和京东指标视图。数据库结构准备完成，但当前报表仍使用 JSON 缓存；配置 MySQL 连接后再启用数据库写入和读取，避免在没有可用数据库时影响线上报表。
+项目已提供 [`database/schema.sql`](database/schema.sql) 初始化脚本。先创建并选中目标数据库，再导入脚本，即可建立大航海与京东底表、同步日志和京东指标视图。全量更新写入 MySQL，报表查询、异常预警和 AI 底表分析均直接读取 MySQL，不再依赖 JSON 报表缓存。
+
+在服务器创建不纳入 Git 的 `/www/wwwroot/BI/.runtime/mysql.env`：
+
+```env
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_DATABASE=BI
+MYSQL_USER=BI
+MYSQL_PASSWORD=你的数据库强密码
+MYSQL_CONNECTION_LIMIT=5
+```
+
+可复制 [`database/mysql.env.example`](database/mysql.env.example) 后修改。更新 systemd 服务文件并执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。

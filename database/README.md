@@ -17,4 +17,4 @@
 mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/schema.sql
 ```
 
-建议为应用单独创建仅能访问 `marketing_reports` 的 MySQL 用户，不要在代码或 Git 中保存数据库密码。
+建议为应用创建只能访问目标报表数据库（例如 `BI`）的独立 MySQL 用户，不要在代码或 Git 中保存数据库密码。连接配置参考 `mysql.env.example`。

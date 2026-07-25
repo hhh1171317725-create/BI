@@ -404,7 +404,7 @@
       </label>
       <button id="load" type="button">更新京东全量数据</button>
     </div>
-    <p class="note status" id="status" aria-live="polite">正在读取服务器缓存。成功更新后，Token 会安全保存在服务器运行目录，用于每天 09:00 自动更新。</p>
+    <p class="note status" id="status" aria-live="polite">正在查询 MySQL 数据库。成功更新后，Token 会安全保存在服务器运行目录，用于每天 09:00 自动更新。</p>
   </section>
 
   <section class="panel hidden" id="filterPanel">
@@ -827,8 +827,8 @@
 
       function cacheText() {
         const updated = report.cachedAt
-          ? `已加载服务器缓存，更新时间：${new Date(report.cachedAt).toLocaleString("zh-CN")}。`
-          : "已加载服务器缓存。";
+          ? `已查询 MySQL，最近同步：${new Date(report.cachedAt).toLocaleString("zh-CN")}。`
+          : "已查询 MySQL。";
         const next = report.nextScheduledRefreshAt
           ? ` 下次自动更新：${new Date(report.nextScheduledRefreshAt).toLocaleString("zh-CN")}。`
           : " 每天 09:00 自动更新。";
@@ -999,8 +999,8 @@
           showReport();
           setStatus(cacheText(), "success");
         })
-        .catch(() => {
-          setStatus("暂无京东服务器缓存，请粘贴 x-token 后加载一次。", "error");
+        .catch((error) => {
+          setStatus(error.message || "MySQL 暂无京东数据，请粘贴 x-token 后加载一次。", "error");
         });
     })();
   </script>

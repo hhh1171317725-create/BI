@@ -12,6 +12,7 @@ Environment=DHH_PORT=8765
 Environment=DHH_OPEN_BROWSER=0
 Environment=DHH_RUNTIME_DIR=/www/wwwroot/BI/.runtime
 EnvironmentFile=-/www/wwwroot/BI/.runtime/ai.env
+EnvironmentFile=-/www/wwwroot/BI/.runtime/mysql.env
 ExecStart=/usr/bin/node /www/wwwroot/BI/server.mjs
 Restart=always
 RestartSec=3

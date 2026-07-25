@@ -17,6 +17,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -37,6 +38,9 @@ public class ReportRepository {
 
   private final HikariDataSource dataSource;
   private final ObjectMapper objectMapper;
+  private final ReportRowCache dhhRowsCache = new ReportRowCache();
+  private final ReportRowCache jdRowsCache = new ReportRowCache();
+  private final Map<String, String> syncTimeCache = new ConcurrentHashMap<>();
 
   public ReportRepository(RuntimeConfig config, ObjectMapper objectMapper) {
     this.objectMapper = objectMapper;
@@ -86,6 +90,7 @@ public class ReportRepository {
         insertRows(connection, table, columns, values);
         finishRun(connection, runId, values.size());
         connection.commit();
+        invalidateCache(reportType);
       } catch (Exception error) {
         connection.rollback();
         recordFailedRun(reportType, triggerType, error);
@@ -119,6 +124,7 @@ public class ReportRepository {
         insertRows(connection, "jd_daily_rows", JD_COLUMNS, jdValues);
         finishRun(connection, runId, dhhValues.size() + jdValues.size());
         connection.commit();
+        invalidateAllCaches();
       } catch (Exception error) {
         connection.rollback();
         recordFailedRun("all", triggerType, error);
@@ -131,6 +137,10 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readDhhRows() {
+    return dhhRowsCache.get(this::queryDhhRows);
+  }
+
+  private List<Map<String, Object>> queryDhhRows() {
     String sql = """
         SELECT business_date, media, optimizer, project_name, task_name, account_info,
                spend, cash_spend, reward_spend, estimated_commission, settlement_count,
@@ -165,6 +175,10 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readJdRows() {
+    return jdRowsCache.get(this::queryJdRows);
+  }
+
+  private List<Map<String, Object>> queryJdRows() {
     String sql = """
         SELECT business_date, promotion_id, promotion_name, media, media_account_id,
                media_account_name, promoter_username, optimizer, conversion_count,
@@ -216,6 +230,10 @@ public class ReportRepository {
   }
 
   public String latestSyncTime(String reportType) {
+    return syncTimeCache.computeIfAbsent(reportType, this::queryLatestSyncTime);
+  }
+
+  private String queryLatestSyncTime(String reportType) {
     String sql = """
         SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s') AS cachedAt
           FROM report_sync_runs
@@ -362,6 +380,18 @@ public class ReportRepository {
 
   private static IllegalStateException databaseError(Exception error) {
     return new IllegalStateException(error.getMessage() == null ? "MySQL 操作失败" : error.getMessage(), error);
+  }
+
+  private void invalidateCache(String reportType) {
+    if ("dhh".equals(reportType)) dhhRowsCache.invalidate();
+    if ("jd".equals(reportType)) jdRowsCache.invalidate();
+    syncTimeCache.remove(reportType);
+  }
+
+  private void invalidateAllCaches() {
+    dhhRowsCache.invalidate();
+    jdRowsCache.invalidate();
+    syncTimeCache.clear();
   }
 
   @PreDestroy

@@ -39,6 +39,9 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 
 1. 将仓库拉取到 `/www/wwwroot/BI`。
 2. 将 `deploy/dahanghai-analysis.service` 复制到 `/etc/systemd/system/`，执行 `systemctl daemon-reload && systemctl enable --now dahanghai-analysis`。
+3. 全量 CSV 较大时，将 `deploy/dahanghai-analysis-memory.conf` 复制到
+   `/etc/systemd/system/dahanghai-analysis.service.d/memory.conf`，让 Java 最多使用服务器
+   50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 3. 在宝塔网站配置中，将 `www.huanghaha.fun` 反向代理到 `http://127.0.0.1:8765`，并配置 SSL。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：

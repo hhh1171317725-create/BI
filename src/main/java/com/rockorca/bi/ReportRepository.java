@@ -74,7 +74,6 @@ public class ReportRepository {
     };
     String table = dhh ? "dhh_daily_rows" : "jd_daily_rows";
     List<String> columns = dhh ? DHH_COLUMNS : JD_COLUMNS;
-    List<List<Object>> values = uniqueValues(rows, dhh);
     try (Connection connection = dataSource.getConnection()) {
       connection.setAutoCommit(false);
       try {
@@ -83,8 +82,8 @@ public class ReportRepository {
         try (Statement statement = connection.createStatement()) {
           statement.executeUpdate("DELETE FROM `" + table + "`");
         }
-        insertRows(connection, table, columns, values);
-        finishRun(connection, runId, values.size());
+        int inserted = insertRows(connection, table, columns, rows, dhh);
+        finishRun(connection, runId, inserted);
         connection.commit();
       } catch (Exception error) {
         connection.rollback();
@@ -104,8 +103,6 @@ public class ReportRepository {
     if (dhhRows == null || jdRows == null || dhhRows.isEmpty() || jdRows.isEmpty()) {
       throw new IllegalArgumentException("任一全量报表为空，已取消数据库覆盖");
     }
-    List<List<Object>> dhhValues = uniqueValues(dhhRows, true);
-    List<List<Object>> jdValues = uniqueValues(jdRows, false);
     try (Connection connection = dataSource.getConnection()) {
       connection.setAutoCommit(false);
       try {
@@ -115,9 +112,11 @@ public class ReportRepository {
           statement.executeUpdate("DELETE FROM `dhh_daily_rows`");
           statement.executeUpdate("DELETE FROM `jd_daily_rows`");
         }
-        insertRows(connection, "dhh_daily_rows", DHH_COLUMNS, dhhValues);
-        insertRows(connection, "jd_daily_rows", JD_COLUMNS, jdValues);
-        finishRun(connection, runId, dhhValues.size() + jdValues.size());
+        int dhhInserted = insertRows(
+            connection, "dhh_daily_rows", DHH_COLUMNS, dhhRows, true);
+        int jdInserted = insertRows(
+            connection, "jd_daily_rows", JD_COLUMNS, jdRows, false);
+        finishRun(connection, runId, dhhInserted + jdInserted);
         connection.commit();
       } catch (Exception error) {
         connection.rollback();
@@ -273,16 +272,6 @@ public class ReportRepository {
     }
   }
 
-  private List<List<Object>> uniqueValues(List<Map<String, Object>> rows, boolean dhh) {
-    // row_hash 对规范化后的整行 JSON 做 SHA-256；重复行保留最后一次出现的值。
-    Map<String, List<Object>> unique = new LinkedHashMap<>();
-    for (Map<String, Object> row : rows) {
-      List<Object> values = dhh ? dhhValues(row) : jdValues(row);
-      unique.put(String.valueOf(values.getLast()), values);
-    }
-    return new ArrayList<>(unique.values());
-  }
-
   private long startRun(Connection connection, String reportType, String triggerType) throws SQLException {
     String sql = """
         INSERT INTO report_sync_runs (report_type, trigger_type, status, started_at)
@@ -311,22 +300,41 @@ public class ReportRepository {
     }
   }
 
-  private void insertRows(
-      Connection connection, String table, List<String> columns, List<List<Object>> rows)
+  private int insertRows(
+      Connection connection,
+      String table,
+      List<String> columns,
+      List<Map<String, Object>> rows,
+      boolean dhh)
       throws SQLException {
-    // table/columns 只来自本类静态白名单，不能传入用户输入。
+    // table/columns 只来自本类静态白名单。逐行转换并分批写入，避免复制整份底表。
+    // row_hash 上已有唯一索引，INSERT IGNORE 在数据库侧完成去重。
     String placeholders = String.join(", ", java.util.Collections.nCopies(columns.size(), "?"));
-    String sql = "INSERT INTO `" + table + "` (`" + String.join("`, `", columns)
+    String sql = "INSERT IGNORE INTO `" + table + "` (`" + String.join("`, `", columns)
         + "`) VALUES (" + placeholders + ")";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       int pending = 0;
-      for (List<Object> row : rows) {
-        for (int index = 0; index < row.size(); index++) statement.setObject(index + 1, row.get(index));
+      int inserted = 0;
+      for (Map<String, Object> row : rows) {
+        List<Object> values = dhh ? dhhValues(row) : jdValues(row);
+        for (int index = 0; index < values.size(); index++) {
+          statement.setObject(index + 1, values.get(index));
+        }
         statement.addBatch();
-        if (++pending % 500 == 0) statement.executeBatch();
+        if (++pending % 500 == 0) inserted += insertedCount(statement.executeBatch());
       }
-      if (pending % 500 != 0) statement.executeBatch();
+      if (pending % 500 != 0) inserted += insertedCount(statement.executeBatch());
+      return inserted;
     }
+  }
+
+  private static int insertedCount(int[] results) {
+    int inserted = 0;
+    for (int result : results) {
+      if (result > 0) inserted += result;
+      else if (result == Statement.SUCCESS_NO_INFO) inserted++;
+    }
+    return inserted;
   }
 
   private void recordFailedRun(String reportType, String triggerType, Exception error) {

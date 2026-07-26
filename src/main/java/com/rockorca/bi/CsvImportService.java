@@ -2,6 +2,12 @@ package com.rockorca.bi;
 
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -16,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -73,31 +80,15 @@ public class CsvImportService {
   }
 
   public List<Map<String, Object>> fetchDhhRows(String token, String userId) {
-    String raw = fetchCsv(dhhExportUrl, token, userId, "大航海报表");
-    validateCsvSchema(raw, DHH_REQUIRED_HEADERS, "大航海报表");
-    List<Map<String, Object>> rows = new ArrayList<>();
-    for (Map<String, String> record : parseCsv(raw)) {
-      String date = normalizedDate(record.get("日期"));
-      if (date.isBlank()) continue;
-      String task = defaultText(record.get("任务名"));
-      Map<String, Object> row = new LinkedHashMap<>();
-      row.put("日期", date);
-      row.put("媒体", defaultText(record.get("媒体")));
-      row.put("账户列表", parseDhhAccounts(record.get("账户信息")));
-      row.put("优化师", defaultText(record.get("优化师")));
-      row.put("任务名", task);
-      row.put("项目", projectFromTask(task));
-      for (String field : DHH_NUMERIC_FIELDS) row.put(field, number(record.get(field)));
-      rows.add(row);
-    }
+    List<Map<String, Object>> rows = fetchCsvRows(
+        dhhExportUrl, token, userId, "大航海报表", DHH_REQUIRED_HEADERS, this::dhhRow);
     requireDataRows(rows, "大航海报表");
     return rows;
   }
 
   public List<Map<String, Object>> fetchJdRows(String token, String userId) {
-    String raw = fetchCsv(jdExportUrl, token, userId, "京东报表");
-    validateCsvSchema(raw, JD_REQUIRED_HEADERS, "京东报表");
-    List<Map<String, Object>> rows = parseJdCsv(raw);
+    List<Map<String, Object>> rows = fetchCsvRows(
+        jdExportUrl, token, userId, "京东报表", JD_REQUIRED_HEADERS, this::jdRow);
     requireDataRows(rows, "京东报表");
     return rows;
   }
@@ -105,76 +96,90 @@ public class CsvImportService {
   public List<Map<String, Object>> parseJdCsv(String raw) {
     List<Map<String, Object>> rows = new ArrayList<>();
     for (Map<String, String> record : parseCsv(raw)) {
-      String date = normalizedDate(record.get("业务日期"));
-      if (date.isBlank()) continue;
-      Map<String, Object> row = new LinkedHashMap<>();
-      row.put("日期", date);
-      row.put("推广位ID", defaultText(record.get("推广位ID")));
-      row.put("推广位名称", defaultText(record.get("推广位名称")));
-      row.put("媒体", defaultText(record.get("媒体")));
-      row.put("媒体账户ID", defaultText(record.get("媒体账户ID")));
-      row.put("媒体账户名称", defaultText(record.get("媒体账户名称")));
-      row.put("推客用户名", defaultText(record.get("推客用户名")));
-      row.put("优化师", defaultText(record.get("优化师")));
-      for (String field : JD_NUMERIC_FIELDS) row.put(field, number(record.get(field)));
-      row.put("条件内预估赔付金额", number(record.get("条件内预估赔付金额(当日)")));
-      rows.add(row);
+      Map<String, Object> row = jdRow(record);
+      if (row != null) rows.add(row);
     }
     return rows;
   }
 
   public static List<Map<String, String>> parseCsv(String text) {
-    List<List<String>> records = parseCsvRecords(text);
-    if (records.isEmpty()) return List.of();
-    List<String> headers = records.getFirst().stream().map(String::trim).toList();
-    List<Map<String, String>> result = new ArrayList<>();
-    for (int rowIndex = 1; rowIndex < records.size(); rowIndex++) {
-      List<String> values = records.get(rowIndex);
-      Map<String, String> item = new LinkedHashMap<>();
-      for (int column = 0; column < headers.size(); column++) {
-        item.put(headers.get(column), column < values.size() ? values.get(column) : "");
-      }
-      result.add(item);
+    try (Reader source = new StringReader(String.valueOf(text == null ? "" : text))) {
+      CsvRecordReader csv = new CsvRecordReader(source);
+      List<String> headers = csv.nextRecord();
+      if (headers == null) return List.of();
+      headers = normalizedHeaders(headers);
+      List<Map<String, String>> result = new ArrayList<>();
+      List<String> values;
+      while ((values = csv.nextRecord()) != null) result.add(record(headers, values));
+      return result;
+    } catch (IOException error) {
+      throw new IllegalStateException("CSV 读取失败：" + error.getMessage(), error);
     }
-    return result;
   }
 
   /**
-   * 轻量 RFC 4180 状态机：支持 CRLF、引号内换行和双引号转义。
-   * 上游偶尔在 UTF-8 首列前附加 BOM，这里统一剥离，避免“日期”列无法识别。
+   * 流式 RFC 4180 状态机：一次只保留当前记录，支持 CRLF、引号内换行和双引号转义。
    */
-  private static List<List<String>> parseCsvRecords(String text) {
-    String source = stripBom(String.valueOf(text == null ? "" : text));
-    List<List<String>> records = new ArrayList<>();
-    List<String> row = new ArrayList<>();
-    StringBuilder field = new StringBuilder();
-    boolean quoted = false;
-    for (int index = 0; index < source.length(); index++) {
-      char character = source.charAt(index);
-      if (quoted && character == '"' && index + 1 < source.length() && source.charAt(index + 1) == '"') {
-        field.append('"');
-        index++;
-      } else if (character == '"') {
-        quoted = !quoted;
-      } else if (!quoted && character == ',') {
-        row.add(field.toString());
-        field.setLength(0);
-      } else if (!quoted && (character == '\n' || character == '\r')) {
-        if (character == '\r' && index + 1 < source.length() && source.charAt(index + 1) == '\n') index++;
-        row.add(field.toString());
-        if (row.size() > 1 || !row.getFirst().isEmpty()) records.add(row);
-        row = new ArrayList<>();
-        field.setLength(0);
-      } else {
-        field.append(character);
+  private static final class CsvRecordReader {
+    private final Reader source;
+    private int pending = -1;
+
+    private CsvRecordReader(Reader source) {
+      this.source = source;
+    }
+
+    private List<String> nextRecord() throws IOException {
+      while (true) {
+        List<String> row = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean quoted = false;
+        boolean hasContent = false;
+        while (true) {
+          int value = pending >= 0 ? takePending() : source.read();
+          if (value < 0) {
+            if (quoted) throw new IllegalArgumentException("CSV 存在未闭合的引号");
+            if (!hasContent && row.isEmpty() && field.isEmpty()) return null;
+            row.add(field.toString());
+            return row;
+          }
+          char character = (char) value;
+          hasContent = true;
+          if (quoted) {
+            if (character != '"') {
+              field.append(character);
+              continue;
+            }
+            int next = source.read();
+            if (next == '"') field.append('"');
+            else {
+              quoted = false;
+              pending = next;
+            }
+          } else if (character == '"') {
+            quoted = true;
+          } else if (character == ',') {
+            row.add(field.toString());
+            field.setLength(0);
+          } else if (character == '\n' || character == '\r') {
+            if (character == '\r') {
+              int next = source.read();
+              if (next != '\n') pending = next;
+            }
+            row.add(field.toString());
+            if (row.size() > 1 || !row.getFirst().isEmpty()) return row;
+            break;
+          } else {
+            field.append(character);
+          }
+        }
       }
     }
-    if (quoted) throw new IllegalArgumentException("CSV 存在未闭合的引号");
-    if (!field.isEmpty() || !row.isEmpty()) {
-      row.add(field.toString());
-      records.add(row);
+
+    private int takePending() {
+      int value = pending;
+      pending = -1;
+      return value;
     }
-    return records;
   }
 
   public List<Map<String, Object>> parseDhhAccounts(Object value) {
@@ -218,7 +223,45 @@ public class CsvImportService {
     }
   }
 
-  private String fetchCsv(String url, String token, String userId, String reportName) {
+  private Map<String, Object> dhhRow(Map<String, String> record) {
+    String date = normalizedDate(record.get("日期"));
+    if (date.isBlank()) return null;
+    String task = defaultText(record.get("任务名"));
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("日期", date);
+    row.put("媒体", defaultText(record.get("媒体")));
+    row.put("账户列表", parseDhhAccounts(record.get("账户信息")));
+    row.put("优化师", defaultText(record.get("优化师")));
+    row.put("任务名", task);
+    row.put("项目", projectFromTask(task));
+    for (String field : DHH_NUMERIC_FIELDS) row.put(field, number(record.get(field)));
+    return row;
+  }
+
+  private Map<String, Object> jdRow(Map<String, String> record) {
+    String date = normalizedDate(record.get("业务日期"));
+    if (date.isBlank()) return null;
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("日期", date);
+    row.put("推广位ID", defaultText(record.get("推广位ID")));
+    row.put("推广位名称", defaultText(record.get("推广位名称")));
+    row.put("媒体", defaultText(record.get("媒体")));
+    row.put("媒体账户ID", defaultText(record.get("媒体账户ID")));
+    row.put("媒体账户名称", defaultText(record.get("媒体账户名称")));
+    row.put("推客用户名", defaultText(record.get("推客用户名")));
+    row.put("优化师", defaultText(record.get("优化师")));
+    for (String field : JD_NUMERIC_FIELDS) row.put(field, number(record.get(field)));
+    row.put("条件内预估赔付金额", number(record.get("条件内预估赔付金额(当日)")));
+    return row;
+  }
+
+  private List<Map<String, Object>> fetchCsvRows(
+      String url,
+      String token,
+      String userId,
+      String reportName,
+      Set<String> requiredHeaders,
+      Function<Map<String, String>, Map<String, Object>> mapper) {
     String cleanToken = text(token);
     if (cleanToken.isBlank()) throw new IllegalArgumentException("请粘贴当前 x-token");
     try {
@@ -231,20 +274,17 @@ public class CsvImportService {
           .header("Cookie", "x-token=" + cleanToken)
           .GET()
           .build();
-      HttpResponse<String> response = client.send(
-          request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-      if (response.statusCode() < 200 || response.statusCode() >= 300) {
-        throw new IllegalStateException(reportName + "接口请求失败：" + response.statusCode());
+      HttpResponse<InputStream> response =
+          client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+      try (InputStream body = response.body()) {
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+          throw new IllegalStateException(reportName + "接口请求失败：" + response.statusCode());
+        }
+        if (body == null) {
+          throw new IllegalStateException(reportName + "接口返回空内容，请检查 token 是否有效");
+        }
+        return parseCsvRows(body, requiredHeaders, reportName, mapper);
       }
-      String body = response.body();
-      if (body == null || body.isBlank()) {
-        throw new IllegalStateException(reportName + "接口返回空内容，请检查 token 是否有效");
-      }
-      String leading = stripBom(body).stripLeading();
-      if (leading.startsWith("<") || leading.startsWith("{") || leading.startsWith("[")) {
-        throw new IllegalStateException(reportName + "接口未返回 CSV，请检查 token 是否失效");
-      }
-      return body;
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(reportName + "接口请求被中断", error);
@@ -252,6 +292,52 @@ public class CsvImportService {
       if (error instanceof IllegalStateException state) throw state;
       throw new IllegalStateException(reportName + "接口请求失败：" + error.getMessage(), error);
     }
+  }
+
+  private static List<Map<String, Object>> parseCsvRows(
+      InputStream body,
+      Set<String> requiredHeaders,
+      String reportName,
+      Function<Map<String, String>, Map<String, Object>> mapper) throws IOException {
+    // 响应体不转成完整 String；只保留当前 CSV 记录和最终规范化底表。
+    try (Reader source =
+             new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8), 64 * 1024)) {
+      CsvRecordReader csv = new CsvRecordReader(source);
+      List<String> rawHeaders = csv.nextRecord();
+      if (rawHeaders == null) {
+        throw new IllegalStateException(reportName + "接口返回了空 CSV");
+      }
+      List<String> headers = normalizedHeaders(rawHeaders);
+      String leading = headers.isEmpty() ? "" : headers.getFirst().stripLeading();
+      if (leading.startsWith("<") || leading.startsWith("{") || leading.startsWith("[")) {
+        throw new IllegalStateException(reportName + "接口未返回 CSV，请检查 token 是否失效");
+      }
+      validateCsvSchema(headers, requiredHeaders, reportName);
+      List<Map<String, Object>> rows = new ArrayList<>();
+      List<String> values;
+      while ((values = csv.nextRecord()) != null) {
+        Map<String, Object> mapped = mapper.apply(record(headers, values));
+        if (mapped != null) rows.add(mapped);
+      }
+      return rows;
+    }
+  }
+
+  private static List<String> normalizedHeaders(List<String> headers) {
+    List<String> normalized = new ArrayList<>(headers.size());
+    for (int index = 0; index < headers.size(); index++) {
+      String header = headers.get(index).trim();
+      normalized.add(index == 0 ? stripBom(header) : header);
+    }
+    return normalized;
+  }
+
+  private static Map<String, String> record(List<String> headers, List<String> values) {
+    Map<String, String> item = new LinkedHashMap<>();
+    for (int column = 0; column < headers.size(); column++) {
+      item.put(headers.get(column), column < values.size() ? values.get(column) : "");
+    }
+    return item;
   }
 
   private static String text(Object value) {
@@ -264,13 +350,8 @@ public class CsvImportService {
   }
 
   private static void validateCsvSchema(
-      String raw, Set<String> requiredHeaders, String reportName) {
-    List<List<String>> records = parseCsvRecords(raw);
-    if (records.isEmpty()) {
-      throw new IllegalStateException(reportName + "接口返回了空 CSV");
-    }
-    Set<String> actual = new LinkedHashSet<>(
-        records.getFirst().stream().map(String::trim).toList());
+      List<String> headers, Set<String> requiredHeaders, String reportName) {
+    Set<String> actual = new LinkedHashSet<>(headers);
     List<String> missing = requiredHeaders.stream()
         .filter(header -> !actual.contains(header))
         .sorted()

@@ -40,11 +40,13 @@ class CoreBehaviorTest {
   @Test
   void csvParserSupportsQuotedCommasAndEscapedQuotes() {
     List<Map<String, String>> rows = CsvImportService.parseCsv(
-        "名称,备注,金额\r\n账户A,\"包含,逗号\",100\r\n账户B,\"含\"\"引号\",200");
+        "名称,备注,金额\r\n账户A,\"包含,逗号\",100\r\n账户B,\"含\"\"引号\",200"
+            + "\r\n账户C,\"跨行\n备注\",300");
 
-    assertEquals(2, rows.size());
+    assertEquals(3, rows.size());
     assertEquals("包含,逗号", rows.getFirst().get("备注"));
-    assertEquals("含\"引号", rows.getLast().get("备注"));
+    assertEquals("含\"引号", rows.get(1).get("备注"));
+    assertEquals("跨行\n备注", rows.getLast().get("备注"));
   }
 
   @Test

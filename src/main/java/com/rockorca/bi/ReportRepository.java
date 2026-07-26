@@ -132,7 +132,7 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readDhhRows() {
-    return readDhhRows("", "", "");
+    return readDhhRows("", "", "", "");
   }
 
   /**
@@ -140,12 +140,20 @@ public class ReportRepository {
    * 避免为了生成昨天的预警而扫描整张大航海底表。
    */
   public List<Map<String, Object>> readDhhRows(String start, String end, String extraDate) {
+    return readDhhRows(start, end, extraDate, "");
+  }
+
+  public List<Map<String, Object>> readDhhRows(
+      String start, String end, String extraDate, String accountIdValue) {
+    String accountId = normalizedAccountId(accountIdValue);
     RangeQuery query = rangeQuery("""
         SELECT business_date, media, optimizer, project_name, task_name, account_info,
                spend, cash_spend, reward_spend, estimated_commission, settlement_count,
                conversion_count, registration_count
           FROM dhh_daily_rows
-        """, start, end, extraDate);
+        """, start, end, extraDate,
+        accountId.isBlank() ? "" : "JSON_SEARCH(account_info, 'one', ?) IS NOT NULL",
+        accountId);
     List<Map<String, Object>> rows = new ArrayList<>();
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement(query.sql())) {
@@ -176,11 +184,16 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readJdRows() {
-    return readJdRows("", "");
+    return readJdRows("", "", "");
   }
 
   /** 只从 MySQL 读取用户选择的京东业务日期范围。 */
   public List<Map<String, Object>> readJdRows(String start, String end) {
+    return readJdRows(start, end, "");
+  }
+
+  public List<Map<String, Object>> readJdRows(String start, String end, String accountIdValue) {
+    String accountId = normalizedAccountId(accountIdValue);
     RangeQuery query = rangeQuery("""
         SELECT business_date, promotion_id, promotion_name, media, media_account_id,
                media_account_name, promoter_username, optimizer, conversion_count,
@@ -191,7 +204,8 @@ public class ReportRepository {
                first_purchase_estimated_commission, return_estimated_commission,
                first_purchase_actual_commission, return_actual_commission
           FROM jd_daily_rows
-        """, start, end, "");
+        """, start, end, "",
+        accountId.isBlank() ? "" : "media_account_id = ?", accountId);
     List<Map<String, Object>> rows = new ArrayList<>();
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement(query.sql())) {
@@ -234,7 +248,12 @@ public class ReportRepository {
   }
 
   private static RangeQuery rangeQuery(
-      String selectSql, String startValue, String endValue, String extraDateValue) {
+      String selectSql,
+      String startValue,
+      String endValue,
+      String extraDateValue,
+      String filterCondition,
+      String filterValue) {
     String start = normalizedDate(startValue);
     String end = normalizedDate(endValue);
     String extraDate = normalizedDate(extraDateValue);
@@ -254,13 +273,25 @@ public class ReportRepository {
     }
 
     StringBuilder sql = new StringBuilder(selectSql);
+    List<String> whereConditions = new ArrayList<>();
     if (!rangeConditions.isEmpty()) {
-      sql.append(" WHERE (").append(String.join(" AND ", rangeConditions)).append(")");
+      whereConditions.add("(" + String.join(" AND ", rangeConditions) + ")");
     }
     if (!extraDate.isBlank()) {
-      sql.append(rangeConditions.isEmpty() ? " WHERE " : " OR ");
-      sql.append("business_date = ?");
+      if (rangeConditions.isEmpty()) {
+        whereConditions.add("business_date = ?");
+      } else {
+        String dateCondition = whereConditions.removeLast();
+        whereConditions.add("(" + dateCondition + " OR business_date = ?)");
+      }
       parameters.add(extraDate);
+    }
+    if (filterCondition != null && !filterCondition.isBlank()) {
+      whereConditions.add(filterCondition);
+      parameters.add(filterValue);
+    }
+    if (!whereConditions.isEmpty()) {
+      sql.append(" WHERE ").append(String.join(" AND ", whereConditions));
     }
     sql.append(" ORDER BY business_date ASC");
     return new RangeQuery(sql.toString(), parameters);
@@ -276,6 +307,17 @@ public class ReportRepository {
     } catch (DateTimeParseException error) {
       throw new IllegalArgumentException("日期格式错误：" + date, error);
     }
+  }
+
+  private static String normalizedAccountId(String value) {
+    String accountId = value == null ? "" : value.trim();
+    if (accountId.isBlank()) {
+      return "";
+    }
+    if (accountId.length() > 100 || !accountId.matches("[0-9]+")) {
+      throw new IllegalArgumentException("账户 ID 只能包含数字，且长度不能超过 100 位");
+    }
+    return accountId;
   }
 
   private static void bindRangeParameters(

@@ -61,11 +61,15 @@ public class ReportService {
   }
 
   public Map<String, Object> analyzeDhh(String start, String end) {
+    return analyzeDhh(start, end, "");
+  }
+
+  public Map<String, Object> analyzeDhh(String start, String end, String accountId) {
     String selectedStart = text(start);
     String selectedEnd = text(end);
     return buildDhhAnalysis(
         repository.readDhhRows(
-            selectedStart, selectedEnd, previousBeijingDate(Instant.now())),
+            selectedStart, selectedEnd, previousBeijingDate(Instant.now()), text(accountId)),
         selectedStart, selectedEnd, repository.latestSyncTime("dhh"));
   }
 
@@ -88,10 +92,15 @@ public class ReportService {
   }
 
   public Map<String, Object> analyzeJd(String start, String end, boolean excludeUnknownOptimizer) {
+    return analyzeJd(start, end, excludeUnknownOptimizer, "");
+  }
+
+  public Map<String, Object> analyzeJd(
+      String start, String end, boolean excludeUnknownOptimizer, String accountId) {
     String selectedStart = text(start);
     String selectedEnd = text(end);
     return buildJdAnalysis(
-        repository.readJdRows(selectedStart, selectedEnd),
+        repository.readJdRows(selectedStart, selectedEnd, text(accountId)),
         selectedStart, selectedEnd, excludeUnknownOptimizer,
         repository.latestSyncTime("jd"));
   }

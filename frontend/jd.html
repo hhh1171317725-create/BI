@@ -153,6 +153,7 @@
 
     input { width: 390px; }
     input[type="date"] { width: 155px; }
+    #accountId { width: 220px; }
     select { min-width: 260px; }
 
     button {
@@ -515,6 +516,9 @@
       </label>
       <label>结束日期（可选）
         <input id="end" type="date" />
+      </label>
+      <label>账户 ID（可选）
+        <input id="accountId" type="search" inputmode="numeric" placeholder="输入完整媒体账户 ID" />
       </label>
       <label>是否排除未知优化师
         <select id="excludeUnknownOptimizer">
@@ -1187,6 +1191,7 @@
           report = await post("/api/jd/analyze", {
             start: $("#start").value,
             end: $("#end").value,
+            accountId: $("#accountId").value.trim(),
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
           rememberToken(token);
@@ -1219,6 +1224,7 @@
           report = await post("/api/jd/analyze", {
             start,
             end,
+            accountId: $("#accountId").value.trim(),
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
           if (reset) {
@@ -1240,6 +1246,9 @@
       $("#load").addEventListener("click", loadLatest);
       $("#copyToken").addEventListener("click", copyToken);
       $("#apply").addEventListener("click", () => applyDateFilter(false));
+      $("#accountId").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") applyDateFilter(false);
+      });
       $("#reset").addEventListener("click", () => applyDateFilter(true));
 
       $("#tabs").addEventListener("click", (event) => {
@@ -1342,6 +1351,7 @@
         range: report?.range || ["-", "-"],
         summary: report?.summary || {},
         excludeUnknownOptimizer: report?.excludeUnknownOptimizer ?? true,
+        accountId: $("#accountId").value.trim(),
         currentDimension: dimensions[active]?.label || "优化师",
         topOptimizers: (report?.by_optimizer || []).slice(0, 12),
         currentRows: (report?.[active] || []).slice(0, 12),
@@ -1351,6 +1361,7 @@
       post("/api/jd/analyze", {
         start: defaultMonthStart,
         end: defaultEndDate,
+        accountId: "",
         excludeUnknownOptimizer: true,
       })
         .then((current) => {

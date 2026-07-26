@@ -78,7 +78,7 @@ class ApiControllerTest {
   void dhhApisDelegateWithDefaultsAndPayload() throws Exception {
     when(reports.currentDhh()).thenReturn(Map.of("source", "current"));
     when(reports.loadDhh("report-token", "20")).thenReturn(Map.of("source", "load"));
-    when(reports.analyzeDhh("2026-07-01", "2026-07-25"))
+    when(reports.analyzeDhh("2026-07-01", "2026-07-25", "86784411"))
         .thenReturn(Map.of("source", "analyze"));
 
     mvc.perform(get("/api/current"))
@@ -91,19 +91,21 @@ class ApiControllerTest {
         .andExpect(jsonPath("$.source").value("load"));
     mvc.perform(post("/api/analyze")
             .contentType("application/json")
-            .content("{\"start\":\"2026-07-01\",\"end\":\"2026-07-25\"}"))
+            .content("""
+                {"start":"2026-07-01","end":"2026-07-25","accountId":"86784411"}
+                """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("analyze"));
 
     verify(reports).loadDhh("report-token", "20");
-    verify(reports).analyzeDhh("2026-07-01", "2026-07-25");
+    verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411");
   }
 
   @Test
   void jdApisDefaultToExcludingUnknownOptimizers() throws Exception {
     when(reports.currentJd()).thenReturn(Map.of("source", "current"));
     when(reports.loadJd("report-token", "20", true)).thenReturn(Map.of("source", "load"));
-    when(reports.analyzeJd("2026-07-01", "2026-07-25", false))
+    when(reports.analyzeJd("2026-07-01", "2026-07-25", false, "1864950618183252"))
         .thenReturn(Map.of("source", "analyze"));
 
     mvc.perform(get("/api/jd/current"))
@@ -117,13 +119,15 @@ class ApiControllerTest {
     mvc.perform(post("/api/jd/analyze")
             .contentType("application/json")
             .content("""
-                {"start":"2026-07-01","end":"2026-07-25","excludeUnknownOptimizer":false}
+                {"start":"2026-07-01","end":"2026-07-25",
+                 "excludeUnknownOptimizer":false,"accountId":"1864950618183252"}
                 """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("analyze"));
 
     verify(reports).loadJd("report-token", "20", true);
-    verify(reports).analyzeJd("2026-07-01", "2026-07-25", false);
+    verify(reports).analyzeJd(
+        "2026-07-01", "2026-07-25", false, "1864950618183252");
   }
 
   @Test

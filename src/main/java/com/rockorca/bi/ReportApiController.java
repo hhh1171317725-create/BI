@@ -33,7 +33,8 @@ public class ReportApiController {
   public Map<String, Object> analyzeDhh(@RequestBody Map<String, Object> payload) {
     return reports.analyzeDhh(
         ReportService.text(payload.get("start")),
-        ReportService.text(payload.get("end")));
+        ReportService.text(payload.get("end")),
+        ReportService.text(payload.get("accountId")));
   }
 
   @GetMapping("/jd/current")
@@ -54,7 +55,8 @@ public class ReportApiController {
     return reports.analyzeJd(
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")),
-        !Boolean.FALSE.equals(payload.get("excludeUnknownOptimizer")));
+        !Boolean.FALSE.equals(payload.get("excludeUnknownOptimizer")),
+        ReportService.text(payload.get("accountId")));
   }
 
   private static String defaultUserId(Object value) {

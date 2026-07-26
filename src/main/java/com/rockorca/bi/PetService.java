@@ -54,10 +54,11 @@ public class PetService {
     List<String> range = stringList(context.get("range"));
     String start = range.isEmpty() ? "" : range.getFirst();
     String end = range.size() < 2 ? "" : range.get(1);
+    String accountId = ReportService.text(context.get("accountId"));
     // 数据助手也只读取页面当前选择的日期范围，不扫描整张底表。
     List<Map<String, Object>> source = jd
-        ? repository.readJdRows(start, end)
-        : repository.readDhhRows(start, end, "");
+        ? repository.readJdRows(start, end, accountId)
+        : repository.readDhhRows(start, end, "", accountId);
     Map<String, Object> enriched = new LinkedHashMap<>(context);
     enriched.put("底表数据", buildBottomData(message, context, source, jd));
     try {

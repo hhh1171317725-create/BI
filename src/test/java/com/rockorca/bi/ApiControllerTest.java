@@ -33,7 +33,12 @@ class ApiControllerTest {
     reports = mock(ReportService.class);
     pets = mock(PetService.class);
     when(sessions.authenticated(any(HttpServletRequest.class))).thenReturn(true);
-    mvc = MockMvcBuilders.standaloneSetup(new ApiController(sessions, reports, pets)).build();
+    mvc = MockMvcBuilders.standaloneSetup(
+            new AuthApiController(sessions),
+            new ReportApiController(reports),
+            new PetApiController(pets))
+        .setControllerAdvice(new ApiExceptionHandler())
+        .build();
   }
 
   @Test

@@ -15,7 +15,7 @@
   <artifactId>marketing-reports</artifactId>
   <version>1.0.0</version>
   <name>marketing-reports</name>
-  <description>大航海与京东营销日报分析系统</description>
+  <description>大航海与京东营销日报分析系统 JSON API</description>
 
   <properties>
     <java.version>21</java.version>
@@ -43,24 +43,6 @@
   </dependencies>
 
   <build>
-    <resources>
-      <resource>
-        <directory>src/main/resources</directory>
-      </resource>
-      <resource>
-        <directory>${project.basedir}</directory>
-        <targetPath>static</targetPath>
-        <includes>
-          <include>index.html</include>
-          <include>jd.html</include>
-          <include>login.html</include>
-          <include>pet.js</include>
-          <include>pet.css</include>
-          <include>echarts.min.js</include>
-          <include>assets/miku-pet.png</include>
-        </includes>
-      </resource>
-    </resources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

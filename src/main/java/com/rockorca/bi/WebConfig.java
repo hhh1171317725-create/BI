@@ -14,6 +14,7 @@ public class WebConfig implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    registry.addInterceptor(authInterceptor).addPathPatterns("/**");
+    // 页面和静态资源不进入后端，只保护 JSON API。
+    registry.addInterceptor(authInterceptor).addPathPatterns("/api/**");
   }
 }

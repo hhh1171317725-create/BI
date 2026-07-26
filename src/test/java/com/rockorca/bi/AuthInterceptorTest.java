@@ -24,34 +24,27 @@ class AuthInterceptorTest {
   }
 
   @Test
-  void publicRoutesAreAllowedWithoutSession() throws Exception {
-    for (String path : new String[] {
-        "/login", "/api/login", "/api/logout", "/assets/miku-pet.png"
-    }) {
+  void loginApisAreAllowedWithoutSession() throws Exception {
+    for (String path : new String[] {"/api/login", "/api/logout"}) {
       assertTrue(interceptor.preHandle(
-          new MockHttpServletRequest("GET", path), new MockHttpServletResponse(), new Object()));
+          new MockHttpServletRequest("POST", path), new MockHttpServletResponse(), new Object()));
     }
   }
 
   @Test
-  void unauthenticatedApiGetsJson401AndPageGetsLoginRedirect() throws Exception {
+  void unauthenticatedApiGetsJson401() throws Exception {
     when(sessions.authenticated(any())).thenReturn(false);
-    MockHttpServletResponse apiResponse = new MockHttpServletResponse();
-    MockHttpServletResponse pageResponse = new MockHttpServletResponse();
+    MockHttpServletResponse response = new MockHttpServletResponse();
 
     assertFalse(interceptor.preHandle(
-        new MockHttpServletRequest("GET", "/api/current"), apiResponse, new Object()));
-    assertEquals(401, apiResponse.getStatus());
-    assertTrue(apiResponse.getContentAsString().contains("登录已失效"));
-
-    assertFalse(interceptor.preHandle(
-        new MockHttpServletRequest("GET", "/jd"), pageResponse, new Object()));
-    assertEquals(302, pageResponse.getStatus());
-    assertEquals("/login", pageResponse.getRedirectedUrl());
+        new MockHttpServletRequest("GET", "/api/current"), response, new Object()));
+    assertEquals(401, response.getStatus());
+    assertTrue(response.getContentType().startsWith("application/json"));
+    assertTrue(response.getContentAsString().contains("登录已失效"));
   }
 
   @Test
-  void authenticatedRequestPasses() throws Exception {
+  void authenticatedApiPasses() throws Exception {
     when(sessions.authenticated(any())).thenReturn(true);
     assertTrue(interceptor.preHandle(
         new MockHttpServletRequest("GET", "/api/current"),

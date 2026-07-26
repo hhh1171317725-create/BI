@@ -1,4 +1,13 @@
-# 营销日报分析（Java / Spring Boot）
+# 营销日报分析（前后端分离）
+
+项目已拆分为两个独立部署单元：
+
+- `frontend/` 是纯静态前端，由 Nginx 直接托管；
+- Spring Boot 是纯 JSON 后端，只处理 `/api/*`，不再返回 HTML、JS、CSS、图片或页面跳转。
+
+前端继续使用 `/`、`/jd` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
+用户访问地址保持不变。未登录时后端返回 JSON `401`，由前端跳转到登录页；后端异常也统一
+返回 JSON，避免前端收到 HTML 错误页。
 
 访问页面后，粘贴当前的报表 `x-token` 并点击“加载全量数据”。成功更新后，Token 会保存在不纳入 Git 的服务器 `.runtime/scheduler-credentials.json`（Linux 权限为 `600`）以及当前浏览器的本地存储中。点击大航海的“海”或京东的“京”可以复制，两个页面共用同一份本地 Token。
 
@@ -9,7 +18,8 @@
 
 服务进程会按北京时间每天 09:00 自动拉取大航海和京东全量数据，并在同一数据库事务中更新两张底表。首次部署或 Token 失效后，在任一报表页面手动成功更新一次即可刷新定时任务凭据；自动更新失败会回滚事务，不会覆盖已有数据。
 
-后端已完全迁移为 Java 21 + Spring Boot，原有页面文件和 `/api/*` 接口地址保持不变。页面资源会在 Maven 构建时原样打入可执行 JAR。
+后端使用 Java 21 + Spring Boot，原有 `/api/*` 接口地址和返回字段保持不变。页面资源位于
+`frontend/`，不会打入可执行 JAR。
 
 ## 登录
 
@@ -42,7 +52,10 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 3. 全量 CSV 较大时，将 `deploy/dahanghai-analysis-memory.conf` 复制到
    `/etc/systemd/system/dahanghai-analysis.service.d/memory.conf`，让 Java 最多使用服务器
    50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
-3. 在宝塔网站配置中，将 `www.huanghaha.fun` 反向代理到 `http://127.0.0.1:8765`，并配置 SSL。
+3. 在宝塔网站配置中将网站根目录设为 `/www/wwwroot/BI/frontend`。
+4. 不要把整个网站代理到 Java。仅将 `/api/` 反向代理到
+   `http://127.0.0.1:8765`，并为 `/login`、`/jd` 配置静态页面映射。可参考
+   `deploy/nginx-huanghaha.fun.conf` 中的 `location` 配置；已有 SSL 配置应保留。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：
 

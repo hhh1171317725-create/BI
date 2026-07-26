@@ -12,6 +12,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -130,16 +132,25 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readDhhRows() {
-    String sql = """
+    return readDhhRows("", "", "");
+  }
+
+  /**
+   * 只从 MySQL 读取指定业务日期范围。extraDate 用于额外读取预警日期，
+   * 避免为了生成昨天的预警而扫描整张大航海底表。
+   */
+  public List<Map<String, Object>> readDhhRows(String start, String end, String extraDate) {
+    RangeQuery query = rangeQuery("""
         SELECT business_date, media, optimizer, project_name, task_name, account_info,
                spend, cash_spend, reward_spend, estimated_commission, settlement_count,
                conversion_count, registration_count
           FROM dhh_daily_rows
-        """;
+        """, start, end, extraDate);
     List<Map<String, Object>> rows = new ArrayList<>();
     try (Connection connection = dataSource.getConnection();
-         PreparedStatement statement = connection.prepareStatement(sql);
-         ResultSet result = statement.executeQuery()) {
+         PreparedStatement statement = connection.prepareStatement(query.sql())) {
+      bindRangeParameters(statement, query.parameters());
+      try (ResultSet result = statement.executeQuery()) {
       while (result.next()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("日期", String.valueOf(result.getObject("business_date")).substring(0, 10));
@@ -157,6 +168,7 @@ public class ReportRepository {
         row.put("注册数", result.getDouble("registration_count"));
         rows.add(row);
       }
+      }
       return rows;
     } catch (SQLException error) {
       throw databaseError(error);
@@ -164,7 +176,12 @@ public class ReportRepository {
   }
 
   public List<Map<String, Object>> readJdRows() {
-    String sql = """
+    return readJdRows("", "");
+  }
+
+  /** 只从 MySQL 读取用户选择的京东业务日期范围。 */
+  public List<Map<String, Object>> readJdRows(String start, String end) {
+    RangeQuery query = rangeQuery("""
         SELECT business_date, promotion_id, promotion_name, media, media_account_id,
                media_account_name, promoter_username, optimizer, conversion_count,
                billable_conversion_count, deduplicated_order_count, first_purchase_order_count,
@@ -174,11 +191,12 @@ public class ReportRepository {
                first_purchase_estimated_commission, return_estimated_commission,
                first_purchase_actual_commission, return_actual_commission
           FROM jd_daily_rows
-        """;
+        """, start, end, "");
     List<Map<String, Object>> rows = new ArrayList<>();
     try (Connection connection = dataSource.getConnection();
-         PreparedStatement statement = connection.prepareStatement(sql);
-         ResultSet result = statement.executeQuery()) {
+         PreparedStatement statement = connection.prepareStatement(query.sql())) {
+      bindRangeParameters(statement, query.parameters());
+      try (ResultSet result = statement.executeQuery()) {
       while (result.next()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("日期", String.valueOf(result.getObject("business_date")).substring(0, 10));
@@ -208,11 +226,66 @@ public class ReportRepository {
         putDouble(row, result, "回流实际佣金", "return_actual_commission");
         rows.add(row);
       }
+      }
       return rows;
     } catch (SQLException error) {
       throw databaseError(error);
     }
   }
+
+  private static RangeQuery rangeQuery(
+      String selectSql, String startValue, String endValue, String extraDateValue) {
+    String start = normalizedDate(startValue);
+    String end = normalizedDate(endValue);
+    String extraDate = normalizedDate(extraDateValue);
+    if (!start.isBlank() && !end.isBlank() && start.compareTo(end) > 0) {
+      throw new IllegalArgumentException("开始日期不能晚于结束日期");
+    }
+
+    List<String> rangeConditions = new ArrayList<>();
+    List<String> parameters = new ArrayList<>();
+    if (!start.isBlank()) {
+      rangeConditions.add("business_date >= ?");
+      parameters.add(start);
+    }
+    if (!end.isBlank()) {
+      rangeConditions.add("business_date <= ?");
+      parameters.add(end);
+    }
+
+    StringBuilder sql = new StringBuilder(selectSql);
+    if (!rangeConditions.isEmpty()) {
+      sql.append(" WHERE (").append(String.join(" AND ", rangeConditions)).append(")");
+    }
+    if (!extraDate.isBlank()) {
+      sql.append(rangeConditions.isEmpty() ? " WHERE " : " OR ");
+      sql.append("business_date = ?");
+      parameters.add(extraDate);
+    }
+    sql.append(" ORDER BY business_date ASC");
+    return new RangeQuery(sql.toString(), parameters);
+  }
+
+  private static String normalizedDate(String value) {
+    String date = value == null ? "" : value.trim();
+    if (date.isBlank() || "-".equals(date)) {
+      return "";
+    }
+    try {
+      return LocalDate.parse(date).toString();
+    } catch (DateTimeParseException error) {
+      throw new IllegalArgumentException("日期格式错误：" + date, error);
+    }
+  }
+
+  private static void bindRangeParameters(
+      PreparedStatement statement, List<String> parameters) throws SQLException {
+    for (int index = 0; index < parameters.size(); index++) {
+      statement.setString(index + 1, parameters.get(index));
+    }
+  }
+
+  private record RangeQuery(String sql, List<String> parameters) {}
 
   public String latestSyncTime(String reportType) {
     String sql = """

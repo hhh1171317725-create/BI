@@ -53,13 +53,20 @@ public class ReportService {
   }
 
   public Map<String, Object> currentDhh() {
+    String alertDate = previousBeijingDate(Instant.now());
+    String start = alertDate.substring(0, 8) + "01";
     return buildDhhAnalysis(
-        repository.readDhhRows(), beijingMonthStart(Instant.now()), "", repository.latestSyncTime("dhh"));
+        repository.readDhhRows(start, alertDate, alertDate),
+        start, alertDate, repository.latestSyncTime("dhh"));
   }
 
   public Map<String, Object> analyzeDhh(String start, String end) {
+    String selectedStart = text(start);
+    String selectedEnd = text(end);
     return buildDhhAnalysis(
-        repository.readDhhRows(), text(start), text(end), repository.latestSyncTime("dhh"));
+        repository.readDhhRows(
+            selectedStart, selectedEnd, previousBeijingDate(Instant.now())),
+        selectedStart, selectedEnd, repository.latestSyncTime("dhh"));
   }
 
   public Map<String, Object> loadDhh(String token, String userId) {
@@ -73,14 +80,19 @@ public class ReportService {
   }
 
   public Map<String, Object> currentJd() {
+    String end = previousBeijingDate(Instant.now());
+    String start = end.substring(0, 8) + "01";
     return buildJdAnalysis(
-        repository.readJdRows(), beijingMonthStart(Instant.now()), "", true,
+        repository.readJdRows(start, end), start, end, true,
         repository.latestSyncTime("jd"));
   }
 
   public Map<String, Object> analyzeJd(String start, String end, boolean excludeUnknownOptimizer) {
+    String selectedStart = text(start);
+    String selectedEnd = text(end);
     return buildJdAnalysis(
-        repository.readJdRows(), text(start), text(end), excludeUnknownOptimizer,
+        repository.readJdRows(selectedStart, selectedEnd),
+        selectedStart, selectedEnd, excludeUnknownOptimizer,
         repository.latestSyncTime("jd"));
   }
 
@@ -90,8 +102,10 @@ public class ReportService {
       List<Map<String, Object>> rows = importer.fetchJdRows(token, userId);
       saveSchedulerCredentials(token, userId);
       repository.replaceOne("jd", rows, "manual");
+      String end = previousBeijingDate(Instant.now());
+      String start = end.substring(0, 8) + "01";
       return buildJdAnalysis(
-          repository.readJdRows(), beijingMonthStart(Instant.now()), "", excludeUnknownOptimizer,
+          repository.readJdRows(start, end), start, end, excludeUnknownOptimizer,
           repository.latestSyncTime("jd"));
     });
   }

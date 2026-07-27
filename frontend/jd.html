@@ -490,6 +490,7 @@
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
       <div class="header-actions">
+        <button class="report-link" id="export" type="button">导出当前报表</button>
         <a class="report-link" href="/">返回大航海日报</a>
         <button class="report-link" id="logout" type="button">退出登录</button>
       </div>
@@ -849,6 +850,41 @@
         const columns = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column));
         renderTableTools(tools, scope, allColumns, fixedColumns);
         return { rows: sortRows(rows, scope), columns };
+      }
+
+      function downloadCsv(filename, columns, rows) {
+        const cell = (value) => {
+          let text = String(value ?? "");
+          if (/^[=+\-@]/.test(text)) text = `'${text}`;
+          return `"${text.replaceAll('"', '""')}"`;
+        };
+        const csv = "\ufeff" + [columns, ...rows.map((row) => columns.map((column) => row[column]))]
+          .map((row) => row.map(cell).join(","))
+          .join("\r\n");
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 0);
+      }
+
+      function exportCurrent() {
+        if (!report) {
+          setStatus("暂无可导出的报表数据。", "error");
+          return;
+        }
+        const config = dimensions[active];
+        const allColumns = active === "by_account"
+          ? [config.key, "媒体账户ID", ...metricColumns]
+          : [config.key, ...metricColumns];
+        const scope = `main:${active}`;
+        const setting = tableSetting(scope);
+        const selectedColumns = Array.isArray(setting.columns) ? setting.columns : allColumns;
+        const columns = allColumns.filter((column) => column === config.key || selectedColumns.includes(column));
+        const rows = sortRows(Array.isArray(report[active]) ? report[active] : [], scope);
+        const range = Array.isArray(report.range) ? report.range : ["全部", "全部"];
+        downloadCsv(`京东CPA_${config.label}_${range[0]}_${range[1]}.csv`, columns, rows);
+        setStatus(`已导出 ${rows.length} 条${config.label}汇总数据。`, "success");
       }
 
       function toggleSort(scope, column) {
@@ -1244,6 +1280,7 @@
       }
 
       $("#load").addEventListener("click", loadLatest);
+      $("#export").addEventListener("click", exportCurrent);
       $("#copyToken").addEventListener("click", copyToken);
       $("#apply").addEventListener("click", () => applyDateFilter(false));
       $("#accountId").addEventListener("keydown", (event) => {

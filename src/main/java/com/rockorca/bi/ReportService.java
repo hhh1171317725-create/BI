@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,12 +35,15 @@ public class ReportService {
   public static final ZoneId BEIJING = ZoneId.of("Asia/Shanghai");
   public static final List<String> DHH_NUMERIC_FIELDS =
       List.of("消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数");
+  private static final long JD_ANALYSIS_CACHE_TTL_MILLIS = 120_000;
+  private static final int JD_ANALYSIS_CACHE_MAX_ENTRIES = 6;
 
   private final ReportRepository repository;
   private final CsvImportService importer;
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
   private final AtomicBoolean refreshRunning = new AtomicBoolean(false);
+  private final Map<JdAnalysisKey, CachedJdAnalysis> jdAnalysisCache = new ConcurrentHashMap<>();
 
   public ReportService(
       ReportRepository repository,
@@ -86,9 +90,7 @@ public class ReportService {
   public Map<String, Object> currentJd() {
     String end = previousBeijingDate(Instant.now());
     String start = end.substring(0, 8) + "01";
-    return buildJdAnalysis(
-        repository.readJdRows(start, end), start, end, true,
-        repository.latestSyncTime("jd"));
+    return cachedJdAnalysis(start, end, true, "");
   }
 
   public Map<String, Object> analyzeJd(String start, String end, boolean excludeUnknownOptimizer) {
@@ -99,10 +101,8 @@ public class ReportService {
       String start, String end, boolean excludeUnknownOptimizer, String accountId) {
     String selectedStart = text(start);
     String selectedEnd = text(end);
-    return buildJdAnalysis(
-        repository.readJdRows(selectedStart, selectedEnd, text(accountId)),
-        selectedStart, selectedEnd, excludeUnknownOptimizer,
-        repository.latestSyncTime("jd"));
+    return cachedJdAnalysis(
+        selectedStart, selectedEnd, excludeUnknownOptimizer, text(accountId));
   }
 
   public Map<String, Object> loadJd(
@@ -111,11 +111,10 @@ public class ReportService {
       List<Map<String, Object>> rows = importer.fetchJdRows(token, userId);
       saveSchedulerCredentials(token, userId);
       repository.replaceOne("jd", rows, "manual");
+      jdAnalysisCache.clear();
       String end = previousBeijingDate(Instant.now());
       String start = end.substring(0, 8) + "01";
-      return buildJdAnalysis(
-          repository.readJdRows(start, end), start, end, excludeUnknownOptimizer,
-          repository.latestSyncTime("jd"));
+      return cachedJdAnalysis(start, end, excludeUnknownOptimizer, "");
     });
   }
 
@@ -138,6 +137,7 @@ public class ReportService {
       List<Map<String, Object>> jdRows =
           importer.fetchJdRows(credentials.get("token"), credentials.get("userId"));
       repository.replaceAll(dhhRows, jdRows, "scheduled");
+      jdAnalysisCache.clear();
       return null;
     });
   }
@@ -152,6 +152,22 @@ public class ReportService {
     } finally {
       refreshRunning.set(false);
     }
+  }
+
+  private Map<String, Object> cachedJdAnalysis(
+      String start, String end, boolean excludeUnknownOptimizer, String accountId) {
+    String cachedAt = repository.latestSyncTime("jd");
+    JdAnalysisKey key = new JdAnalysisKey(start, end, excludeUnknownOptimizer, accountId, cachedAt);
+    long now = System.currentTimeMillis();
+    jdAnalysisCache.entrySet().removeIf(entry -> now - entry.getValue().createdAtMillis() >= JD_ANALYSIS_CACHE_TTL_MILLIS);
+    CachedJdAnalysis cached = jdAnalysisCache.get(key);
+    if (cached != null) return cached.analysis();
+    if (jdAnalysisCache.size() >= JD_ANALYSIS_CACHE_MAX_ENTRIES) jdAnalysisCache.clear();
+
+    Map<String, Object> analysis = buildJdAnalysis(
+        repository.readJdRows(start, end, accountId), start, end, excludeUnknownOptimizer, cachedAt);
+    jdAnalysisCache.put(key, new CachedJdAnalysis(now, analysis));
+    return analysis;
   }
 
   public Map<String, Object> buildDhhAnalysis(
@@ -517,6 +533,15 @@ public class ReportService {
     for (String field : fields) values.put(field, 0d);
     return values;
   }
+
+  private record JdAnalysisKey(
+      String start,
+      String end,
+      boolean excludeUnknownOptimizer,
+      String accountId,
+      String cachedAt) {}
+
+  private record CachedJdAnalysis(long createdAtMillis, Map<String, Object> analysis) {}
 
   @SuppressWarnings("unchecked")
   public static Map<String, Object> mapOf(Object... values) {

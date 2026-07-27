@@ -13,6 +13,12 @@
 
 如果已经导入过没有备注的旧版表，不要删除表，直接在当前数据库中导入 `add_comments.sql`，即可为现有表和字段补充中文备注。
 
+已部署的数据库还应一次性导入 `add_jd_query_indexes.sql`，为京东账户 ID 筛选补充联合索引：
+
+```bash
+mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/add_jd_query_indexes.sql
+```
+
 ```bash
 mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/schema.sql
 ```

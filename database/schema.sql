@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS `jd_daily_rows` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_jd_row_hash` (`row_hash`),
   KEY `idx_jd_date` (`business_date`),
+  KEY `idx_jd_account_id_date` (`media_account_id`, `business_date`),
   KEY `idx_jd_optimizer_date` (`optimizer`, `business_date`),
   KEY `idx_jd_account_date` (`media_account_name`(191), `business_date`),
   KEY `idx_jd_promoter_date` (`promoter_username`, `business_date`)

@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -112,7 +113,7 @@ public class JdDeeplinkService {
 
     String token = required("XZ_DEEPLINK_TOKEN");
     String signature = required("XZ_DEEPLINK_SIGN");
-    String timestamp = required("XZ_DEEPLINK_TIMESTAMP");
+    String timestamp = String.valueOf(Instant.now().getEpochSecond());
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("interface_version", 1);
     payload.put("lp_url", landingPage);

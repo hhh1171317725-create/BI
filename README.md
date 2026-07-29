@@ -57,7 +57,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 ## 京东深链工具
 
 将 `deploy/deeplink.env.example` 复制为服务器运行目录中的 `.runtime/deeplink.env`，填写当前有效的
-`XZ_DEEPLINK_TOKEN`、`XZ_DEEPLINK_SIGN` 和 `XZ_DEEPLINK_TIMESTAMP`。其余渠道、平台、账户、PID 与来源参数
+`XZ_DEEPLINK_TOKEN` 和 `XZ_DEEPLINK_SIGN`。`X-Request-Timestamp` 由服务端在每次请求时自动生成。其余渠道、平台、账户、PID 与来源参数
 已经按当前默认值写入模板；需要调整时只改该文件并重启服务即可。该文件被 Git 忽略，浏览器也不会收到其中的任何值。
 
 ```bash

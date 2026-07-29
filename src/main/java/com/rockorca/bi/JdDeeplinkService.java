@@ -8,12 +8,18 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +27,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class JdDeeplinkService {
   private static final String DEFAULT_URL = "https://s.zaore.com/xz-cloud-api/v2/deeplink/jd";
+  private static final int MAX_BATCH_SIZE = 100;
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
   private final Map<String, JdProduct> productsBySku = new HashMap<>();
@@ -60,6 +67,47 @@ public class JdDeeplinkService {
     String skuId = String.valueOf(skuIdValue == null ? "" : skuIdValue).trim();
     JdProduct product = productsBySku.get(skuId);
     if (product == null) throw new IllegalArgumentException("请选择底表中的 SKU");
+    UpstreamResult result = request(product);
+    return ReportService.mapOf("product", product, "requestBody", result.requestBody(), "response", result.response());
+  }
+
+  public BatchExport batch(List<String> skuIds) {
+    List<String> requested = skuIds == null ? List.of() : skuIds.stream()
+        .map(value -> String.valueOf(value == null ? "" : value).trim())
+        .filter(value -> !value.isBlank())
+        .distinct()
+        .toList();
+    if (requested.isEmpty()) throw new IllegalArgumentException("请至少添加一个 SKU");
+    if (requested.size() > MAX_BATCH_SIZE) {
+      throw new IllegalArgumentException("单次最多生成 " + MAX_BATCH_SIZE + " 个 SKU");
+    }
+    try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
+      List<CompletableFuture<BatchItem>> futures = requested.stream()
+          .map(skuId -> CompletableFuture.supplyAsync(() -> createBatchItem(skuId), executor))
+          .toList();
+      List<BatchItem> items = futures.stream().map(CompletableFuture::join).toList();
+      long successful = items.stream().filter(item -> item.error().isBlank()).count();
+      return new BatchExport(exportTemplate(items), successful, items.size() - successful);
+    }
+  }
+
+  private BatchItem createBatchItem(String skuId) {
+    JdProduct product = productsBySku.get(skuId);
+    if (product == null) return new BatchItem(skuId, "", "", "", "底表中未找到 SKU");
+    try {
+      UpstreamResult result = request(product);
+      String deeplink = valueForKey(result.response(), "deeplink_cvt");
+      String universalLink = valueForKey(result.response(), "universal_link");
+      if (deeplink.isBlank() && universalLink.isBlank()) {
+        return new BatchItem(skuId, product.name(), "", "", "接口响应中未找到 deeplink_cvt 或 universal_link");
+      }
+      return new BatchItem(skuId, product.name(), deeplink, universalLink, "");
+    } catch (Exception error) {
+      return new BatchItem(skuId, product.name(), "", "", error.getMessage());
+    }
+  }
+
+  private UpstreamResult request(JdProduct product) {
     String landingPage = product.h5();
 
     String token = required("XZ_DEEPLINK_TOKEN");
@@ -94,7 +142,7 @@ public class JdDeeplinkService {
         throw new IllegalStateException("上游接口返回 HTTP " + response.statusCode() + "：" + shorten(response.body()));
       }
       Object body = objectMapper.readValue(response.body(), new TypeReference<Object>() {});
-      return ReportService.mapOf("product", product, "requestBody", payload, "response", body);
+      return new UpstreamResult(payload, body);
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("深链请求被中断", error);
@@ -115,5 +163,94 @@ public class JdDeeplinkService {
     return value.substring(0, Math.min(value.length(), 500));
   }
 
+  private static String valueForKey(Object value, String key) {
+    if (value instanceof Map<?, ?> map) {
+      Object direct = map.get(key);
+      if (direct != null && !(direct instanceof Map<?, ?>) && !(direct instanceof List<?>)) {
+        return String.valueOf(direct);
+      }
+      for (Object child : map.values()) {
+        String found = valueForKey(child, key);
+        if (!found.isBlank()) return found;
+      }
+    } else if (value instanceof List<?> list) {
+      for (Object child : list) {
+        String found = valueForKey(child, key);
+        if (!found.isBlank()) return found;
+      }
+    }
+    return "";
+  }
+
+  private static byte[] exportTemplate(List<BatchItem> items) {
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(output)) {
+      writeEntry(zip, "[Content_Types].xml", """
+          <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+          <Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>
+          """);
+      writeEntry(zip, "_rels/.rels", """
+          <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+          <Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>
+          """);
+      writeEntry(zip, "xl/workbook.xml", """
+          <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+          <workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>
+          """);
+      writeEntry(zip, "xl/_rels/workbook.xml.rels", """
+          <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+          <Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>
+          """);
+      StringBuilder sheet = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+      sheet.append(row(1, List.of("填写说明：直达链接名称必填；DeepLink 和 ULink 至少填写一个。批量生成结果仅填写名称、DeepLink、ULink 三列。")));
+      sheet.append(row(2, List.of("直达链接名称", "DeepLink", "ULink（和DeepLink至少填写一个）", "媒体账户ID（选填）", "应用项目（选填）", "覆盖直达链接（如覆盖填1，留空则不覆盖）", "DeepLink2", "DeepLink3", "DeepLink4", "DeepLink5", "DeepLink6", "DeepLink7", "DeepLink8", "DeepLink9", "DeepLink10")));
+      int row = 3;
+      for (BatchItem item : items) {
+        if (!item.error().isBlank()) continue;
+        String shortName = item.name().substring(0, Math.min(item.name().length(), 10));
+        sheet.append(row(row++, List.of(item.skuId() + shortName, item.deeplink(), item.universalLink())));
+      }
+      sheet.append("</sheetData></worksheet>");
+      writeEntry(zip, "xl/worksheets/sheet1.xml", sheet.toString());
+      zip.finish();
+      return output.toByteArray();
+    } catch (Exception error) {
+      throw new IllegalStateException("生成直达链接导入文件失败：" + error.getMessage(), error);
+    }
+  }
+
+  private static String row(int rowNumber, List<String> values) {
+    StringBuilder row = new StringBuilder("<row r=\"").append(rowNumber).append("\">");
+    for (int index = 0; index < values.size(); index++) {
+      row.append("<c r=\"").append(column(index)).append(rowNumber).append("\" t=\"inlineStr\"><is><t>")
+          .append(xml(values.get(index))).append("</t></is></c>");
+    }
+    return row.append("</row>").toString();
+  }
+
+  private static String column(int index) {
+    StringBuilder value = new StringBuilder();
+    for (int position = index; position >= 0; position = position / 26 - 1) {
+      value.insert(0, (char) ('A' + position % 26));
+    }
+    return value.toString();
+  }
+
+  private static String xml(String value) {
+    return String.valueOf(value == null ? "" : value).replace("&", "&amp;").replace("<", "&lt;")
+        .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
+  }
+
+  private static void writeEntry(ZipOutputStream zip, String name, String content) throws Exception {
+    zip.putNextEntry(new ZipEntry(name));
+    zip.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    zip.closeEntry();
+  }
+
   public record JdProduct(String skuId, String name, String h5) {}
+
+  private record UpstreamResult(Map<String, Object> requestBody, Object response) {}
+
+  private record BatchItem(String skuId, String name, String deeplink, String universalLink, String error) {}
+
+  public record BatchExport(byte[] content, long successful, long failed) {}
 }

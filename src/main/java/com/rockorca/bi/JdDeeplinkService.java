@@ -94,7 +94,7 @@ public class JdDeeplinkService {
         throw new IllegalStateException("上游接口返回 HTTP " + response.statusCode() + "：" + shorten(response.body()));
       }
       Object body = objectMapper.readValue(response.body(), new TypeReference<Object>() {});
-      return ReportService.mapOf("product", product, "response", body);
+      return ReportService.mapOf("product", product, "requestBody", payload, "response", body);
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("深链请求被中断", error);

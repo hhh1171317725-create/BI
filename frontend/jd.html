@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>html:not(.authenticated) body{visibility:hidden}</style>
+  <script>fetch('/api/session',{cache:'no-store'}).then(response=>{if(!response.ok)throw Error();document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
   <title>京东 CPA 日报分析</title>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <link rel="stylesheet" href="/pet.css" />

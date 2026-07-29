@@ -47,6 +47,22 @@
       gap: 8px;
     }
 
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 32px 0;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .toolbar-title { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .toolbar button { height: 32px; padding: 0 12px; border: 1px solid #c7d3df; background: #fff; color: var(--accent-dark); font-size: 12px; }
+    .toolbar button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+
     .brand {
       display: flex;
       align-items: center;
@@ -490,7 +506,6 @@
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
       <div class="header-actions">
-        <button class="report-link" id="export" type="button">导出当前报表</button>
         <a class="report-link" href="/">返回大航海日报</a>
         <button class="report-link" id="logout" type="button">退出登录</button>
       </div>
@@ -531,6 +546,15 @@
       <button class="secondary" id="reset" type="button">重置日期</button>
       <span class="note" id="loading" aria-live="polite"></span>
     </div>
+  </section>
+
+  <section class="toolbar hidden" id="toolbar" aria-label="报表工具栏">
+    <span class="toolbar-title">工具栏</span>
+    <button id="export" type="button">导出当前报表</button>
+    <button id="downloadChart" type="button">下载当前图表</button>
+    <button id="applyTool" type="button">重新计算筛选</button>
+    <button id="resetTool" type="button">重置筛选</button>
+    <button id="downloadDictionary" type="button">下载数据字典</button>
   </section>
 
   <section class="cards hidden" id="cards" aria-label="京东日报汇总"></section>
@@ -887,6 +911,21 @@
         setStatus(`已导出 ${rows.length} 条${config.label}汇总数据。`, "success");
       }
 
+      function downloadCurrentChart() {
+        const mainVisible = !$("#mainChartSection").classList.contains("hidden");
+        const drillVisible = !$("#drillPanel").classList.contains("hidden");
+        const chart = mainVisible ? mainChart : (drillVisible ? drillChart : null);
+        if (!chart) {
+          setStatus("当前没有可下载的图表，请切换到日期页签或展开关联分析。", "error");
+          return;
+        }
+        const link = document.createElement("a");
+        link.href = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" });
+        link.download = `京东CPA_${mainVisible ? "每日趋势" : "关联趋势"}.png`;
+        link.click();
+        setStatus("图表 PNG 已下载。", "success");
+      }
+
       function toggleSort(scope, column) {
         const setting = tableSetting(scope);
         if (setting.sortColumn === column) {
@@ -1160,6 +1199,7 @@
 
       function showReport() {
         $("#filterPanel").classList.remove("hidden");
+        $("#toolbar").classList.remove("hidden");
         $("#cards").classList.remove("hidden");
         $("#tabs").classList.remove("hidden");
         $("#content").classList.remove("hidden");
@@ -1281,6 +1321,10 @@
 
       $("#load").addEventListener("click", loadLatest);
       $("#export").addEventListener("click", exportCurrent);
+      $("#downloadChart").addEventListener("click", downloadCurrentChart);
+      $("#applyTool").addEventListener("click", () => $("#apply").click());
+      $("#resetTool").addEventListener("click", () => $("#reset").click());
+      $("#downloadDictionary").addEventListener("click", () => { window.location.assign("/api/tools/data-dictionary"); });
       $("#copyToken").addEventListener("click", copyToken);
       $("#apply").addEventListener("click", () => applyDateFilter(false));
       $("#accountId").addEventListener("keydown", (event) => {

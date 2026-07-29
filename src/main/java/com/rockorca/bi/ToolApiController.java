@@ -17,17 +17,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class ToolApiController {
   @GetMapping("/data-dictionary")
   public ResponseEntity<byte[]> downloadDataDictionary() throws Exception {
-    Path dictionary = Path.of("database", "DATA_DICTIONARY.md");
-    if (!Files.isRegularFile(dictionary)) {
-      throw new IllegalStateException("服务器未找到数据字典文件");
-    }
-    byte[] content = Files.readAllBytes(dictionary);
+    return download(Path.of("database", "DATA_DICTIONARY.md"), "报表数据字典.md", "text/markdown");
+  }
+
+  @GetMapping("/api-check-script")
+  public ResponseEntity<byte[]> downloadApiCheckScript() throws Exception {
+    return download(Path.of("scripts", "Test-AllApis.ps1"), "报表接口检查.ps1", "text/plain");
+  }
+
+  private ResponseEntity<byte[]> download(Path source, String filename, String contentType) throws Exception {
+    if (!Files.isRegularFile(source)) throw new IllegalStateException("服务器未找到下载文件");
     return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType("text/markdown;charset=UTF-8"))
+        .contentType(MediaType.parseMediaType(contentType + ";charset=UTF-8"))
         .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-            .filename("报表数据字典.md", StandardCharsets.UTF_8)
+            .filename(filename, StandardCharsets.UTF_8)
             .build()
             .toString())
-        .body(content);
+        .body(Files.readAllBytes(source));
   }
 }

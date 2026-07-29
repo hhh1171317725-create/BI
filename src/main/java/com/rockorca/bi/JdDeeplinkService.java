@@ -206,7 +206,7 @@ public class JdDeeplinkService {
       int row = 3;
       for (BatchItem item : items) {
         if (!item.error().isBlank()) continue;
-        String shortName = item.name().substring(0, Math.min(item.name().length(), 10));
+        String shortName = item.name().substring(0, Math.min(item.name().length(), 30));
         sheet.append(row(row++, List.of(item.skuId() + shortName, item.deeplink(), item.universalLink())));
       }
       sheet.append("</sheetData></worksheet>");

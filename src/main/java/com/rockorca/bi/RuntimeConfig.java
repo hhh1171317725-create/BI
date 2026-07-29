@@ -28,6 +28,7 @@ public class RuntimeConfig {
     runtimeDir = Path.of(get("DHH_RUNTIME_DIR", ".runtime")).toAbsolutePath().normalize();
     loadFile("mysql.env");
     loadFile("ai.env");
+    loadFile("deeplink.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
   }

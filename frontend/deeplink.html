@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>京东深链生成</title>
+  <style>
+    :root{--blue:#1677ff;--ink:#172b4d;--muted:#667085;--line:#d9e2ec;--bg:#f5f8fb;--bad:#b42318;--good:#067647}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px "Microsoft YaHei","PingFang SC",sans-serif}header{padding:20px 32px 16px;background:#fff;border-bottom:1px solid var(--line)}.header-row{display:flex;justify-content:space-between;align-items:center;gap:16px}.brand{display:flex;align-items:center;gap:10px}.mark{display:grid;width:30px;height:30px;place-items:center;border-radius:7px;background:var(--blue);color:#fff;font-weight:700}h1{margin:0;font-size:22px}header p{margin:7px 0 0;color:var(--muted)}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.nav button{height:34px;padding:0 12px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;text-decoration:none;font:600 13px inherit;line-height:32px;cursor:pointer}.nav button{line-height:normal}.nav a:hover,.nav button:hover{border-color:var(--blue);background:#eaf3ff}main{max-width:980px;margin:24px auto;padding:0 20px}.panel{padding:22px;border:1px solid var(--line);border-radius:8px;background:#fff}.panel h2{margin:0;font-size:17px}.hint{margin:8px 0 20px;color:var(--muted);line-height:1.6}.form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}input{height:42px;min-width:0;padding:0 12px;border:1px solid #b9c9d9;border-radius:5px;font:14px inherit}button.primary{height:42px;padding:0 18px;border:0;border-radius:5px;background:var(--blue);color:#fff;font:600 14px inherit;cursor:pointer}button.primary:hover{background:#0958d9}button:disabled{opacity:.65;cursor:wait}.status{min-height:20px;margin:12px 0 0;color:var(--muted)}.status.error{color:var(--bad)}.status.ok{color:var(--good)}.result{margin-top:18px}.result-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.result h2{margin:0;font-size:16px}.copy{height:30px;padding:0 10px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;font:600 12px inherit;cursor:pointer}pre{max-height:540px;margin:10px 0 0;padding:16px;overflow:auto;border-radius:6px;background:#102a43;color:#e6f1ff;font:13px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word}@media(max-width:620px){header{padding:16px}.header-row{align-items:flex-start;flex-direction:column}.form{grid-template-columns:1fr}.form button{width:100%}main{margin:16px auto;padding:0 12px}}
+  </style>
+</head>
+<body>
+  <header><div class="header-row"><div><div class="brand"><span class="mark">链</span><h1>京东深链生成</h1></div><p>填写 lp_url，使用服务器已配置的默认渠道参数生成深链。</p></div><nav class="nav"><a href="/tools">工具中心</a><a href="/">大航海日报</a><a href="/jd">京东日报</a><button id="logout" type="button">退出登录</button></nav></div></header>
+  <main><section class="panel"><h2>生成链接</h2><p class="hint">仅需输入新的落地页链接。鉴权与渠道参数由服务端保存，不会展示在页面中。</p><form id="form" class="form"><input id="lpUrl" type="url" required placeholder="https://u.jd.com/..." autocomplete="url" /><button id="submit" class="primary" type="submit">生成深链</button></form><div id="status" class="status"></div><div id="result" class="result" hidden><div class="result-head"><h2>接口结果</h2><button id="copy" class="copy" type="button">复制结果</button></div><pre id="output"></pre></div></section></main>
+  <script>
+    const $=selector=>document.querySelector(selector);let output='';
+    async function request(url,options={}){const response=await fetch(url,options);const payload=await response.json().catch(()=>({error:`请求失败（HTTP ${response.status}）`}));if(!response.ok)throw Error(payload.error||`请求失败（HTTP ${response.status}）`);return payload}
+    function status(message,type=''){$('#status').textContent=message;$('#status').className=`status ${type}`}
+    $('#form').onsubmit=async event=>{event.preventDefault();const button=$('#submit');try{button.disabled=true;status('正在生成深链…');const payload=await request('/api/jd-deeplink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lpUrl:$('#lpUrl').value.trim()})});output=JSON.stringify(payload.response,null,2);$('#output').textContent=output;$('#result').hidden=false;status('已获取接口结果','ok')}catch(error){status(error.message,'error')}finally{button.disabled=false}};
+    $('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(output);status('结果已复制','ok')}catch{status('复制失败，请手动复制结果','error')}};
+    $('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
+  </script>
+</body>
+</html>

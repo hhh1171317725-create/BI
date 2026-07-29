@@ -5,7 +5,7 @@
 - `frontend/` 是纯静态前端，由 Nginx 直接托管；
 - Spring Boot 是纯 JSON 后端，只处理 `/api/*`，不再返回 HTML、JS、CSS、图片或页面跳转。
 
-前端继续使用 `/`、`/jd`、`/tools`、`/chat` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
+前端继续使用 `/`、`/jd`、`/tools`、`/chat`、`/deeplink` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
 用户访问地址保持不变。未登录时后端返回 JSON `401`，由前端跳转到登录页；后端异常也统一
 返回 JSON，避免前端收到 HTML 错误页。
 
@@ -15,6 +15,7 @@
 - `/jd`：京东 CPA 日报，提供优化师、日期、媒体、媒体账户和推客维度的汇总。媒体名称、媒体账户 ID 和推客用户名均可点击，点击后可查看对应对象的日期维度明细，以及每日消耗、预估 ROI、实际 ROI 折线图；优化师维度也保留相同的日期下钻能力。京东预估/实际利润和 ROI 均包含“条件内预估赔付金额（当日）”，“有效订单数”口径为首购有效订单数与回流有效订单数之和，“有效首购率”口径为首购有效订单数÷有效订单数。日期筛选区默认排除未知优化师，也可切换为保留全部数据；该条件会作用于汇总卡片、全部分析维度、趋势图和下钻数据。
 - `/tools`：工具中心，用于添加、打开和管理当前浏览器中的常用工具链接，并提供聊天室入口。
 - `/chat`：已登录设备之间共享文字、图片和文件的公共聊天室；单个文件上限 50MB。
+- `/deeplink`：京东深链生成工具。只填写 `lp_url`，服务端按 `.runtime/deeplink.env` 中的默认渠道参数请求上游接口。
 
 两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 报表查询会把用户选择的开始、结束日期直接作为 MySQL `business_date` 条件，只读取该日期
@@ -53,6 +54,20 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 
 随后执行 `systemctl restart dahanghai-analysis`。如使用 OpenAI，将提供商改为 `openai`，并配置 `OPENAI_API_KEY` 和可选的 `OPENAI_MODEL`。
 
+## 京东深链工具
+
+将 `deploy/deeplink.env.example` 复制为服务器运行目录中的 `.runtime/deeplink.env`，填写当前有效的
+`XZ_DEEPLINK_TOKEN`、`XZ_DEEPLINK_SIGN` 和 `XZ_DEEPLINK_TIMESTAMP`。其余渠道、平台、账户、PID 与来源参数
+已经按当前默认值写入模板；需要调整时只改该文件并重启服务即可。该文件被 Git 忽略，浏览器也不会收到其中的任何值。
+
+```bash
+cp deploy/deeplink.env.example .runtime/deeplink.env
+chmod 600 .runtime/deeplink.env
+systemctl restart dahanghai-analysis
+```
+
+打开 `/deeplink` 后只填写 `lp_url` 并点击生成。上游授权或签名失效时，替换该私有配置中的对应值后重启服务。
+
 ## 宝塔部署
 
 1. 将仓库拉取到 `/www/wwwroot/BI`。
@@ -62,7 +77,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
    50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 3. 在宝塔网站配置中将网站根目录设为 `/www/wwwroot/BI/frontend`。
 4. 不要把整个网站代理到 Java。仅将 `/api/` 反向代理到
-   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/tools`、`/chat` 配置静态页面映射。可参考
+   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/tools`、`/chat`、`/deeplink` 配置静态页面映射。可参考
    `deploy/nginx-huanghaha.fun.conf` 中的 `location` 配置；已有 SSL 配置应保留。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：

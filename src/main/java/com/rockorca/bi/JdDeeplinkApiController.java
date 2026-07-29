@@ -34,6 +34,19 @@ public class JdDeeplinkApiController {
     return deeplinks.products(query);
   }
 
+  @GetMapping("/config")
+  public Map<String, Object> config() {
+    return deeplinks.credentialStatus();
+  }
+
+  @PostMapping("/config")
+  public Map<String, Object> saveConfig(@RequestBody Map<String, Object> payload) {
+    deeplinks.saveCredentials(
+        ReportService.text(payload.get("token")),
+        ReportService.text(payload.get("sign")));
+    return deeplinks.credentialStatus();
+  }
+
   @PostMapping("/batch")
   public ResponseEntity<byte[]> batch(@RequestBody Map<String, Object> payload) {
     Object values = payload.get("skuIds");

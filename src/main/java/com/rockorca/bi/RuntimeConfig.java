@@ -4,8 +4,10 @@ import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -90,6 +92,36 @@ public class RuntimeConfig {
 
   public ObjectMapper objectMapper() {
     return objectMapper;
+  }
+
+  public synchronized void saveDeeplinkCredentials(String tokenValue, String signValue) {
+    String token = String.valueOf(tokenValue == null ? "" : tokenValue).trim();
+    String sign = String.valueOf(signValue == null ? "" : signValue).trim();
+    if (token.isBlank() || sign.isBlank()) {
+      throw new IllegalArgumentException("请同时填写 token 和 X-Request-Sign");
+    }
+    Path path = runtimeDir.resolve("deeplink.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("XZ_DEEPLINK_TOKEN", token);
+      saved.put("XZ_DEEPLINK_SIGN", sign);
+      StringBuilder content = new StringBuilder("# Managed by the JD deeplink settings page.\\n");
+      saved.forEach((key, value) -> content.append(key).append('=').append(value).append('\\n'));
+      Path temporary = path.resolveSibling("deeplink.env.tmp");
+      Files.writeString(temporary, content, StandardCharsets.UTF_8);
+      try {
+        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      } catch (AtomicMoveNotSupportedException ignored) {
+        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+      }
+      values.put("XZ_DEEPLINK_TOKEN", token);
+      values.put("XZ_DEEPLINK_SIGN", sign);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存深链接口配置失败：" + error.getMessage(), error);
+    }
   }
 
   private static String randomHex(int bytes) {

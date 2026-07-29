@@ -64,6 +64,16 @@ public class JdDeeplinkService {
         .toList();
   }
 
+  public Map<String, Object> credentialStatus() {
+    return ReportService.mapOf(
+        "tokenConfigured", !config.get("XZ_DEEPLINK_TOKEN", "").isBlank(),
+        "signConfigured", !config.get("XZ_DEEPLINK_SIGN", "").isBlank());
+  }
+
+  public void saveCredentials(String token, String sign) {
+    config.saveDeeplinkCredentials(token, sign);
+  }
+
   public Map<String, Object> create(String skuIdValue) {
     String skuId = String.valueOf(skuIdValue == null ? "" : skuIdValue).trim();
     JdProduct product = productsBySku.get(skuId);

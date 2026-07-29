@@ -108,8 +108,8 @@ public class RuntimeConfig {
           : new LinkedHashMap<>();
       saved.put("XZ_DEEPLINK_TOKEN", token);
       saved.put("XZ_DEEPLINK_SIGN", sign);
-      StringBuilder content = new StringBuilder("# Managed by the JD deeplink settings page.\\n");
-      saved.forEach((key, value) -> content.append(key).append('=').append(value).append('\\n'));
+      StringBuilder content = new StringBuilder("# Managed by the JD deeplink settings page.\n");
+      saved.forEach((key, value) -> content.append(key).append('=').append(value).append('\n'));
       Path temporary = path.resolveSibling("deeplink.env.tmp");
       Files.writeString(temporary, content, StandardCharsets.UTF_8);
       try {

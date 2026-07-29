@@ -1,6 +1,8 @@
 package com.rockorca.bi;
 
 import java.util.Map;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +19,12 @@ public class JdDeeplinkApiController {
 
   @PostMapping
   public Map<String, Object> create(@RequestBody Map<String, Object> payload) {
-    return deeplinks.create(ReportService.text(payload.get("lpUrl")));
+    return deeplinks.create(ReportService.text(payload.get("skuId")));
+  }
+
+  @GetMapping("/products")
+  public List<JdDeeplinkService.JdProduct> products(
+      @org.springframework.web.bind.annotation.RequestParam(defaultValue = "") String query) {
+    return deeplinks.products(query);
   }
 }

@@ -2,14 +2,19 @@ package com.rockorca.bi;
 
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 /** Creates JD deeplinks through the configured upstream account. */
@@ -18,6 +23,8 @@ public class JdDeeplinkService {
   private static final String DEFAULT_URL = "https://s.zaore.com/xz-cloud-api/v2/deeplink/jd";
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
+  private final Map<String, JdProduct> productsBySku = new HashMap<>();
+  private List<JdProduct> products = List.of();
   private final HttpClient client = HttpClient.newBuilder()
       .connectTimeout(Duration.ofSeconds(15))
       .build();
@@ -27,17 +34,33 @@ public class JdDeeplinkService {
     this.objectMapper = objectMapper;
   }
 
-  public Map<String, Object> create(String lpUrl) {
-    String landingPage = String.valueOf(lpUrl == null ? "" : lpUrl).trim();
-    URI parsed;
+  @PostConstruct
+  void loadProducts() {
     try {
-      parsed = URI.create(landingPage);
-    } catch (IllegalArgumentException error) {
-      throw new IllegalArgumentException("请输入有效的 lp_url");
+      try (InputStream stream = new ClassPathResource("jd-deeplink-products.json").getInputStream()) {
+        products = objectMapper.readValue(stream, new TypeReference<List<JdProduct>>() {});
+      }
+      products.forEach(product -> productsBySku.put(product.skuId(), product));
+    } catch (Exception error) {
+      throw new IllegalStateException("加载京东 SKU 底表失败：" + error.getMessage(), error);
     }
-    if (!"https".equalsIgnoreCase(parsed.getScheme()) || parsed.getHost() == null) {
-      throw new IllegalArgumentException("lp_url 必须是 https 链接");
-    }
+  }
+
+  public List<JdProduct> products(String queryValue) {
+    String query = String.valueOf(queryValue == null ? "" : queryValue).trim().toLowerCase();
+    return products.stream()
+        .filter(product -> query.isBlank() || product.skuId().contains(query)
+            || product.name().toLowerCase().contains(query))
+        .sorted(Comparator.comparing(product -> product.skuId().equals(query) ? 0 : 1))
+        .limit(30)
+        .toList();
+  }
+
+  public Map<String, Object> create(String skuIdValue) {
+    String skuId = String.valueOf(skuIdValue == null ? "" : skuIdValue).trim();
+    JdProduct product = productsBySku.get(skuId);
+    if (product == null) throw new IllegalArgumentException("请选择底表中的 SKU");
+    String landingPage = product.h5();
 
     String token = required("XZ_DEEPLINK_TOKEN");
     String signature = required("XZ_DEEPLINK_SIGN");
@@ -71,7 +94,7 @@ public class JdDeeplinkService {
         throw new IllegalStateException("上游接口返回 HTTP " + response.statusCode() + "：" + shorten(response.body()));
       }
       Object body = objectMapper.readValue(response.body(), new TypeReference<Object>() {});
-      return ReportService.mapOf("payload", payload, "response", body);
+      return ReportService.mapOf("product", product, "response", body);
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("深链请求被中断", error);
@@ -91,4 +114,6 @@ public class JdDeeplinkService {
     String value = String.valueOf(text).replaceAll("\\s+", " ").trim();
     return value.substring(0, Math.min(value.length(), 500));
   }
+
+  public record JdProduct(String skuId, String name, String h5) {}
 }

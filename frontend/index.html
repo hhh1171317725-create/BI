@@ -40,6 +40,45 @@
     input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(22,119,255,.1);outline:none}
     button{transition:background-color .15s ease,border-color .15s ease,opacity .15s ease}
     #content[aria-busy="true"]{opacity:.7;pointer-events:none}
+    @media(max-width:700px){
+      body{overflow-x:hidden}
+      header{margin:0;padding:16px}
+      .header-row{flex-direction:column;gap:14px}
+      .header-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:8px}
+      .report-link{display:flex;align-items:center;justify-content:center;min-width:0;min-height:36px;padding:6px 8px;text-align:center}
+      h1{font-size:20px}
+      header p{line-height:1.55}
+      .panel,.cards,.tabs,.content,.alert-panel{margin-left:12px;margin-right:12px}
+      .panel{padding:14px}
+      .controls,.filters{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:10px}
+      input,input[type=date],#accountId,select{width:100%;min-width:0}
+      .controls>button,.filters>button{width:100%}
+      .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .card{min-height:78px;padding:12px}
+      .card .v{margin-top:8px;font-size:17px;overflow-wrap:anywhere}
+      .tabs{gap:2px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+      .tabs::-webkit-scrollbar{display:none}
+      .tab{flex:1 0 72px;padding:0 10px}
+      .insight{padding:13px 14px 5px;line-height:1.55}
+      .chart-heading{margin-left:14px;margin-right:14px}
+      .chart-subtitle{margin-left:14px;margin-right:14px;line-height:1.5}
+      .chart{height:260px}
+      .table-wrap{max-height:68vh;-webkit-overflow-scrolling:touch}
+      th,td{padding:9px 10px}
+      .table-wrap th:first-child,.table-wrap td:first-child{position:sticky;left:0;z-index:1;background:#fff}
+      .table-wrap th:first-child{z-index:3;background:#f2f6fa}
+      .table-tools{gap:8px;padding:8px 10px}
+      .pager{justify-content:space-between;flex-wrap:wrap;padding:10px}
+      .alert-panel{padding:14px}
+      .alert-filters{display:grid;grid-template-columns:minmax(0,1fr)}
+      .alert-filters select{width:100%;min-width:0}
+      .column-picker{max-height:52vh}
+    }
+    @media(max-width:380px){
+      .header-actions{grid-template-columns:1fr}
+      .cards{gap:7px}
+      .card .v{font-size:16px}
+    }
   </style>
 </head>
 <body>

@@ -476,12 +476,65 @@
       .chart { height: 280px; }
     }
 
-    @media (max-width: 560px) {
-      .header-row { flex-direction: column; }
+    @media (max-width: 700px) {
+      body { overflow-x: hidden; }
+      header { padding: 16px; }
+      .header-row { flex-direction: column; gap: 14px; }
+      .header-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        gap: 8px;
+      }
+      .report-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        min-height: 36px;
+        padding: 6px 8px;
+        text-align: center;
+      }
+      h1 { font-size: 20px; }
+      header p { line-height: 1.55; }
+      .panel, .cards, .tabs, .content { margin-left: 12px; margin-right: 12px; }
+      .panel { padding: 14px; }
+      .controls, .filters {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+        gap: 10px;
+      }
+      input, input[type="date"], #accountId, select { width: 100%; min-width: 0; }
+      .controls > button, .filters > button { width: 100%; }
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .card .v { font-size: 17px; }
+      .cards { gap: 8px; }
+      .card { min-height: 78px; padding: 12px; }
+      .card .v { margin-top: 8px; font-size: 17px; overflow-wrap: anywhere; }
+      .tabs {
+        gap: 2px;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+      }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab { flex: 0 0 auto; padding: 0 12px; }
+      .insight { padding: 13px 14px 5px; }
+      .chart-heading, .chart-subtitle { margin-left: 14px; margin-right: 14px; }
+      .chart-subtitle { line-height: 1.5; }
+      .chart { height: 260px; }
+      .table-wrap { max-height: 68vh; -webkit-overflow-scrolling: touch; }
+      th, td { padding: 9px 10px; }
       .table-tools { align-items: flex-start; flex-wrap: wrap; }
+      .table-tools { gap: 8px; padding: 8px 10px; }
       .column-picker { grid-template-columns: 1fr; width: calc(100vw - 48px); }
+      .column-picker { max-height: 52vh; }
+      .pager { justify-content: space-between; flex-wrap: wrap; padding: 10px; }
+      .drill-header { padding: 14px 14px 0; }
+    }
+
+    @media (max-width: 380px) {
+      .header-actions { grid-template-columns: 1fr; }
+      .card .v { font-size: 16px; }
     }
   </style>
 </head>

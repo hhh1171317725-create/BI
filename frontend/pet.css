@@ -8,6 +8,12 @@
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
+.data-pet.data-pet-roaming {
+  transition:
+    left var(--data-pet-roam-duration, 2800ms) linear,
+    top var(--data-pet-roam-duration, 2800ms) ease-in-out;
+}
+
 .data-pet-toggle {
   position: relative;
   display: grid;
@@ -41,7 +47,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform-origin: 50% 70%;
+  transition: transform .2s ease;
 }
+
+.data-pet-facing-left .data-pet-character > img { transform: scaleX(-1); }
 
 .data-pet-toggle:hover,
 .data-pet-toggle:focus-visible {
@@ -137,6 +147,7 @@
 .data-pet-mode { margin-top: 3px; color: #667085; font-size: 11px; }
 .data-pet-head-actions { display: flex; align-items: center; gap: 6px; cursor: default; }
 .data-pet-close,
+.data-pet-roam-toggle,
 .data-pet-settings-toggle {
   width: 30px;
   height: 30px;
@@ -149,6 +160,7 @@
   font-size: 20px;
 }
 
+.data-pet-roam-toggle { font-size: 14px; font-weight: 700; }
 .data-pet-settings-toggle { font-size: 15px; }
 .data-pet-settings {
   grid-row: 2;
@@ -280,6 +292,7 @@
 
 .data-pet-send:disabled { opacity: .55; cursor: wait; }
 .data-pet .data-pet-close:hover:not(:disabled),
+.data-pet .data-pet-roam-toggle:hover:not(:disabled),
 .data-pet .data-pet-settings-toggle:hover:not(:disabled) {
   background: #eaf3ff;
   color: #1756a9;
@@ -303,4 +316,5 @@
   .data-pet-panel { position: fixed; inset: 12px 12px 82px; width: auto; height: auto; }
   .data-pet-settings { grid-template-columns: 90px minmax(0, 1fr); }
   .data-pet-settings-save { grid-column: 1 / -1; }
+  .data-pet-roam-toggle { display: none; }
 }

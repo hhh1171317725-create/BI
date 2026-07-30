@@ -5,6 +5,7 @@
   let busy = false;
   const aiConfigStorageKey = "data-pet-ai-config-v1";
   const petPositionStorageKey = "data-pet-position-v1";
+  const petRoamStorageKey = "data-pet-roam-enabled-v1";
   const petMotionSources = {
     idle: "/assets/ai-assistant-idle.webp",
     greet: "/assets/ai-assistant-greet.webp",
@@ -34,6 +35,7 @@
             <div><div class="data-pet-name">AI 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
+            <button class="data-pet-roam-toggle" type="button" aria-label="暂停自动漫游" title="暂停自动漫游">Ⅱ</button>
             <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置">⚙</button>
             <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
           </div>
@@ -82,8 +84,13 @@
   const providerInput = root.querySelector(".data-pet-provider");
   const apiKeyInput = root.querySelector(".data-pet-api-key");
   const head = root.querySelector(".data-pet-head");
+  const roamToggle = root.querySelector(".data-pet-roam-toggle");
   let dragState = null;
   let motionTimer = 0;
+  let roamTimer = 0;
+  let roamMoveTimer = 0;
+  let petHovered = false;
+  let roamEnabled = true;
 
   function setPetMotion(name, resetAfter = 0) {
     const source = petMotionSources[name] || petMotionSources.idle;
@@ -96,6 +103,96 @@
         if (!busy) setPetMotion("idle");
       }, resetAfter)
       : 0;
+  }
+
+  function savedRoamEnabled() {
+    try {
+      return localStorage.getItem(petRoamStorageKey) !== "false";
+    } catch {
+      return true;
+    }
+  }
+
+  function updateRoamToggle() {
+    roamToggle.textContent = roamEnabled ? "Ⅱ" : "▶";
+    roamToggle.setAttribute("aria-label", roamEnabled ? "暂停自动漫游" : "开启自动漫游");
+    roamToggle.title = roamEnabled ? "暂停自动漫游" : "开启自动漫游";
+  }
+
+  function canRoam() {
+    return roamEnabled
+      && window.innerWidth > 720
+      && document.visibilityState === "visible"
+      && panel.hidden
+      && !busy
+      && !dragState
+      && !petHovered;
+  }
+
+  function stopPetRoam(keepCurrentPosition = true) {
+    window.clearTimeout(roamTimer);
+    window.clearTimeout(roamMoveTimer);
+    roamTimer = 0;
+    roamMoveTimer = 0;
+    if (!root.classList.contains("data-pet-roaming")) return;
+    const rect = root.getBoundingClientRect();
+    root.classList.remove("data-pet-roaming");
+    if (keepCurrentPosition) setPetPosition(rect.left, rect.top);
+  }
+
+  function schedulePetRoam(delay = 4200 + Math.random() * 4200) {
+    window.clearTimeout(roamTimer);
+    if (!canRoam()) return;
+    roamTimer = window.setTimeout(startPetRoam, delay);
+  }
+
+  function startPetRoam() {
+    if (!canRoam()) return;
+    const initialRect = root.getBoundingClientRect();
+    if (!root.style.left) setPetPosition(initialRect.left, initialRect.top);
+    const rect = root.getBoundingClientRect();
+    const minLeft = 14;
+    const maxLeft = Math.max(minLeft, window.innerWidth - rect.width - 14);
+    const minTop = Math.min(
+      Math.max(86, window.innerHeight * .56),
+      Math.max(14, window.innerHeight - rect.height - 14),
+    );
+    const maxTop = Math.max(minTop, window.innerHeight - rect.height - 14);
+    const direction = Math.random() < .5 ? -1 : 1;
+    const distance = 130 + Math.random() * 260;
+    let targetLeft = Math.min(maxLeft, Math.max(minLeft, rect.left + direction * distance));
+    if (Math.abs(targetLeft - rect.left) < 70) {
+      targetLeft = direction < 0 ? Math.min(maxLeft, rect.left + distance) : Math.max(minLeft, rect.left - distance);
+    }
+    const targetTop = Math.min(maxTop, Math.max(minTop, rect.top + (Math.random() - .5) * 90));
+    const duration = 2200 + Math.random() * 1800;
+    root.classList.toggle("data-pet-facing-left", targetLeft < rect.left);
+    root.style.setProperty("--data-pet-roam-duration", `${Math.round(duration)}ms`);
+    root.classList.add("data-pet-roaming");
+    setPetMotion("greet");
+    requestAnimationFrame(() => setPetPosition(targetLeft, targetTop));
+    roamMoveTimer = window.setTimeout(() => {
+      root.classList.remove("data-pet-roaming");
+      setPetPosition(targetLeft, targetTop);
+      setPetMotion("idle");
+      schedulePetRoam();
+    }, duration + 80);
+  }
+
+  function setRoamEnabled(enabled) {
+    roamEnabled = enabled;
+    updateRoamToggle();
+    try {
+      localStorage.setItem(petRoamStorageKey, String(enabled));
+    } catch {
+      // 自动漫游不依赖浏览器是否允许保存偏好。
+    }
+    if (enabled) {
+      schedulePetRoam(800);
+    } else {
+      stopPetRoam();
+      if (!busy) setPetMotion("idle");
+    }
   }
 
   function updatePanelDirection() {
@@ -171,6 +268,7 @@
   function startPetDrag(event, source) {
     if (event.button !== 0) return;
     if (source === "head" && event.target.closest("button, input, select")) return;
+    stopPetRoam();
     const rect = root.getBoundingClientRect();
     dragState = {
       pointerId: event.pointerId,
@@ -208,6 +306,7 @@
       keepPanelInViewport();
       const finalRect = root.getBoundingClientRect();
       setPetPosition(finalRect.left, finalRect.top, true);
+      schedulePetRoam(2600);
     } else if (source === "toggle" && event.type === "pointerup") {
       panel.hidden ? openPet() : closePet();
     }
@@ -239,6 +338,7 @@
   }
 
   function openPet() {
+    stopPetRoam();
     panel.hidden = false;
     toggle.setAttribute("aria-expanded", "true");
     if (!busy) setPetMotion("greet", 2600);
@@ -254,12 +354,14 @@
     panel.hidden = true;
     toggle.setAttribute("aria-expanded", "false");
     if (!busy) setPetMotion("idle");
+    schedulePetRoam(3200);
   }
 
   async function ask(question) {
     const message = String(question || "").trim();
     if (!message || busy) return;
     busy = true;
+    stopPetRoam();
     input.value = "";
     send.disabled = true;
     addMessage("user", message);
@@ -296,6 +398,7 @@
       if (!succeeded) setPetMotion("idle");
       send.disabled = false;
       input.focus();
+      schedulePetRoam(succeeded ? 5200 : 3000);
     }
   }
 
@@ -320,8 +423,15 @@
     if (event.detail === 0) panel.hidden ? openPet() : closePet();
   });
   toggle.addEventListener("pointerenter", () => {
+    petHovered = true;
+    stopPetRoam();
     if (!busy && panel.hidden) setPetMotion("greet", 2600);
   });
+  toggle.addEventListener("pointerleave", () => {
+    petHovered = false;
+    schedulePetRoam(2800);
+  });
+  roamToggle.addEventListener("click", () => setRoamEnabled(!roamEnabled));
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
   root.querySelector(".data-pet-settings-toggle").addEventListener("click", () => {
     const config = savedAiConfig();
@@ -358,6 +468,16 @@
   });
 
   addMessage("assistant", "嗨，我是你的 AI 数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
+  roamEnabled = savedRoamEnabled();
+  updateRoamToggle();
   updateAiMode();
   restorePetPosition();
+  schedulePetRoam(2600);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      schedulePetRoam(1800);
+    } else {
+      stopPetRoam();
+    }
+  });
 })();

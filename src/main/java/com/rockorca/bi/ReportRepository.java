@@ -67,6 +67,10 @@ public class ReportRepository {
     }
   }
 
+  Connection openConnection() throws SQLException {
+    return dataSource.getConnection();
+  }
+
   public void replaceOne(String reportType, List<Map<String, Object>> rows, String triggerType) {
     if (rows == null || rows.isEmpty()) throw new IllegalArgumentException("全量数据为空，已取消数据库覆盖");
     boolean dhh = switch (reportType) {

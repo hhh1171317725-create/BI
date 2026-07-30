@@ -5,7 +5,7 @@
 - `frontend/` 是纯静态前端，由 Nginx 直接托管；
 - Spring Boot 是纯 JSON 后端，只处理 `/api/*`，不再返回 HTML、JS、CSS、图片或页面跳转。
 
-前端继续使用 `/`、`/jd`、`/tools`、`/chat`、`/deeplink` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
+前端继续使用 `/`、`/jd`、`/tools`、`/chat`、`/deeplink`、`/account` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
 用户访问地址保持不变。未登录时后端返回 JSON `401`，由前端跳转到登录页；后端异常也统一
 返回 JSON，避免前端收到 HTML 错误页。
 
@@ -16,6 +16,7 @@
 - `/tools`：工具中心，用于添加、打开和管理当前浏览器中的常用工具链接，并提供聊天室入口。
 - `/chat`：已登录设备之间共享文字、图片和文件的公共聊天室；单个文件上限 50MB。
 - `/deeplink`：京东深链生成工具。按 SKU 或商品名搜索并选择底表商品，服务端自动读取对应 H5 链接，再按 `.runtime/deeplink.env` 中的默认渠道参数请求上游接口。
+- `/account`：账户设置。所有用户可修改自己的密码，管理员还可创建用户、重置密码以及停用或启用账号。
 
 两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 报表查询会把用户选择的开始、结束日期直接作为 MySQL `business_date` 条件，只读取该日期
@@ -32,7 +33,7 @@
 
 ## 登录
 
-整个站点及数据接口均需要登录，默认用户名为 `hhh`、密码为 `123456`。登录状态通过长期保存的签名 HttpOnly Cookie 维持，直到用户主动退出、清除浏览器数据、修改登录账号或会话密钥。生产环境可使用 `REPORT_USERNAME`、`REPORT_PASSWORD` 和 `REPORT_SESSION_SECRET` 环境变量覆盖默认值；设置固定的随机 `REPORT_SESSION_SECRET` 后，服务重启不会使现有登录状态失效。
+整个站点及数据接口均需要登录。用户表首次为空时，系统会将 `REPORT_USERNAME` / `REPORT_PASSWORD` 创建为首个管理员，未配置时默认用户名为 `hhh`、密码为 `123456`。之后账号以 MySQL `report_users` 表为准，密码只保存为带随机盐的 PBKDF2-SHA256 哈希。登录状态通过长期保存的签名 HttpOnly Cookie 维持；修改密码、重置密码或停用账号会使该用户的旧会话失效，修改自己的密码后当前设备会自动获得新会话。设置固定的随机 `REPORT_SESSION_SECRET` 后，普通服务重启不会使现有登录状态失效。
 
 ## 数据分析宠物
 
@@ -77,7 +78,7 @@ systemctl restart dahanghai-analysis
    50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 3. 在宝塔网站配置中将网站根目录设为 `/www/wwwroot/BI/frontend`。
 4. 不要把整个网站代理到 Java。仅将 `/api/` 反向代理到
-   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/tools`、`/chat`、`/deeplink` 配置静态页面映射。可参考
+   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/tools`、`/chat`、`/deeplink`、`/account` 配置静态页面映射。可参考
    `deploy/nginx-huanghaha.fun.conf` 中的 `location` 配置；已有 SSL 配置应保留。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：

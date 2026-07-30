@@ -7,15 +7,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class StartupCheck implements ApplicationRunner {
   private final ReportRepository repository;
+  private final UserService users;
 
-  public StartupCheck(ReportRepository repository) {
+  public StartupCheck(ReportRepository repository, UserService users) {
     this.repository = repository;
+    this.users = users;
   }
 
   @Override
   public void run(ApplicationArguments args) {
     try {
       repository.ping();
+      users.initialize();
       System.out.println("MySQL 数据库连接成功");
     } catch (Exception error) {
       System.err.println("MySQL 数据库连接失败：" + error.getMessage());

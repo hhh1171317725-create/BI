@@ -19,28 +19,33 @@ import org.springframework.stereotype.Service;
 public class SessionService {
   /*
    * 登录 Cookie 是自包含的 HMAC 会话，不在服务端保存会话表。
-   * 校验同时检查签名、当前用户名和过期时间；修改用户名或会话密钥会使旧 Cookie 失效。
+   * 校验同时检查签名、用户状态和会话版本；修改密码或停用账号会使旧 Cookie 失效。
    */
   public static final String COOKIE_NAME = "report_session";
   public static final Duration LIFETIME = Duration.ofDays(36500);
+  private static final String REQUEST_USER_ATTRIBUTE =
+      SessionService.class.getName() + ".currentUser";
 
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
+  private final UserService users;
 
-  public SessionService(RuntimeConfig config, ObjectMapper objectMapper) {
+  public SessionService(RuntimeConfig config, ObjectMapper objectMapper, UserService users) {
     this.config = config;
     this.objectMapper = objectMapper;
+    this.users = users;
   }
 
-  public boolean validateCredentials(String username, String password) {
-    return safeEqual(username, config.get("REPORT_USERNAME", "hhh"))
-        && safeEqual(password, config.get("REPORT_PASSWORD", "123456"));
+  public UserRepository.UserAccount authenticate(String username, String password) {
+    return users.authenticate(username, password);
   }
 
-  public String createToken(long now) {
+  public String createToken(UserRepository.UserAccount user, long now) {
     try {
       Map<String, Object> session = new LinkedHashMap<>();
-      session.put("username", config.get("REPORT_USERNAME", "hhh"));
+      session.put("userId", user.id());
+      session.put("username", user.username());
+      session.put("sessionVersion", user.sessionVersion());
       String payload = base64Url(objectMapper.writeValueAsBytes(session));
       return payload + "." + sign(payload);
     } catch (Exception error) {
@@ -49,29 +54,47 @@ public class SessionService {
   }
 
   public boolean verifyToken(String token, long now) {
-    if (token == null) return false;
+    return resolveToken(token, now) != null;
+  }
+
+  public UserRepository.UserAccount currentUser(HttpServletRequest request) {
+    Object cached = request.getAttribute(REQUEST_USER_ATTRIBUTE);
+    if (cached instanceof UserRepository.UserAccount user) return user;
+    if (request.getCookies() == null) return null;
+    for (Cookie cookie : request.getCookies()) {
+      if (!COOKIE_NAME.equals(cookie.getName())) continue;
+      UserRepository.UserAccount user = resolveToken(cookie.getValue(), System.currentTimeMillis());
+      if (user != null) request.setAttribute(REQUEST_USER_ATTRIBUTE, user);
+      return user;
+    }
+    return null;
+  }
+
+  private UserRepository.UserAccount resolveToken(String token, long now) {
+    if (token == null) return null;
     String[] parts = token.split("\\.", -1);
-    if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) return false;
-    if (!safeEqual(parts[1], sign(parts[0]))) return false;
+    if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) return null;
+    if (!safeEqual(parts[1], sign(parts[0]))) return null;
     try {
       byte[] decoded = Base64.getUrlDecoder().decode(parts[0]);
       Map<String, Object> session = objectMapper.readValue(decoded, new TypeReference<>() {});
-      if (!config.get("REPORT_USERNAME", "hhh").equals(String.valueOf(session.get("username")))) {
-        return false;
-      }
-      // New sessions are permanent. Keep honoring expiry on legacy sessions issued before this change.
-      return !session.containsKey("expiresAt") || number(session.get("expiresAt")) > now;
+      if (session.containsKey("expiresAt") && number(session.get("expiresAt")) <= now) return null;
+      UserRepository.UserAccount user = session.containsKey("userId")
+          ? users.findById(number(session.get("userId")))
+          : users.findByUsername(String.valueOf(session.get("username")));
+      if (user == null || !user.active()) return null;
+      if (!safeEqual(user.username(), String.valueOf(session.get("username")))) return null;
+      int tokenVersion = session.containsKey("sessionVersion")
+          ? (int) number(session.get("sessionVersion"))
+          : 1;
+      return user.sessionVersion() == tokenVersion ? user : null;
     } catch (Exception ignored) {
-      return false;
+      return null;
     }
   }
 
   public boolean authenticated(HttpServletRequest request) {
-    if (request.getCookies() == null) return false;
-    for (Cookie cookie : request.getCookies()) {
-      if (COOKIE_NAME.equals(cookie.getName())) return verifyToken(cookie.getValue(), System.currentTimeMillis());
-    }
-    return false;
+    return currentUser(request) != null;
   }
 
   public ResponseCookie cookie(HttpServletRequest request, String token, Duration maxAge) {

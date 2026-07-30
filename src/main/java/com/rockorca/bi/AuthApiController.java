@@ -17,31 +17,42 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class AuthApiController {
   private final SessionService sessions;
+  private final UserService users;
 
-  public AuthApiController(SessionService sessions) {
+  public AuthApiController(SessionService sessions, UserService users) {
     this.sessions = sessions;
+    this.users = users;
   }
 
   @GetMapping("/session")
-  public Map<String, Object> session() {
-    return ReportService.mapOf("authenticated", true);
+  public Map<String, Object> session(HttpServletRequest request) {
+    UserRepository.UserAccount user = sessions.currentUser(request);
+    return ReportService.mapOf(
+        "authenticated", user != null,
+        "user", user == null ? Map.of() : users.view(user, true));
   }
 
   @PostMapping("/login")
   public ResponseEntity<Map<String, Object>> login(
       @RequestBody Map<String, Object> payload,
       HttpServletRequest request) {
-    if (!sessions.validateCredentials(
+    UserRepository.UserAccount user = sessions.authenticate(
         ReportService.text(payload.get("username")),
-        ReportService.text(payload.get("password")))) {
+        ReportService.text(payload.get("password")));
+    if (user == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
           .body(ReportService.mapOf("error", "用户名或密码错误"));
     }
     String cookie = sessions.cookie(
-        request, sessions.createToken(System.currentTimeMillis()), SessionService.LIFETIME).toString();
+        request,
+        sessions.createToken(user, System.currentTimeMillis()),
+        SessionService.LIFETIME).toString();
     return ResponseEntity.ok()
         .header(HttpHeaders.SET_COOKIE, cookie)
-        .body(ReportService.mapOf("ok", true, "redirect", "/"));
+        .body(ReportService.mapOf(
+            "ok", true,
+            "redirect", "/",
+            "user", users.view(user, true)));
   }
 
   @PostMapping("/logout")

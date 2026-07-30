@@ -2,7 +2,9 @@ package com.rockorca.bi;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,6 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +29,8 @@ class ApiControllerTest {
   private SessionService sessions;
   private ReportService reports;
   private PetService pets;
+  private UserService users;
+  private UserRepository.UserAccount user;
   private MockMvc mvc;
 
   @BeforeEach
@@ -32,9 +38,17 @@ class ApiControllerTest {
     sessions = mock(SessionService.class);
     reports = mock(ReportService.class);
     pets = mock(PetService.class);
+    users = mock(UserService.class);
+    LocalDateTime now = LocalDateTime.of(2026, 7, 30, 12, 0);
+    user = new UserRepository.UserAccount(
+        1L, "hhh", "hash", "admin", true, 1, now, now, now);
     when(sessions.authenticated(any(HttpServletRequest.class))).thenReturn(true);
+    when(sessions.currentUser(any(HttpServletRequest.class))).thenReturn(user);
+    when(users.view(eq(user), anyBoolean())).thenReturn(
+        Map.of("id", 1L, "username", "hhh", "role", "admin", "active", true));
     mvc = MockMvcBuilders.standaloneSetup(
-            new AuthApiController(sessions),
+            new AuthApiController(sessions, users),
+            new AccountApiController(sessions, users),
             new ReportApiController(reports),
             new PetApiController(pets))
         .setControllerAdvice(new ApiExceptionHandler())
@@ -43,8 +57,8 @@ class ApiControllerTest {
 
   @Test
   void loginAndLogoutReturnSessionCookieContracts() throws Exception {
-    when(sessions.validateCredentials("hhh", "123456")).thenReturn(true);
-    when(sessions.createToken(any(Long.class))).thenReturn("signed-token");
+    when(sessions.authenticate("hhh", "123456")).thenReturn(user);
+    when(sessions.createToken(eq(user), anyLong())).thenReturn("signed-token");
     when(sessions.cookie(any(), anyString(), any(Duration.class)))
         .thenReturn(ResponseCookie.from(SessionService.COOKIE_NAME, "signed-token")
             .httpOnly(true).sameSite("Lax").path("/").build());
@@ -65,13 +79,40 @@ class ApiControllerTest {
 
   @Test
   void invalidLoginIsUnauthorized() throws Exception {
-    when(sessions.validateCredentials(anyString(), anyString())).thenReturn(false);
+    when(sessions.authenticate(anyString(), anyString())).thenReturn(null);
 
     mvc.perform(post("/api/login")
             .contentType("application/json")
             .content("{\"username\":\"wrong\",\"password\":\"wrong\"}"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error").value("用户名或密码错误"));
+  }
+
+  @Test
+  void accountPasswordAndUserManagementApisDelegate() throws Exception {
+    UserRepository.UserAccount updated = new UserRepository.UserAccount(
+        1L, "hhh", "new-hash", "admin", true, 2,
+        user.createdAt(), user.updatedAt(), user.lastLoginAt());
+    when(users.changeOwnPassword(user, "123456", "654321")).thenReturn(updated);
+    when(users.view(eq(updated), anyBoolean())).thenReturn(
+        Map.of("id", 1L, "username", "hhh", "role", "admin", "active", true));
+    when(sessions.createToken(eq(updated), anyLong())).thenReturn("renewed-token");
+    when(users.listUsers(user)).thenReturn(List.of(
+        Map.of("id", 1L, "username", "hhh", "role", "admin", "active", true)));
+    when(sessions.cookie(any(), anyString(), any(Duration.class)))
+        .thenReturn(ResponseCookie.from(SessionService.COOKIE_NAME, "renewed-token")
+            .httpOnly(true).sameSite("Lax").path("/").build());
+
+    mvc.perform(post("/api/account/password")
+            .contentType("application/json")
+            .content("{\"currentPassword\":\"123456\",\"newPassword\":\"654321\"}"))
+        .andExpect(status().isOk())
+        .andExpect(header().exists("Set-Cookie"))
+        .andExpect(jsonPath("$.ok").value(true));
+
+    mvc.perform(get("/api/users"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.users[0].username").value("hhh"));
   }
 
   @Test

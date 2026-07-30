@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>html:not(.authenticated) body{visibility:hidden}</style>
+  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+  <title>账户设置</title>
+  <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
+  <style>
+    :root{--blue:#1677ff;--ink:#172b4d;--muted:#667085;--line:#d9e2ec;--bg:#f5f8fb;--good:#12805c;--bad:#c93434}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:14px "Microsoft YaHei","PingFang SC",sans-serif}
+    header{padding:20px 32px 16px;border-bottom:1px solid var(--line);background:#fff}
+    .header-row{display:flex;align-items:center;justify-content:space-between;gap:18px}
+    .brand{display:flex;align-items:center;gap:10px}.mark{display:grid;width:30px;height:30px;place-items:center;border-radius:7px;background:var(--blue);color:#fff;font-weight:700}
+    h1{margin:0;font-size:22px}header p{margin:7px 0 0;color:var(--muted)}
+    .nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .nav a,.nav button,.secondary{height:34px;padding:0 12px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;text-decoration:none;font:600 13px inherit;line-height:32px;cursor:pointer}
+    .nav button,.secondary{line-height:normal}.nav a:hover,.nav button:hover,.secondary:hover{border-color:var(--blue);background:#eaf3ff}
+    main{width:min(1120px,calc(100% - 64px));margin:22px auto 56px}
+    .identity{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 20px;border:1px solid var(--line);background:#fff}
+    .identity-name{font-size:18px;font-weight:700}.identity-meta{margin-top:5px;color:var(--muted)}
+    .role{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:5px;background:#eaf3ff;color:#1756a9;font-size:12px;font-weight:700}
+    .settings-section{margin-top:18px;padding:22px 20px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff}
+    .section-head{display:flex;align-items:start;justify-content:space-between;gap:16px;margin-bottom:18px}.section-head h2{margin:0;font-size:17px}.section-head p{margin:6px 0 0;color:var(--muted)}
+    form{display:grid;gap:14px}.password-form{grid-template-columns:repeat(3,minmax(150px,1fr)) auto;align-items:end}.create-form{grid-template-columns:minmax(160px,1fr) minmax(160px,1fr) minmax(160px,1fr) 130px auto;align-items:end}
+    label{display:grid;gap:7px;color:#475467;font-weight:600}input,select{width:100%;height:38px;padding:0 10px;border:1px solid #c7d3df;border-radius:5px;background:#fff;font:inherit;outline:none}
+    input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(22,119,255,.12)}
+    button.primary{height:38px;padding:0 16px;border:0;border-radius:5px;background:var(--blue);color:#fff;font:600 14px inherit;cursor:pointer}button.primary:hover{background:#0958d9}button:disabled{opacity:.55;cursor:wait}
+    .table-wrap{overflow:auto;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:11px 12px;border-bottom:1px solid #edf1f5;text-align:left}th{background:#f2f6fa;color:#344054;font-size:12px}tr:last-child td{border-bottom:0}
+    .status{font-weight:700}.status.active{color:var(--good)}.status.disabled{color:var(--bad)}.actions{display:flex;gap:7px}.actions button{height:30px;padding:0 9px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;font:600 12px inherit;cursor:pointer}.actions button.danger{color:#b42318}.actions button:hover{border-color:var(--blue);background:#eaf3ff}.current{color:var(--muted);font-size:12px}
+    .hidden{display:none!important}
+    dialog{width:min(440px,calc(100vw - 32px));padding:0;border:1px solid var(--line);border-radius:8px;box-shadow:0 22px 60px rgba(23,43,77,.25)}dialog::backdrop{background:rgba(23,43,77,.35)}.dialog-body{padding:20px}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.dialog-head h2{margin:0;font-size:17px}.close{width:30px;height:30px;border:0;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+    #toast{position:fixed;right:22px;bottom:22px;max-width:min(380px,calc(100vw - 44px));padding:11px 14px;border:1px solid #b8dfcf;border-radius:6px;background:#effaf5;color:#126b4d;box-shadow:0 10px 28px rgba(23,43,77,.14);font-weight:600}
+    @media(max-width:900px){header{padding-left:16px;padding-right:16px}.header-row{align-items:flex-start;flex-direction:column}main{width:calc(100% - 32px)}.password-form,.create-form{grid-template-columns:1fr 1fr}.password-form button,.create-form button{width:100%}}
+    @media(max-width:560px){.identity{align-items:flex-start}.password-form,.create-form{grid-template-columns:1fr}.settings-section{padding-left:16px;padding-right:16px}}
+  </style>
+</head>
+<body>
+  <header><div class="header-row"><div><div class="brand"><span class="mark">账</span><h1>账户设置</h1></div><p>管理登录密码与系统用户。</p></div><nav class="nav"><a href="/">大航海日报</a><a href="/jd">京东日报</a><a href="/tools">工具中心</a><button id="logout" type="button">退出登录</button></nav></div></header>
+  <main>
+    <section class="identity" aria-label="当前账户"><div><div class="identity-name" id="currentUsername">加载中...</div><div class="identity-meta" id="currentMeta"></div></div><span class="role" id="currentRole">用户</span></section>
+    <section class="settings-section">
+      <div class="section-head"><div><h2>修改我的密码</h2><p>修改成功后当前设备保持登录，其他旧会话将失效。</p></div></div>
+      <form class="password-form" id="passwordForm">
+        <label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
+        <label>新密码<input name="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+        <label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+        <button class="primary" type="submit">保存密码</button>
+      </form>
+    </section>
+    <section class="settings-section hidden" id="userManagement">
+      <div class="section-head"><div><h2>用户管理</h2><p id="userCount">0 个用户</p></div></div>
+      <form class="create-form" id="createUserForm">
+        <label>用户名<input name="username" autocomplete="off" minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" required /></label>
+        <label>登录密码<input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+        <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+        <label>角色<select name="role"><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+        <button class="primary" type="submit">创建用户</button>
+      </form>
+      <div class="table-wrap" style="margin-top:20px"><table><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>最近登录</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="userRows"></tbody></table></div>
+    </section>
+  </main>
+  <dialog id="resetDialog">
+    <form class="dialog-body" id="resetForm" method="dialog">
+      <div class="dialog-head"><h2 id="resetTitle">重置密码</h2><button class="close" id="closeReset" type="button" aria-label="关闭">×</button></div>
+      <div style="display:grid;gap:14px;margin-top:18px">
+        <label>新密码<input name="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+        <label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required /></label>
+      </div>
+      <div class="dialog-actions"><button class="secondary" id="cancelReset" type="button">取消</button><button class="primary" type="submit">确认重置</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+  <script>
+    const $=selector=>document.querySelector(selector);
+    const state={current:null,users:[],resetUser:null};
+    const escapeHtml=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+    async function api(url,options={}){
+      const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+      let result={};try{result=await response.json()}catch{}
+      if(response.status===401){location.replace('/login');throw new Error('登录已失效')}
+      if(!response.ok)throw new Error(result.error||'请求失败');
+      return result;
+    }
+    let toastTimer=0;
+    function toast(message){const box=$('#toast');box.textContent=message;box.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.classList.add('hidden'),2600)}
+    function formatTime(value){if(!value)return '从未登录';const date=new Date(value);return Number.isNaN(date.getTime())?value:date.toLocaleString('zh-CN',{hour12:false})}
+    function roleText(role){return role==='admin'?'管理员':'普通用户'}
+    function renderCurrent(){const user=state.current;$('#currentUsername').textContent=user.username;$('#currentRole').textContent=roleText(user.role);$('#currentMeta').textContent=`账户 ID：${user.id} · 最近登录：${formatTime(user.lastLoginAt)}`;$('#userManagement').classList.toggle('hidden',user.role!=='admin')}
+    function renderUsers(){
+      $('#userCount').textContent=`${state.users.length} 个用户`;
+      $('#userRows').innerHTML=state.users.map(user=>`<tr><td><strong>${escapeHtml(user.username)}</strong>${user.current?' <span class="current">当前账号</span>':''}</td><td>${roleText(user.role)}</td><td><span class="status ${user.active?'active':'disabled'}">${user.active?'正常':'已停用'}</span></td><td>${escapeHtml(formatTime(user.lastLoginAt))}</td><td>${escapeHtml(formatTime(user.createdAt))}</td><td>${user.current?'<span class="current">请使用上方密码设置</span>':`<div class="actions"><button type="button" data-reset="${user.id}">重置密码</button><button class="${user.active?'danger':''}" type="button" data-status="${user.id}" data-active="${!user.active}">${user.active?'停用':'启用'}</button></div>`}</td></tr>`).join('');
+    }
+    async function load(){const session=await api('/api/session',{cache:'no-store'});state.current=session.user;renderCurrent();if(state.current.role==='admin'){const result=await api('/api/users',{cache:'no-store'});state.users=result.users||[];renderUsers()}}
+    $('#passwordForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('button');if(form.newPassword.value!==form.confirmPassword.value){toast('两次输入的新密码不一致');return}button.disabled=true;try{await api('/api/account/password',{method:'POST',body:JSON.stringify({currentPassword:form.currentPassword.value,newPassword:form.newPassword.value})});form.reset();toast('密码已修改')}catch(error){toast(error.message)}finally{button.disabled=false}});
+    $('#createUserForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('button');if(form.password.value!==form.confirmPassword.value){toast('两次输入的密码不一致');return}button.disabled=true;try{await api('/api/users',{method:'POST',body:JSON.stringify({username:form.username.value,password:form.password.value,role:form.role.value})});form.reset();toast('用户已创建');const result=await api('/api/users',{cache:'no-store'});state.users=result.users||[];renderUsers()}catch(error){toast(error.message)}finally{button.disabled=false}});
+    $('#userRows').addEventListener('click',async event=>{const resetId=event.target.dataset.reset,statusId=event.target.dataset.status;if(resetId){state.resetUser=state.users.find(user=>String(user.id)===resetId);$('#resetTitle').textContent=`重置 ${state.resetUser.username} 的密码`;$('#resetDialog').showModal();$('#resetForm').newPassword.focus();return}if(statusId){const user=state.users.find(item=>String(item.id)===statusId),active=event.target.dataset.active==='true';if(!confirm(`确认${active?'启用':'停用'}用户“${user.username}”？`))return;try{await api(`/api/users/${user.id}/status`,{method:'POST',body:JSON.stringify({active})});toast(active?'用户已启用':'用户已停用');const result=await api('/api/users',{cache:'no-store'});state.users=result.users||[];renderUsers()}catch(error){toast(error.message)}}});
+    $('#resetForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('.primary');if(form.newPassword.value!==form.confirmPassword.value){toast('两次输入的新密码不一致');return}button.disabled=true;try{await api(`/api/users/${state.resetUser.id}/reset-password`,{method:'POST',body:JSON.stringify({newPassword:form.newPassword.value})});form.reset();$('#resetDialog').close();toast('密码已重置')}catch(error){toast(error.message)}finally{button.disabled=false}});
+    $('#closeReset').onclick=$('#cancelReset').onclick=()=>$('#resetDialog').close();
+    $('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
+    load().catch(error=>toast(error.message));
+  </script>
+</body>
+</html>

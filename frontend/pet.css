@@ -25,24 +25,22 @@
   touch-action: none;
   line-height: 1;
   transition: transform .2s ease, box-shadow .2s ease;
-  animation: pet-float 3s ease-in-out infinite;
 }
 
-.data-pet-toggle > img {
+.data-pet-character {
+  display: block;
   width: 94px;
   height: 94px;
   max-width: none;
   pointer-events: none;
-  object-fit: cover;
-  object-position: 50% 25%;
-  transform-origin: 50% 78%;
-  animation: pet-character-idle 4.8s ease-in-out infinite;
   filter: drop-shadow(0 5px 5px rgba(16, 24, 40, .2));
 }
 
-.data-pet-toggle:hover > img,
-.data-pet-toggle:focus-visible > img {
-  animation: pet-character-greet .8s ease-in-out;
+.data-pet-character > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .data-pet-toggle:hover,
@@ -118,14 +116,21 @@
   gap: 9px;
 }
 
-.data-pet-avatar {
+.data-pet-avatar-frame {
+  display: block;
   width: 38px;
   height: 38px;
   flex: none;
+  overflow: hidden;
   border-radius: 50%;
   background: rgba(255, 255, 255, .72);
+}
+
+.data-pet-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  object-position: 50% 22%;
 }
 
 .data-pet-name { font-size: 15px; font-weight: 700; color: #172b4d; }
@@ -291,33 +296,10 @@
 }
 .data-pet-dragging,
 .data-pet-dragging * { cursor: grabbing !important; }
-.data-pet-dragging .data-pet-toggle { animation: none; }
-
-@keyframes pet-float {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-7px) rotate(2deg); }
-}
-
-@keyframes pet-character-idle {
-  0%, 100% { transform: translateY(1px) rotate(-.6deg) scale(1); }
-  42% { transform: translateY(-2px) rotate(.5deg) scale(1.015); }
-  58% { transform: translateY(-1px) rotate(.2deg) scale(1.01); }
-}
-
-@keyframes pet-character-greet {
-  0%, 100% { transform: translateY(0) rotate(0) scale(1.01); }
-  30% { transform: translateY(-3px) rotate(-2.5deg) scale(1.035); }
-  65% { transform: translateY(-2px) rotate(2deg) scale(1.03); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .data-pet-toggle,
-  .data-pet-toggle > img { animation: none; }
-}
 
 @media (max-width: 560px) {
   .data-pet { --data-pet-size: 70px; right: 14px; bottom: 14px; }
-  .data-pet-toggle > img { width: 82px; height: 82px; }
+  .data-pet-character { width: 82px; height: 82px; }
   .data-pet-panel { position: fixed; inset: 12px 12px 82px; width: auto; height: auto; }
   .data-pet-settings { grid-template-columns: 90px minmax(0, 1fr); }
   .data-pet-settings-save { grid-column: 1 / -1; }

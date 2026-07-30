@@ -21,7 +21,10 @@
       <section class="data-pet-panel" hidden>
         <header class="data-pet-head">
           <div class="data-pet-identity">
-            <img class="data-pet-avatar" src="/assets/ai-assistant-v2.png" alt="" />
+            <picture class="data-pet-avatar-frame">
+              <source media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-animated.webp" type="image/webp" />
+              <img class="data-pet-avatar" src="/assets/ai-assistant-v2.png" alt="" />
+            </picture>
             <div><div class="data-pet-name">AI 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
@@ -51,7 +54,10 @@
         </form>
       </section>
       <button class="data-pet-toggle" type="button" aria-label="打开 AI 数据助手" aria-expanded="false">
-        <img src="/assets/ai-assistant-v2.png" alt="" draggable="false" />
+        <picture class="data-pet-character">
+          <source media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-animated.webp" type="image/webp" />
+          <img src="/assets/ai-assistant-v2.png" alt="" draggable="false" />
+        </picture>
         <span class="data-pet-dot"></span>
       </button>
     `;

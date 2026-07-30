@@ -182,6 +182,7 @@ public class ReportService {
     List<Map<String, Object>> filtered = sourceRows.stream()
         .filter(row -> inRange(row, start, end))
         .toList();
+    List<Map<String, Object>> accountRows = buildDhhAccountRows(filtered);
     List<Map<String, Object>> byProject = aggregateDhh(filtered, List.of("项目"));
     Map<String, Object> summary = zeroValues(DHH_NUMERIC_FIELDS);
     for (String field : DHH_NUMERIC_FIELDS) {
@@ -202,6 +203,8 @@ public class ReportService {
     response.put("by_project", byProject);
     response.put("by_date", dateDescending(aggregateDhh(filtered, List.of("日期"))));
     response.put("by_task", aggregateDhh(filtered, List.of("任务名")));
+    response.put("by_account",
+        aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID")));
     // 项目、任务下钻时直接返回优化师汇总，前端无需再次拼接或累加日报指标。
     response.put("by_optimizer_project",
         aggregateDhh(filtered, List.of("项目", "优化师")));
@@ -216,6 +219,12 @@ public class ReportService {
         aggregateDhh(filtered, List.of("日期", "优化师", "项目", "任务名")));
     response.put("by_project_date", aggregateDhh(filtered, List.of("日期", "项目")));
     response.put("by_task_date", aggregateDhh(filtered, List.of("日期", "任务名")));
+    response.put("by_account_date", dateDescending(aggregateDhh(
+        accountRows, List.of("日期", "账户", "账户名称", "账户ID"))));
+    response.put("by_optimizer_account",
+        aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID", "优化师")));
+    response.put("by_optimizer_account_date", dateDescending(aggregateDhh(
+        accountRows, List.of("日期", "账户", "账户名称", "账户ID", "优化师"))));
     return response;
   }
 
@@ -250,6 +259,57 @@ public class ReportService {
       result.add(item);
     }
     result.sort(Comparator.comparingDouble((Map<String, Object> item) -> number(item.get("消耗"))).reversed());
+    return result;
+  }
+
+  /**
+   * 将任务行中的账户 JSON 展开为账户明细。
+   *
+   * <p>账户消耗、现金消耗和赠款消耗使用上游账户原值；佣金、结算、转化和注册属于任务级
+   * 指标，按账户消耗占比分摊，避免同一任务包含多个账户时重复累计。若账户消耗全部为零，
+   * 则在有效账户间均分任务级指标。
+   */
+  public List<Map<String, Object>> buildDhhAccountRows(List<Map<String, Object>> rows) {
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      List<Map<String, Object>> accounts = accountList(row.get("账户列表")).stream()
+          .filter(account -> !text(account.get("账户ID")).isBlank()
+              || !text(account.get("账户名称")).isBlank())
+          .toList();
+      if (accounts.isEmpty()) continue;
+
+      double listedSpend = accounts.stream()
+          .mapToDouble(account -> number(account.get("消耗")))
+          .sum();
+      for (Map<String, Object> account : accounts) {
+        String id = text(account.get("账户ID"));
+        String name = text(account.get("账户名称"));
+        if (name.isBlank()) name = "账户 " + id;
+        String identity = id.isBlank() ? name : name + "（" + id + "）";
+        double share = listedSpend > 0
+            ? number(account.get("消耗")) / listedSpend
+            : 1d / accounts.size();
+
+        Map<String, Object> accountRow = new LinkedHashMap<>();
+        accountRow.put("日期", row.get("日期"));
+        accountRow.put("账户", identity);
+        accountRow.put("账户名称", name);
+        accountRow.put("账户ID", id);
+        accountRow.put("优化师", row.get("优化师"));
+        accountRow.put("项目", row.get("项目"));
+        accountRow.put("任务名", row.get("任务名"));
+        accountRow.put("消耗", listedSpend > 0
+            ? number(account.get("消耗")) : number(row.get("消耗")) * share);
+        accountRow.put("现金消耗", listedSpend > 0
+            ? number(account.get("现金消耗")) : number(row.get("现金消耗")) * share);
+        accountRow.put("赠款消耗", listedSpend > 0
+            ? number(account.get("赠款消耗")) : number(row.get("赠款消耗")) * share);
+        for (String field : List.of("预估佣金", "结算数", "转化数", "注册数")) {
+          accountRow.put(field, number(row.get(field)) * share);
+        }
+        result.add(accountRow);
+      }
+    }
     return result;
   }
 

@@ -204,6 +204,40 @@ class CoreBehaviorTest {
         .filter(item -> "优化师A".equals(item.get("优化师"))).findFirst().orElseThrow().get("现金利润"));
   }
 
+  @Test
+  void dhhAccountDimensionUsesAccountSpendAndAllocatesTaskMetricsOnce() {
+    List<Map<String, Object>> accounts = List.of(
+        map("账户ID", "A1", "账户名称", "账户A",
+            "消耗", 75, "现金消耗", 60, "赠款消耗", 15),
+        map("账户ID", "B1", "账户名称", "账户B",
+            "消耗", 25, "现金消耗", 20, "赠款消耗", 5));
+    List<Map<String, Object>> rows = List.of(
+        map("日期", "2026-07-23", "优化师", "优化师A", "项目", "项目A", "任务名", "任务A",
+            "消耗", 100, "现金消耗", 80, "赠款消耗", 20,
+            "预估佣金", 200, "结算数", 40, "转化数", 20, "注册数", 10,
+            "账户列表", accounts));
+
+    Map<String, Object> analysis =
+        reports.buildDhhAnalysis(rows, "2026-07-01", "2026-07-31", "now");
+    List<Map<String, Object>> byAccount = maps(analysis.get("by_account"));
+    Map<String, Object> accountA = byAccount.stream()
+        .filter(item -> "A1".equals(item.get("账户ID")))
+        .findFirst()
+        .orElseThrow();
+
+    assertEquals(2, byAccount.size());
+    assertEquals("账户A", accountA.get("账户名称"));
+    assertEquals(75.0, accountA.get("消耗"));
+    assertEquals(150.0, accountA.get("预估佣金"));
+    assertEquals(30.0, accountA.get("结算数"));
+    assertEquals(200.0, byAccount.stream()
+        .mapToDouble(item -> ((Number) item.get("预估佣金")).doubleValue())
+        .sum());
+    assertEquals(2, maps(analysis.get("by_account_date")).size());
+    assertEquals(2, maps(analysis.get("by_optimizer_account")).size());
+    assertEquals(2, maps(analysis.get("by_optimizer_account_date")).size());
+  }
+
   private static Map<String, Object> jdRow(
       String date,
       String optimizer,

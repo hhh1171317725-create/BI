@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>html:not(.authenticated) body{visibility:hidden}</style>
-  <script>fetch('/api/session',{cache:'no-store'}).then(response=>{if(!response.ok)throw Error();document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+  <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
+  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');else try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
   <title>京东 CPA 日报分析</title>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <link rel="stylesheet" href="/pet.css?v=20260730-ai-server" />
@@ -489,7 +489,7 @@
   <header>
     <div class="header-row">
       <div>
-        <div class="brand"><button class="brand-mark" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东 CPA 日报分析</h1></div>
+        <div class="brand"><button class="brand-mark admin-only" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东 CPA 日报分析</h1></div>
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
       <div class="header-actions">
@@ -501,7 +501,7 @@
     </div>
   </header>
 
-  <section class="panel">
+  <section class="panel admin-only">
     <div class="controls">
       <label>x-token
         <input id="token" type="password" autocomplete="off" placeholder="仅更新最新数据时需要粘贴" />
@@ -697,6 +697,7 @@
         by_promoter: "",
       };
       const tokenStorageKey = "marketing-report-x-token";
+      const isAdmin = window.currentSessionUser?.role === "admin";
       const tableSettingsStorageKey = "jd-table-settings-v1";
       let tableSettings = (() => {
         try {
@@ -753,6 +754,7 @@
       }
 
       function rememberToken(token) {
+        if (!isAdmin) return;
         try {
           localStorage.setItem(tokenStorageKey, token);
         } catch {
@@ -761,6 +763,7 @@
       }
 
       function savedToken() {
+        if (!isAdmin) return "";
         try {
           return localStorage.getItem(tokenStorageKey) || "";
         } catch {
@@ -769,6 +772,7 @@
       }
 
       async function copyToken() {
+        if (!isAdmin) return;
         const token = $("#token").value.trim() || savedToken();
         if (!token) {
           setStatus("暂无已保存的 x-token，请先粘贴并成功更新一次数据。", "error");
@@ -1176,6 +1180,7 @@
       }
 
       async function loadLatest() {
+        if (!isAdmin) return;
         const token = $("#token").value.trim();
         if (!token) {
           setStatus("请粘贴当前 x-token 后再更新数据。", "error");
@@ -1375,7 +1380,12 @@
           setStatus(cacheText(), "success");
         })
         .catch((error) => {
-          setStatus(error.message || "MySQL 暂无京东数据，请粘贴 x-token 后加载一次。", "error");
+          setStatus(
+            error.message || (isAdmin
+              ? "MySQL 暂无京东数据，请粘贴 x-token 后加载一次。"
+              : "当前暂无京东报表数据，请联系管理员更新全量数据。"),
+            "error"
+          );
         });
     })();
   </script>

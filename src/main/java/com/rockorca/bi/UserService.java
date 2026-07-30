@@ -121,7 +121,7 @@ public class UserService {
 
   public void requireAdmin(UserRepository.UserAccount user) {
     if (user == null || !user.active() || !user.admin()) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅管理员可以管理用户");
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅管理员可以执行此操作");
     }
   }
 

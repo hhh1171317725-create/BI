@@ -1,5 +1,6 @@
 package com.rockorca.bi;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,9 +13,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class ReportApiController {
   private final ReportService reports;
+  private final SessionService sessions;
+  private final UserService users;
 
-  public ReportApiController(ReportService reports) {
+  public ReportApiController(
+      ReportService reports,
+      SessionService sessions,
+      UserService users) {
     this.reports = reports;
+    this.sessions = sessions;
+    this.users = users;
   }
 
   @GetMapping("/current")
@@ -23,7 +31,10 @@ public class ReportApiController {
   }
 
   @PostMapping("/load")
-  public Map<String, Object> loadDhh(@RequestBody Map<String, Object> payload) {
+  public Map<String, Object> loadDhh(
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
     return reports.loadDhh(
         ReportService.text(payload.get("token")),
         defaultUserId(payload.get("userId")));
@@ -43,7 +54,10 @@ public class ReportApiController {
   }
 
   @PostMapping("/jd/load")
-  public Map<String, Object> loadJd(@RequestBody Map<String, Object> payload) {
+  public Map<String, Object> loadJd(
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
     return reports.loadJd(
         ReportService.text(payload.get("token")),
         defaultUserId(payload.get("userId")),

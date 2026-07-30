@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -21,9 +22,11 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.server.ResponseStatusException;
 
 class ApiControllerTest {
   private SessionService sessions;
@@ -49,7 +52,7 @@ class ApiControllerTest {
     mvc = MockMvcBuilders.standaloneSetup(
             new AuthApiController(sessions, users),
             new AccountApiController(sessions, users),
-            new ReportApiController(reports),
+            new ReportApiController(reports, sessions, users),
             new PetApiController(pets, sessions, users))
         .setControllerAdvice(new ApiExceptionHandler())
         .build();
@@ -169,6 +172,31 @@ class ApiControllerTest {
     verify(reports).loadJd("report-token", "20", true);
     verify(reports).analyzeJd(
         "2026-07-01", "2026-07-25", false, "1864950618183252");
+  }
+
+  @Test
+  void ordinaryUsersCannotTriggerFullReportRefresh() throws Exception {
+    UserRepository.UserAccount ordinaryUser = new UserRepository.UserAccount(
+        2L, "viewer", "hash", "user", true, 1,
+        user.createdAt(), user.updatedAt(), user.lastLoginAt());
+    when(sessions.currentUser(any(HttpServletRequest.class))).thenReturn(ordinaryUser);
+    org.mockito.Mockito.doThrow(
+            new ResponseStatusException(HttpStatus.FORBIDDEN, "仅管理员可以执行此操作"))
+        .when(users).requireAdmin(ordinaryUser);
+
+    mvc.perform(post("/api/load")
+            .contentType("application/json")
+            .content("{\"token\":\"hidden-token\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(post("/api/jd/load")
+            .contentType("application/json")
+            .content("{\"token\":\"hidden-token\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+
+    verify(reports, never()).loadDhh(anyString(), anyString());
+    verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
   }
 
   @Test

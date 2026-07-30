@@ -22,7 +22,7 @@ public class SessionService {
    * 校验同时检查签名、当前用户名和过期时间；修改用户名或会话密钥会使旧 Cookie 失效。
    */
   public static final String COOKIE_NAME = "report_session";
-  public static final Duration LIFETIME = Duration.ofDays(7);
+  public static final Duration LIFETIME = Duration.ofDays(36500);
 
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
@@ -41,7 +41,6 @@ public class SessionService {
     try {
       Map<String, Object> session = new LinkedHashMap<>();
       session.put("username", config.get("REPORT_USERNAME", "hhh"));
-      session.put("expiresAt", now + LIFETIME.toMillis());
       String payload = base64Url(objectMapper.writeValueAsBytes(session));
       return payload + "." + sign(payload);
     } catch (Exception error) {
@@ -57,8 +56,11 @@ public class SessionService {
     try {
       byte[] decoded = Base64.getUrlDecoder().decode(parts[0]);
       Map<String, Object> session = objectMapper.readValue(decoded, new TypeReference<>() {});
-      return config.get("REPORT_USERNAME", "hhh").equals(String.valueOf(session.get("username")))
-          && number(session.get("expiresAt")) > now;
+      if (!config.get("REPORT_USERNAME", "hhh").equals(String.valueOf(session.get("username")))) {
+        return false;
+      }
+      // New sessions are permanent. Keep honoring expiry on legacy sessions issued before this change.
+      return !session.containsKey("expiresAt") || number(session.get("expiresAt")) > now;
     } catch (Exception ignored) {
       return false;
     }

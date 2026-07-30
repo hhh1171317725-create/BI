@@ -32,7 +32,7 @@
 
 ## 登录
 
-整个站点及数据接口均需要登录，默认用户名为 `hhh`、密码为 `123456`。登录状态通过签名的 HttpOnly Cookie 保存 7 天，可从报表页右上角主动退出。生产环境可使用 `REPORT_USERNAME`、`REPORT_PASSWORD` 和 `REPORT_SESSION_SECRET` 环境变量覆盖默认值；设置固定的随机 `REPORT_SESSION_SECRET` 后，服务重启不会使现有登录状态失效。
+整个站点及数据接口均需要登录，默认用户名为 `hhh`、密码为 `123456`。登录状态通过长期保存的签名 HttpOnly Cookie 维持，直到用户主动退出、清除浏览器数据、修改登录账号或会话密钥。生产环境可使用 `REPORT_USERNAME`、`REPORT_PASSWORD` 和 `REPORT_SESSION_SECRET` 环境变量覆盖默认值；设置固定的随机 `REPORT_SESSION_SECRET` 后，服务重启不会使现有登录状态失效。
 
 ## 数据分析宠物
 

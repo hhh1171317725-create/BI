@@ -5,6 +5,12 @@
   let busy = false;
   const aiConfigStorageKey = "data-pet-ai-config-v1";
   const petPositionStorageKey = "data-pet-position-v1";
+  const petMotionSources = {
+    idle: "/assets/ai-assistant-idle.webp",
+    greet: "/assets/ai-assistant-greet.webp",
+    thinking: "/assets/ai-assistant-thinking.webp",
+    success: "/assets/ai-assistant-success.webp",
+  };
 
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -22,7 +28,7 @@
         <header class="data-pet-head">
           <div class="data-pet-identity">
             <picture class="data-pet-avatar-frame">
-              <source media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-animated.webp" type="image/webp" />
+              <source data-pet-motion media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-idle.webp" type="image/webp" />
               <img class="data-pet-avatar" src="/assets/ai-assistant-v2.png" alt="" />
             </picture>
             <div><div class="data-pet-name">AI 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
@@ -55,7 +61,7 @@
       </section>
       <button class="data-pet-toggle" type="button" aria-label="打开 AI 数据助手" aria-expanded="false">
         <picture class="data-pet-character">
-          <source media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-animated.webp" type="image/webp" />
+          <source data-pet-motion media="(prefers-reduced-motion: no-preference)" srcset="/assets/ai-assistant-idle.webp" type="image/webp" />
           <img src="/assets/ai-assistant-v2.png" alt="" draggable="false" />
         </picture>
         <span class="data-pet-dot"></span>
@@ -77,6 +83,20 @@
   const apiKeyInput = root.querySelector(".data-pet-api-key");
   const head = root.querySelector(".data-pet-head");
   let dragState = null;
+  let motionTimer = 0;
+
+  function setPetMotion(name, resetAfter = 0) {
+    const source = petMotionSources[name] || petMotionSources.idle;
+    window.clearTimeout(motionTimer);
+    root.querySelectorAll("source[data-pet-motion]").forEach((item) => {
+      if (item.getAttribute("srcset") !== source) item.setAttribute("srcset", source);
+    });
+    motionTimer = resetAfter > 0
+      ? window.setTimeout(() => {
+        if (!busy) setPetMotion("idle");
+      }, resetAfter)
+      : 0;
+  }
 
   function updatePanelDirection() {
     if (window.innerWidth <= 560) {
@@ -221,6 +241,7 @@
   function openPet() {
     panel.hidden = false;
     toggle.setAttribute("aria-expanded", "true");
+    if (!busy) setPetMotion("greet", 2600);
     keepPanelInViewport();
     if (root.style.left) {
       const rect = root.getBoundingClientRect();
@@ -232,6 +253,7 @@
   function closePet() {
     panel.hidden = true;
     toggle.setAttribute("aria-expanded", "false");
+    if (!busy) setPetMotion("idle");
   }
 
   async function ask(question) {
@@ -242,6 +264,8 @@
     send.disabled = true;
     addMessage("user", message);
     const thinking = addMessage("assistant", "正在查看当前报表…", "thinking");
+    setPetMotion("thinking");
+    let succeeded = false;
     try {
       const context = typeof window.getPetReportContext === "function"
         ? window.getPetReportContext()
@@ -263,10 +287,13 @@
         ? `${result.provider === "deepseek" ? "DeepSeek" : "OpenAI"} 对话 · 当前报表数据`
         : "本地数据分析";
       history.push({ role: "user", content: message }, { role: "assistant", content: result.reply });
+      succeeded = true;
+      setPetMotion("success", 3600);
     } catch (error) {
       thinking.textContent = error instanceof Error ? error.message : "分析失败，请稍后重试。";
     } finally {
       busy = false;
+      if (!succeeded) setPetMotion("idle");
       send.disabled = false;
       input.focus();
     }
@@ -291,6 +318,9 @@
   });
   toggle.addEventListener("click", (event) => {
     if (event.detail === 0) panel.hidden ? openPet() : closePet();
+  });
+  toggle.addEventListener("pointerenter", () => {
+    if (!busy && panel.hidden) setPetMotion("greet", 2600);
   });
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
   root.querySelector(".data-pet-settings-toggle").addEventListener("click", () => {

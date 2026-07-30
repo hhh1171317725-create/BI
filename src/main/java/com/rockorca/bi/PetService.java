@@ -65,8 +65,7 @@ public class PetService {
       Map<String, Object> answer = askAi(
           message,
           enriched,
-          listOfMaps(payload.get("history")),
-          objectMap(payload.get("aiConfig")));
+          listOfMaps(payload.get("history")));
       if (!ReportService.text(answer.get("text")).isBlank()) {
         return ReportService.mapOf(
             "reply", answer.get("text"), "mode", "ai", "provider", answer.get("provider"));
@@ -243,10 +242,9 @@ public class PetService {
   private Map<String, Object> askAi(
       String message,
       Map<String, Object> context,
-      List<Map<String, Object>> history,
-      Map<String, Object> clientConfig) throws Exception {
+      List<Map<String, Object>> history) throws Exception {
     // 仅保留最近 8 条对话，并限制单条和底表上下文长度，控制数据外发范围与请求体大小。
-    AiConfig ai = resolveAiConfig(clientConfig);
+    AiConfig ai = resolveAiConfig();
     if (ai.apiKey().isBlank()) return ReportService.mapOf("text", "", "provider", "local");
     List<Map<String, Object>> safeHistory = new ArrayList<>();
     int from = Math.max(0, history.size() - 8);
@@ -304,26 +302,34 @@ public class PetService {
     return ReportService.mapOf("text", text, "provider", ai.provider());
   }
 
-  public AiConfig resolveAiConfig(Map<String, Object> clientConfig) {
-    String clientProvider = ReportService.text(clientConfig.get("provider"));
-    if (!Set.of("deepseek", "openai").contains(clientProvider)) clientProvider = "";
-    String clientKey = ReportService.text(clientConfig.get("apiKey"));
-    if (clientKey.length() > 300) clientKey = clientKey.substring(0, 300);
-    String requested = clientProvider.isBlank()
-        ? config.get("AI_PROVIDER", "").toLowerCase(Locale.ROOT) : clientProvider;
+  public Map<String, Object> aiConfigStatus() {
+    AiConfig ai = resolveAiConfig();
+    return ReportService.mapOf(
+        "provider", ai.provider(),
+        "model", ai.model(),
+        "configured", !ai.apiKey().isBlank());
+  }
+
+  public Map<String, Object> saveAiConfig(String provider, String apiKey, String model) {
+    config.saveAiCredentials(provider, apiKey, model);
+    return aiConfigStatus();
+  }
+
+  public AiConfig resolveAiConfig() {
+    String requested = config.get("AI_PROVIDER", "").toLowerCase(Locale.ROOT);
     String provider = requested.isBlank()
         ? (config.get("DEEPSEEK_API_KEY", "").isBlank() ? "openai" : "deepseek")
         : requested;
     if ("deepseek".equals(provider)) {
       return new AiConfig(
           "deepseek",
-          clientKey.isBlank() ? config.get("DEEPSEEK_API_KEY", "") : clientKey,
+          config.get("DEEPSEEK_API_KEY", ""),
           config.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
           config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"));
     }
     return new AiConfig(
         "openai",
-        clientKey.isBlank() ? config.get("OPENAI_API_KEY", "") : clientKey,
+        config.get("OPENAI_API_KEY", ""),
         config.get("OPENAI_MODEL", "gpt-5.6-terra"),
         "https://api.openai.com/v1");
   }

@@ -50,7 +50,7 @@ class ApiControllerTest {
             new AuthApiController(sessions, users),
             new AccountApiController(sessions, users),
             new ReportApiController(reports),
-            new PetApiController(pets))
+            new PetApiController(pets, sessions, users))
         .setControllerAdvice(new ApiExceptionHandler())
         .build();
   }
@@ -174,12 +174,33 @@ class ApiControllerTest {
   @Test
   void petApiDelegatesPayloadAndErrorsUseJsonContract() throws Exception {
     when(pets.chat(any())).thenReturn(Map.of("reply", "分析完成", "mode", "local"));
+    when(pets.aiConfigStatus()).thenReturn(
+        Map.of("provider", "deepseek", "model", "deepseek-v4-flash", "configured", true));
+    when(pets.saveAiConfig("deepseek", "server-api-key", "deepseek-v4-flash"))
+        .thenReturn(
+            Map.of("provider", "deepseek", "model", "deepseek-v4-flash", "configured", true));
 
     mvc.perform(post("/api/pet/chat")
             .contentType("application/json")
             .content("{\"message\":\"分析消耗\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.reply").value("分析完成"));
+
+    mvc.perform(get("/api/pet/config"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.configured").value(true))
+        .andExpect(jsonPath("$.canManage").value(true))
+        .andExpect(jsonPath("$.apiKey").doesNotExist());
+
+    mvc.perform(post("/api/pet/config")
+            .contentType("application/json")
+            .content("""
+                {"provider":"deepseek","apiKey":"server-api-key",
+                 "model":"deepseek-v4-flash"}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.configured").value(true))
+        .andExpect(jsonPath("$.apiKey").doesNotExist());
 
     when(reports.currentDhh()).thenThrow(new IllegalArgumentException("日期格式错误"));
     mvc.perform(get("/api/current"))

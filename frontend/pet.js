@@ -3,8 +3,14 @@
 
   const history = [];
   let busy = false;
-  const aiConfigStorageKey = "data-pet-ai-config-v1";
+  const legacyAiConfigStorageKey = "data-pet-ai-config-v1";
   const petPositionStorageKey = "data-pet-position-v1";
+  let aiStatus = {
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    configured: false,
+    canManage: false,
+  };
 
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -25,7 +31,7 @@
             <div><div class="data-pet-name">初音未来 · 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
-            <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置">⚙</button>
+            <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置" hidden>⚙</button>
             <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
           </div>
         </header>
@@ -34,9 +40,10 @@
             <option value="deepseek">DeepSeek</option>
             <option value="openai">OpenAI</option>
           </select>
+          <input class="data-pet-model" autocomplete="off" placeholder="模型名称" aria-label="AI 模型名称" />
           <input class="data-pet-api-key" type="password" autocomplete="off" placeholder="粘贴 API Key" aria-label="AI API Key" />
           <button class="data-pet-settings-save" type="button">保存</button>
-          <div class="data-pet-settings-note">Key 仅保存在当前浏览器，通过本站后端转发，不写入服务器文件。</div>
+          <div class="data-pet-settings-note">配置保存在服务器，所有已登录设备共享；页面不会回显完整 Key。</div>
         </div>
         <div class="data-pet-messages" aria-live="polite"></div>
         <div class="data-pet-quick">
@@ -67,7 +74,9 @@
   const send = root.querySelector(".data-pet-send");
   const mode = root.querySelector(".data-pet-mode");
   const settings = root.querySelector(".data-pet-settings");
+  const settingsToggle = root.querySelector(".data-pet-settings-toggle");
   const providerInput = root.querySelector(".data-pet-provider");
+  const modelInput = root.querySelector(".data-pet-model");
   const apiKeyInput = root.querySelector(".data-pet-api-key");
   const head = root.querySelector(".data-pet-head");
   let dragState = null;
@@ -187,20 +196,43 @@
     }
   }
 
-  function savedAiConfig() {
+  function clearLegacyAiConfig() {
     try {
-      const value = JSON.parse(localStorage.getItem(aiConfigStorageKey) || "{}");
-      return value && typeof value === "object" ? value : {};
+      localStorage.removeItem(legacyAiConfigStorageKey);
     } catch {
-      return {};
+      // 服务器配置不依赖浏览器本地存储。
     }
   }
 
   function updateAiMode() {
-    const config = savedAiConfig();
-    mode.textContent = config.apiKey
-      ? `${config.provider === "openai" ? "OpenAI" : "DeepSeek"} 已配置 · 当前浏览器`
-      : "点击 ⚙ 配置 AI · 本地分析";
+    if (aiStatus.configured) {
+      mode.textContent =
+        `${aiStatus.provider === "openai" ? "OpenAI" : "DeepSeek"} 已配置 · 服务器共享`;
+      return;
+    }
+    mode.textContent = aiStatus.canManage ? "点击 ⚙ 配置 AI · 本地分析" : "AI 未配置 · 本地分析";
+  }
+
+  async function loadAiConfig() {
+    clearLegacyAiConfig();
+    const response = await fetch("/api/pet/config", { cache: "no-store" });
+    if (response.status === 401) {
+      location.replace("/login");
+      throw new Error("登录已失效");
+    }
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "读取 AI 配置失败");
+    aiStatus = {
+      provider: result.provider === "openai" ? "openai" : "deepseek",
+      model: result.model || "",
+      configured: Boolean(result.configured),
+      canManage: Boolean(result.canManage),
+    };
+    settingsToggle.hidden = !aiStatus.canManage;
+    providerInput.value = aiStatus.provider;
+    modelInput.value = aiStatus.model;
+    apiKeyInput.placeholder = aiStatus.configured ? "已配置，留空保持不变" : "粘贴 API Key";
+    updateAiMode();
   }
 
   function addMessage(role, text, className = "") {
@@ -243,7 +275,7 @@
       const response = await fetch("/api/pet/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context, history: history.slice(-8), aiConfig: savedAiConfig() }),
+        body: JSON.stringify({ message, context, history: history.slice(-8) }),
       });
       if (response.status === 401) {
         location.replace("/login");
@@ -287,29 +319,51 @@
     if (event.detail === 0) panel.hidden ? openPet() : closePet();
   });
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
-  root.querySelector(".data-pet-settings-toggle").addEventListener("click", () => {
-    const config = savedAiConfig();
-    providerInput.value = config.provider === "openai" ? "openai" : "deepseek";
-    apiKeyInput.value = config.apiKey || "";
+  settingsToggle.addEventListener("click", () => {
+    providerInput.value = aiStatus.provider;
+    modelInput.value = aiStatus.model;
+    apiKeyInput.value = "";
     settings.hidden = !settings.hidden;
     if (!settings.hidden) apiKeyInput.focus();
   });
-  root.querySelector(".data-pet-settings-save").addEventListener("click", () => {
+  providerInput.addEventListener("change", () => {
+    modelInput.value = providerInput.value === "openai" ? "gpt-5.6-terra" : "deepseek-v4-flash";
+  });
+  root.querySelector(".data-pet-settings-save").addEventListener("click", async (event) => {
     const apiKey = apiKeyInput.value.trim();
+    const button = event.currentTarget;
+    button.disabled = true;
     try {
-      if (apiKey) {
-        localStorage.setItem(aiConfigStorageKey, JSON.stringify({
+      const response = await fetch("/api/pet/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           provider: providerInput.value === "openai" ? "openai" : "deepseek",
           apiKey,
-        }));
-      } else {
-        localStorage.removeItem(aiConfigStorageKey);
+          model: modelInput.value.trim(),
+        }),
+      });
+      if (response.status === 401) {
+        location.replace("/login");
+        throw new Error("登录已失效");
       }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "保存 AI 配置失败");
+      aiStatus = {
+        provider: result.provider === "openai" ? "openai" : "deepseek",
+        model: result.model || "",
+        configured: Boolean(result.configured),
+        canManage: Boolean(result.canManage),
+      };
+      apiKeyInput.value = "";
+      apiKeyInput.placeholder = "已配置，留空保持不变";
       settings.hidden = true;
       updateAiMode();
-      addMessage("assistant", apiKey ? "AI 设置已保存，可以开始对话了。" : "AI 设置已清除，已切换为本地分析。");
-    } catch {
-      addMessage("assistant", "浏览器未允许保存设置，请检查本地存储权限。");
+      addMessage("assistant", "AI 配置已保存到服务器，其他已登录电脑现在也可以直接使用。");
+    } catch (error) {
+      addMessage("assistant", error instanceof Error ? error.message : "保存 AI 配置失败。");
+    } finally {
+      button.disabled = false;
     }
   });
   root.querySelector(".data-pet-form").addEventListener("submit", (event) => {
@@ -322,6 +376,9 @@
   });
 
   addMessage("assistant", "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
-  updateAiMode();
+  mode.textContent = "正在读取 AI 配置…";
+  loadAiConfig().catch(() => {
+    mode.textContent = "本地数据分析";
+  });
   restorePetPosition();
 })();

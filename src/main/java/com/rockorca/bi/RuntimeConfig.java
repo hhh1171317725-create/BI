@@ -8,14 +8,17 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RuntimeConfig {
-  private final Map<String, String> values = new LinkedHashMap<>();
+  private final Map<String, String> values = new ConcurrentHashMap<>();
   private final ObjectMapper objectMapper;
   private Path runtimeDir;
 
@@ -108,19 +111,77 @@ public class RuntimeConfig {
           : new LinkedHashMap<>();
       saved.put("XZ_DEEPLINK_TOKEN", token);
       saved.put("XZ_DEEPLINK_SIGN", sign);
-      StringBuilder content = new StringBuilder("# Managed by the JD deeplink settings page.\n");
-      saved.forEach((key, value) -> content.append(key).append('=').append(value).append('\n'));
-      Path temporary = path.resolveSibling("deeplink.env.tmp");
-      Files.writeString(temporary, content, StandardCharsets.UTF_8);
-      try {
-        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-      } catch (AtomicMoveNotSupportedException ignored) {
-        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
-      }
+      saveEnvironmentFile(path, "# Managed by the JD deeplink settings page.", saved);
       values.put("XZ_DEEPLINK_TOKEN", token);
       values.put("XZ_DEEPLINK_SIGN", sign);
     } catch (IOException error) {
       throw new IllegalStateException("保存深链接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  public synchronized void saveAiCredentials(
+      String providerValue,
+      String apiKeyValue,
+      String modelValue) {
+    String provider = String.valueOf(providerValue == null ? "" : providerValue)
+        .trim().toLowerCase();
+    if (!provider.equals("deepseek") && !provider.equals("openai")) {
+      throw new IllegalArgumentException("请选择有效的 AI 提供商");
+    }
+    String keyName = provider.equals("deepseek") ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY";
+    String modelName = provider.equals("deepseek") ? "DEEPSEEK_MODEL" : "OPENAI_MODEL";
+    String defaultModel = provider.equals("deepseek") ? "deepseek-v4-flash" : "gpt-5.6-terra";
+    String apiKey = String.valueOf(apiKeyValue == null ? "" : apiKeyValue).trim();
+    if (apiKey.isBlank()) apiKey = get(keyName, "");
+    if (apiKey.length() < 8 || apiKey.length() > 500 || apiKey.chars().anyMatch(Character::isWhitespace)) {
+      throw new IllegalArgumentException("请填写有效的 AI API Key");
+    }
+    String model = String.valueOf(modelValue == null ? "" : modelValue).trim();
+    if (model.isBlank()) model = get(modelName, defaultModel);
+    if (!model.matches("^[A-Za-z0-9._:/-]{1,100}$")) {
+      throw new IllegalArgumentException("AI 模型名称格式无效");
+    }
+    Path path = runtimeDir.resolve("ai.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("AI_PROVIDER", provider);
+      saved.put(keyName, apiKey);
+      saved.put(modelName, model);
+      saveEnvironmentFile(path, "# Managed by the AI settings page.", saved);
+      values.put("AI_PROVIDER", provider);
+      values.put(keyName, apiKey);
+      values.put(modelName, model);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存 AI 配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  private static void saveEnvironmentFile(
+      Path path,
+      String header,
+      Map<String, String> saved) throws IOException {
+    StringBuilder content = new StringBuilder(header).append('\n');
+    saved.forEach((key, value) -> content.append(key).append('=').append(value).append('\n'));
+    Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
+    Files.writeString(temporary, content, StandardCharsets.UTF_8);
+    setOwnerOnlyPermissions(temporary);
+    try {
+      Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException ignored) {
+      Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+    }
+    setOwnerOnlyPermissions(path);
+  }
+
+  private static void setOwnerOnlyPermissions(Path path) throws IOException {
+    try {
+      Files.setPosixFilePermissions(
+          path, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+    } catch (UnsupportedOperationException ignored) {
+      // Windows 等非 POSIX 文件系统不支持 Unix 权限。
     }
   }
 

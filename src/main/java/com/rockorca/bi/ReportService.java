@@ -142,6 +142,13 @@ public class ReportService {
     });
   }
 
+  public Map<String, Object> savedReportCredentials() {
+    Map<String, String> credentials = readSchedulerCredentials();
+    return mapOf(
+        "token", credentials.get("token"),
+        "userId", credentials.get("userId"));
+  }
+
   private <T> T runExclusiveRefresh(Supplier<T> action) {
     // 手动更新和 09:00 定时更新共用同一把进程锁，避免 DELETE+INSERT 互相覆盖。
     if (!refreshRunning.compareAndSet(false, true)) {

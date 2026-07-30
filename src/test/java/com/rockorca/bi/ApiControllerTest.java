@@ -121,6 +121,8 @@ class ApiControllerTest {
   @Test
   void dhhApisDelegateWithDefaultsAndPayload() throws Exception {
     when(reports.currentDhh()).thenReturn(Map.of("source", "current"));
+    when(reports.savedReportCredentials())
+        .thenReturn(Map.of("token", "report-token", "userId", "20"));
     when(reports.loadDhh("report-token", "20")).thenReturn(Map.of("source", "load"));
     when(reports.analyzeDhh("2026-07-01", "2026-07-25", "86784411"))
         .thenReturn(Map.of("source", "analyze"));
@@ -128,6 +130,11 @@ class ApiControllerTest {
     mvc.perform(get("/api/current"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("current"));
+    mvc.perform(get("/api/report-credentials"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.token").value("report-token"))
+        .andExpect(jsonPath("$.userId").value("20"));
     mvc.perform(post("/api/load")
             .contentType("application/json")
             .content("{\"token\":\"report-token\",\"userId\":\"\"}"))
@@ -194,9 +201,13 @@ class ApiControllerTest {
             .content("{\"token\":\"hidden-token\"}"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(get("/api/report-credentials"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
 
     verify(reports, never()).loadDhh(anyString(), anyString());
     verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
+    verify(reports, never()).savedReportCredentials();
   }
 
   @Test

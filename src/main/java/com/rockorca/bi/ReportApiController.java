@@ -2,6 +2,8 @@ package com.rockorca.bi;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,6 +30,14 @@ public class ReportApiController {
   @GetMapping("/current")
   public Map<String, Object> currentDhh() {
     return reports.currentDhh();
+  }
+
+  @GetMapping("/report-credentials")
+  public ResponseEntity<Map<String, Object>> reportCredentials(HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(reports.savedReportCredentials());
   }
 
   @PostMapping("/load")

@@ -4,12 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 class CoreBehaviorTest {
@@ -35,6 +39,22 @@ class CoreBehaviorTest {
     assertEquals(Map.of(
         "MYSQL_HOST", "127.0.0.1",
         "MYSQL_PASSWORD", "p@ss=word#2026"), parsed);
+  }
+
+  @Test
+  void savedReportCredentialsAreReadFromTheServerRuntimeDirectory(
+      @TempDir Path runtimeDirectory) throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    RuntimeConfig config = new RuntimeConfig(objectMapper);
+    ReflectionTestUtils.setField(config, "runtimeDir", runtimeDirectory);
+    Files.writeString(
+        runtimeDirectory.resolve("scheduler-credentials.json"),
+        "{\"token\":\"server-report-token\",\"userId\":\"20\"}");
+    ReportService service = new ReportService(null, null, config, objectMapper);
+
+    assertEquals(
+        Map.of("token", "server-report-token", "userId", "20"),
+        service.savedReportCredentials());
   }
 
   @Test

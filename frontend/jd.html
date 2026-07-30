@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
-  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');else try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
   <title>京东 CPA 日报分析</title>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <link rel="stylesheet" href="/pet.css?v=20260730-ai-server" />
@@ -696,8 +696,7 @@
         by_media: "",
         by_promoter: "",
       };
-      const tokenStorageKey = "marketing-report-x-token";
-      const isAdmin = window.currentSessionUser?.role === "admin";
+      const isAdmin = () => window.currentSessionUser?.role === "admin";
       const tableSettingsStorageKey = "jd-table-settings-v1";
       let tableSettings = (() => {
         try {
@@ -753,33 +752,13 @@
         status.className = `note status${tone ? ` ${tone}` : ""}`;
       }
 
-      function rememberToken(token) {
-        if (!isAdmin) return;
-        try {
-          localStorage.setItem(tokenStorageKey, token);
-        } catch {
-          // 浏览器禁用本地存储时仍可正常更新数据。
-        }
-      }
-
-      function savedToken() {
-        if (!isAdmin) return "";
-        try {
-          return localStorage.getItem(tokenStorageKey) || "";
-        } catch {
-          return "";
-        }
-      }
-
       async function copyToken() {
-        if (!isAdmin) return;
-        const token = $("#token").value.trim() || savedToken();
-        if (!token) {
-          setStatus("暂无已保存的 x-token，请先粘贴并成功更新一次数据。", "error");
-          $("#token").focus();
-          return;
-        }
+        if (!isAdmin()) return;
         try {
+          const credentials = await get("/api/report-credentials");
+          const token = String(credentials.token || "").trim();
+          if (credentials.userId) $("#userId").value = credentials.userId;
+          if (!token) throw new Error("服务器尚未保存 x-token，请先成功更新一次全量数据。");
           if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(token);
           } else {
@@ -792,9 +771,9 @@
             document.execCommand("copy");
             field.remove();
           }
-          setStatus("x-token 已复制到剪贴板。", "success");
-        } catch {
-          setStatus("浏览器未允许自动复制，请检查剪贴板权限。", "error");
+          setStatus("服务器保存的 x-token 已复制到剪贴板。", "success");
+        } catch (error) {
+          setStatus(error.message || "浏览器未允许自动复制，请检查剪贴板权限。", "error");
         }
       }
 
@@ -1168,7 +1147,7 @@
       }
 
       function get(url) {
-        return requestJson(url);
+        return requestJson(url, { cache: "no-store" });
       }
 
       function post(url, body) {
@@ -1180,7 +1159,7 @@
       }
 
       async function loadLatest() {
-        if (!isAdmin) return;
+        if (!isAdmin()) return;
         const token = $("#token").value.trim();
         if (!token) {
           setStatus("请粘贴当前 x-token 后再更新数据。", "error");
@@ -1204,12 +1183,11 @@
             accountId: $("#accountId").value.trim(),
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
-          rememberToken(token);
           $("#token").value = "";
           page = 1;
           drillPage = 1;
           showReport();
-          setStatus(`京东数据已更新并保存。${cacheText()} 已启用每日自动更新。`, "success");
+          setStatus(`京东数据和 x-token 已保存到服务器。${cacheText()} 已启用每日自动更新。`, "success");
         } catch (error) {
           setStatus(error.message, "error");
         } finally {
@@ -1381,7 +1359,7 @@
         })
         .catch((error) => {
           setStatus(
-            error.message || (isAdmin
+            error.message || (isAdmin()
               ? "MySQL 暂无京东数据，请粘贴 x-token 后加载一次。"
               : "当前暂无京东报表数据，请联系管理员更新全量数据。"),
             "error"

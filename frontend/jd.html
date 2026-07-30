@@ -522,8 +522,63 @@
       .chart-heading, .chart-subtitle { margin-left: 14px; margin-right: 14px; }
       .chart-subtitle { line-height: 1.5; }
       .chart { height: 260px; }
-      .table-wrap { max-height: 68vh; -webkit-overflow-scrolling: touch; }
-      th, td { padding: 9px 10px; }
+      .table-wrap {
+        max-height: none;
+        overflow: visible;
+        padding: 0 10px 10px;
+        border-top: 0;
+      }
+      .table-wrap table,
+      .table-wrap tbody {
+        display: block;
+        width: 100%;
+        white-space: normal;
+      }
+      .table-wrap thead { display: none; }
+      .table-wrap tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 12px;
+        margin: 10px 0;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+      }
+      .table-wrap td {
+        display: grid;
+        min-width: 0;
+        gap: 3px;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf1f5;
+        text-align: left;
+        background: transparent;
+        overflow-wrap: anywhere;
+      }
+      .table-wrap td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .table-wrap td:first-child {
+        position: static;
+        grid-column: 1 / -1;
+        padding: 2px 0 10px;
+        border-bottom: 1px solid var(--line);
+        background: transparent;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .table-wrap td:first-child::before { display: none; }
+      .table-wrap td.empty-cell {
+        display: block;
+        grid-column: 1 / -1;
+        padding: 18px 0;
+        text-align: center;
+      }
+      .table-wrap td.empty-cell::before { display: none; }
+      .table-wrap .drill-link { padding: 0; text-align: left; font-size: 15px; }
       .table-tools { align-items: flex-start; flex-wrap: wrap; }
       .table-tools { gap: 8px; padding: 8px 10px; }
       .column-picker { grid-template-columns: 1fr; width: calc(100vw - 48px); }
@@ -736,6 +791,17 @@
       ]);
       const percentFields = new Set(["有效首购率", "预估ROI", "实际ROI"]);
       const profitFields = new Set(["预估利润", "实际利润"]);
+      const mobileTableQuery = window.matchMedia("(max-width: 700px)");
+      const mobilePreferredColumns = new Set([
+        "消耗",
+        "转化数",
+        "有效订单数",
+        "转化成本",
+        "预估利润",
+        "预估ROI",
+        "实际利润",
+        "实际ROI",
+      ]);
 
       let report = null;
       let active = "by_optimizer";
@@ -862,9 +928,16 @@
         });
       }
 
+      function selectedTableColumns(setting, allColumns, fixedColumns) {
+        if (Array.isArray(setting.columns)) return setting.columns;
+        return mobileTableQuery.matches
+          ? allColumns.filter((column) => fixedColumns.includes(column) || mobilePreferredColumns.has(column))
+          : allColumns;
+      }
+
       function renderTableTools(target, scope, allColumns, fixedColumns) {
         const setting = tableSetting(scope);
-        const selectedColumns = Array.isArray(setting.columns) ? setting.columns : allColumns;
+        const selectedColumns = selectedTableColumns(setting, allColumns, fixedColumns);
         const wasOpen = target.querySelector("details")?.open;
         const selectedCount = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column)).length;
         target.dataset.tableScope = scope;
@@ -886,7 +959,7 @@
 
       function tableView(rows, allColumns, fixedColumns, scope, tools) {
         const setting = tableSetting(scope);
-        const selectedColumns = Array.isArray(setting.columns) ? setting.columns : allColumns;
+        const selectedColumns = selectedTableColumns(setting, allColumns, fixedColumns);
         const columns = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column));
         renderTableTools(tools, scope, allColumns, fixedColumns);
         return { rows: sortRows(rows, scope), columns };
@@ -947,7 +1020,7 @@
           return `<th><button class="sort-button" type="button" data-sort-column="${escapeHtml(column)}">${escapeHtml(column)}${indicator}</button></th>`;
         }).join("")}</tr></thead>`;
         const body = rows.length
-          ? rows.map((row) => `<tr>${columns.map((column) => `<td class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey, row)}</td>`).join("")}</tr>`).join("")
+          ? rows.map((row) => `<tr>${columns.map((column) => `<td data-label="${escapeHtml(column)}" class="${cellClass(row, column)}">${formatCell(row[column], column, dimensionKey, row)}</td>`).join("")}</tr>`).join("")
           : `<tr><td class="empty-cell" colspan="${columns.length}">当前条件下暂无数据</td></tr>`;
         target.innerHTML = `${head}<tbody>${body}</tbody>`;
       }

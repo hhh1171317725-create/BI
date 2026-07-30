@@ -21,8 +21,8 @@
       <section class="data-pet-panel" hidden>
         <header class="data-pet-head">
           <div class="data-pet-identity">
-            <img class="data-pet-avatar" src="/assets/miku-pet.png" alt="" />
-            <div><div class="data-pet-name">初音未来 · 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
+            <img class="data-pet-avatar" src="/assets/ai-assistant-v2.png" alt="" />
+            <div><div class="data-pet-name">AI 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
             <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置">⚙</button>
@@ -50,8 +50,8 @@
           <button class="data-pet-send" type="submit">发送</button>
         </form>
       </section>
-      <button class="data-pet-toggle" type="button" aria-label="打开初音数据助手" aria-expanded="false">
-        <img src="/assets/miku-pet.png" alt="" draggable="false" />
+      <button class="data-pet-toggle" type="button" aria-label="打开 AI 数据助手" aria-expanded="false">
+        <img src="/assets/ai-assistant-v2.png" alt="" draggable="false" />
         <span class="data-pet-dot"></span>
       </button>
     `;
@@ -321,7 +321,7 @@
     if (button) ask(button.dataset.question);
   });
 
-  addMessage("assistant", "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
+  addMessage("assistant", "嗨，我是你的 AI 数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
   updateAiMode();
   restorePetPosition();
 })();

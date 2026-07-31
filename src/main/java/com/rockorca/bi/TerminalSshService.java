@@ -5,6 +5,7 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchChangedHostKeyException;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
+import com.jcraft.jsch.UIKeyboardInteractive;
 import com.jcraft.jsch.UserInfo;
 import jakarta.annotation.PreDestroy;
 import java.io.InputStream;
@@ -194,7 +195,7 @@ public class TerminalSshService {
             ? "password,keyboard-interactive"
             : "publickey");
     session.setConfig("StrictHostKeyChecking", "ask");
-    session.setUserInfo(new TrustNewHostOnly());
+    session.setUserInfo(new ServerUserInfo(settings.password(), settings.passphrase()));
     session.setServerAliveInterval(15_000);
     session.setServerAliveCountMax(3);
     return session;
@@ -242,8 +243,11 @@ public class TerminalSshService {
         || message.toLowerCase().contains("hostkey has been changed")) {
       return "SSH 主机指纹发生变化，已拒绝连接。请核实服务器后删除 .runtime/ssh-known-hosts 再重新连接";
     }
-    if (message.contains("Auth fail") || message.toLowerCase().contains("authentication")) {
-      return "SSH 身份验证失败，请检查用户名和凭据";
+    String lowerMessage = message.toLowerCase();
+    if (lowerMessage.contains("auth fail")
+        || lowerMessage.contains("auth cancel")
+        || lowerMessage.contains("authentication")) {
+      return "SSH 身份验证失败，请重新输入用户名和密码，或确认服务器允许该用户通过 SSH 登录";
     }
     if (message.toLowerCase().contains("timeout")) {
       return "SSH 连接超时，请检查主机地址、安全组和端口";
@@ -338,25 +342,33 @@ public class TerminalSshService {
     }
   }
 
-  private static final class TrustNewHostOnly implements UserInfo {
+  private static final class ServerUserInfo implements UserInfo, UIKeyboardInteractive {
+    private final String password;
+    private final String passphrase;
+
+    private ServerUserInfo(String password, String passphrase) {
+      this.password = password == null ? "" : password;
+      this.passphrase = passphrase == null ? "" : passphrase;
+    }
+
     @Override
     public String getPassphrase() {
-      return null;
+      return passphrase.isBlank() ? null : passphrase;
     }
 
     @Override
     public String getPassword() {
-      return null;
+      return password.isBlank() ? null : password;
     }
 
     @Override
     public boolean promptPassword(String message) {
-      return false;
+      return !password.isBlank();
     }
 
     @Override
     public boolean promptPassphrase(String message) {
-      return false;
+      return !passphrase.isBlank();
     }
 
     @Override
@@ -367,6 +379,21 @@ public class TerminalSshService {
     @Override
     public void showMessage(String message) {
       // Connection errors are returned through the terminal status channel.
+    }
+
+    @Override
+    public String[] promptKeyboardInteractive(
+        String destination,
+        String name,
+        String instruction,
+        String[] prompts,
+        boolean[] echo) {
+      if (password.isBlank() || prompts == null || prompts.length == 0) return null;
+      String[] responses = new String[prompts.length];
+      for (int index = 0; index < prompts.length; index++) {
+        responses[index] = echo != null && index < echo.length && echo[index] ? "" : password;
+      }
+      return responses;
     }
   }
 

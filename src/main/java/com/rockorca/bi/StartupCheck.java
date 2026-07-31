@@ -23,6 +23,12 @@ public class StartupCheck implements ApplicationRunner {
     } catch (Exception error) {
       System.err.println("MySQL 数据库连接失败：" + error.getMessage());
     }
+    try {
+      repository.initializeJdLowActivitySchema();
+      System.out.println("京东低活报表数据表检查完成");
+    } catch (Exception error) {
+      System.err.println("京东低活报表数据表初始化失败：" + error.getMessage());
+    }
     System.out.println("下一次全量数据更新：" + ReportService.nextScheduledRefreshAt());
   }
 }

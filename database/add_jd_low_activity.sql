@@ -1,0 +1,51 @@
+ALTER TABLE `report_sync_runs`
+  MODIFY COLUMN `report_type`
+    ENUM('dhh', 'jd', 'jd_low_activity', 'all') NOT NULL
+    COMMENT '报表类型：dhh大航海、jd京东、jd_low_activity京东低活、all全部';
+
+CREATE TABLE IF NOT EXISTS `jd_low_activity_plan_rows` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '低活明细自增主键',
+  `business_date` DATE NOT NULL COMMENT '业务日期，北京时间',
+  `admin_user` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '上游管理员或数据归属',
+  `task_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '低活任务名称',
+  `advertiser_id` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '媒体账户ID',
+  `advertiser_name` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '媒体账户名称',
+  `plan_id` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '计划ID；上游缺失时回退为账户ID',
+  `plan_name` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '计划名称；上游缺失时回退为账户名称',
+  `has_plan_dimension` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '上游是否返回独立计划字段',
+  `spend` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '广告消耗，单位：元',
+  `amount` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '上游amount原值',
+  `impressions` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '展现量',
+  `clicks` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '点击量',
+  `conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '转化数',
+  `successful_conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '成功转化数',
+  `filtered_conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '过滤转化数',
+  `valid_parent_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '有效父订单数',
+  `valid_order_uv` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '有效订单UV',
+  `unit_price` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '上游price原值',
+  `valid_click_uv` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '有效点击UV',
+  `commission` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '奖励订单佣金，单位：元',
+  `first_day_commission` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '首日佣金，单位：元',
+  `low_commission_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '低佣订单数',
+  `t3_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT 'T3订单数',
+  `total_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0 COMMENT '总订单数',
+  `upstream_profit` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '上游日利润原值',
+  `upstream_simulated_profit` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '上游模拟利润原值',
+  `profit_gap` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '上游利润差',
+  `budgeted_gross_margin_rate` DECIMAL(18, 8) NOT NULL DEFAULT 0 COMMENT '预算毛利率',
+  `gap_ratio` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '上游差值比例文本',
+  `media_type` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '媒体类型',
+  `league_account` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '联盟账户',
+  `customer_agent` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '客户代理',
+  `remark` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '上游备注',
+  `raw_json` MEDIUMTEXT NULL COMMENT '完整上游JSON，供字段追溯',
+  `row_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '规范化行SHA-256哈希',
+  `synced_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '最近同步时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_jd_low_activity_row_hash` (`row_hash`),
+  KEY `idx_jd_low_activity_date` (`business_date`),
+  KEY `idx_jd_low_activity_account_date` (`advertiser_id`, `business_date`),
+  KEY `idx_jd_low_activity_plan_date` (`plan_id`, `business_date`),
+  KEY `idx_jd_low_activity_task_date` (`task_name`, `business_date`)
+) ENGINE=InnoDB COMMENT='京东低活任务计划维度原始明细';

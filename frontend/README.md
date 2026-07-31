@@ -4,6 +4,7 @@
 
 - `index.html`：大航海日报
 - `jd.html`：京东日报
+- `jd-low-activity.html`：京东低活任务报表
 - `tools.html`：报表工具中心
 - `login.html`：登录页
 - `pet.js`、`pet.css`：数据助手

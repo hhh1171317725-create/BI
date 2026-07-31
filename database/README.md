@@ -4,6 +4,7 @@
 
 - `dhh_daily_rows`：大航海日报底表；
 - `jd_daily_rows`：京东日报底表；
+- `jd_low_activity_plan_rows`：京东低活任务明细底表，保留上游原始字段并支持独立计划维度；
 - `report_sync_runs`：手动及定时同步记录；
 - `report_users`：系统登录用户、角色及会话版本；
 - `jd_daily_metrics`：京东有效订单、佣金和利润计算视图。
@@ -27,6 +28,14 @@ mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < databas
 ```bash
 mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/add_jd_query_indexes.sql
 ```
+
+升级已有系统时，导入低活报表迁移脚本。该脚本会扩展同步日志类型并创建低活明细表，不会删除现有数据：
+
+```bash
+mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/add_jd_low_activity.sql
+```
+
+应用启动时也会自动检查并创建低活明细表；生产环境仍建议先执行迁移脚本，以便提前确认数据库用户具备建表和修改字段权限。
 
 ```bash
 mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/schema.sql

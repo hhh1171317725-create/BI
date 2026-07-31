@@ -97,4 +97,40 @@ class RuntimeConfigTest {
         () -> config.saveSshCredentials(
             "server.example.com", 22, "root", "privateKey", "", "", ""));
   }
+
+  @Test
+  void jdLowActivityCredentialsArePersistedEncodedAndRetained() throws Exception {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+    String token = "valid-jd-low-activity-token-123456";
+    String sign = "A".repeat(40);
+
+    config.saveJdLowActivityCredentials(token, sign);
+
+    Path path = temporaryDirectory.resolve("jd-low-activity.env");
+    assertTrue(Files.isRegularFile(path));
+    Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
+        Files.readString(path, StandardCharsets.UTF_8));
+    assertTrue(!saved.get("JD_LOW_ACTIVITY_TOKEN_B64").contains(token));
+    assertEquals(token, config.decodedSecret("JD_LOW_ACTIVITY_TOKEN_B64"));
+    assertEquals(sign, config.get("JD_LOW_ACTIVITY_SIGN", ""));
+
+    config.saveJdLowActivityCredentials("", "");
+    assertEquals(token, config.decodedSecret("JD_LOW_ACTIVITY_TOKEN_B64"));
+    assertEquals(sign, config.get("JD_LOW_ACTIVITY_SIGN", ""));
+  }
+
+  @Test
+  void jdLowActivityCredentialsRejectInvalidValues() {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveJdLowActivityCredentials("short", "A".repeat(40)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveJdLowActivityCredentials(
+            "valid-jd-low-activity-token-123456", "not-a-sign"));
+  }
 }

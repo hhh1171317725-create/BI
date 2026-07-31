@@ -36,6 +36,15 @@ public class ReportRepository {
       "return_completed_orders", "spend", "estimated_compensation",
       "first_purchase_estimated_commission", "return_estimated_commission",
       "first_purchase_actual_commission", "return_actual_commission", "row_hash");
+  private static final List<String> JD_LOW_ACTIVITY_COLUMNS = List.of(
+      "business_date", "admin_user", "task_name", "advertiser_id", "advertiser_name",
+      "plan_id", "plan_name", "has_plan_dimension", "spend", "amount", "impressions",
+      "clicks", "conversions", "successful_conversions", "filtered_conversions",
+      "valid_parent_orders", "valid_order_uv", "unit_price", "valid_click_uv", "commission",
+      "first_day_commission", "low_commission_orders", "t3_orders", "total_orders",
+      "upstream_profit", "upstream_simulated_profit", "profit_gap",
+      "budgeted_gross_margin_rate", "gap_ratio", "media_type", "league_account",
+      "customer_agent", "remark", "raw_json", "row_hash");
 
   private final HikariDataSource dataSource;
   private final ObjectMapper objectMapper;
@@ -62,6 +71,80 @@ public class ReportRepository {
   public void ping() {
     try (Connection connection = dataSource.getConnection()) {
       if (!connection.isValid(5)) throw new IllegalStateException("MySQL 连接无效");
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public void initializeJdLowActivitySchema() {
+    try (Connection connection = dataSource.getConnection();
+         Statement statement = connection.createStatement()) {
+      statement.executeUpdate("""
+          CREATE TABLE IF NOT EXISTS `jd_low_activity_plan_rows` (
+            `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            `business_date` DATE NOT NULL,
+            `admin_user` VARCHAR(255) NOT NULL DEFAULT '',
+            `task_name` VARCHAR(255) NOT NULL DEFAULT '',
+            `advertiser_id` VARCHAR(100) NOT NULL DEFAULT '',
+            `advertiser_name` VARCHAR(500) NOT NULL DEFAULT '',
+            `plan_id` VARCHAR(100) NOT NULL DEFAULT '',
+            `plan_name` VARCHAR(500) NOT NULL DEFAULT '',
+            `has_plan_dimension` TINYINT(1) NOT NULL DEFAULT 0,
+            `spend` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `amount` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `impressions` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `clicks` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `successful_conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `filtered_conversions` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `valid_parent_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `valid_order_uv` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `unit_price` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `valid_click_uv` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `commission` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `first_day_commission` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `low_commission_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `t3_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `total_orders` DECIMAL(20, 2) NOT NULL DEFAULT 0,
+            `upstream_profit` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `upstream_simulated_profit` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `profit_gap` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `budgeted_gross_margin_rate` DECIMAL(18, 8) NOT NULL DEFAULT 0,
+            `gap_ratio` VARCHAR(50) NOT NULL DEFAULT '',
+            `media_type` VARCHAR(50) NOT NULL DEFAULT '',
+            `league_account` VARCHAR(255) NOT NULL DEFAULT '',
+            `customer_agent` VARCHAR(255) NOT NULL DEFAULT '',
+            `remark` VARCHAR(1000) NOT NULL DEFAULT '',
+            `raw_json` MEDIUMTEXT NULL,
+            `row_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+            `synced_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `uk_jd_low_activity_row_hash` (`row_hash`),
+            KEY `idx_jd_low_activity_date` (`business_date`),
+            KEY `idx_jd_low_activity_account_date` (`advertiser_id`, `business_date`),
+            KEY `idx_jd_low_activity_plan_date` (`plan_id`, `business_date`),
+            KEY `idx_jd_low_activity_task_date` (`task_name`, `business_date`)
+          ) ENGINE=InnoDB COMMENT='京东低活任务计划维度原始明细'
+          """);
+      String columnType = "";
+      try (PreparedStatement query = connection.prepareStatement("""
+          SELECT COLUMN_TYPE
+            FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE()
+             AND TABLE_NAME = 'report_sync_runs'
+             AND COLUMN_NAME = 'report_type'
+          """);
+           ResultSet result = query.executeQuery()) {
+        if (result.next()) columnType = result.getString(1);
+      }
+      if (columnType.startsWith("enum(") && !columnType.contains("'jd_low_activity'")) {
+        statement.executeUpdate("""
+            ALTER TABLE `report_sync_runs`
+            MODIFY COLUMN `report_type`
+              ENUM('dhh', 'jd', 'jd_low_activity', 'all') NOT NULL
+            """);
+      }
     } catch (SQLException error) {
       throw databaseError(error);
     }
@@ -127,6 +210,50 @@ public class ReportRepository {
       } catch (Exception error) {
         connection.rollback();
         recordFailedRun("all", triggerType, error);
+        throw error;
+      }
+    } catch (Exception error) {
+      if (error instanceof RuntimeException runtime) throw runtime;
+      throw databaseError(error);
+    }
+  }
+
+  public void replaceJdLowActivityRange(
+      List<Map<String, Object>> rows,
+      String startValue,
+      String endValue,
+      String triggerType) {
+    if (rows == null || rows.isEmpty()) {
+      throw new IllegalArgumentException("京东低活明细为空，已取消数据库覆盖");
+    }
+    String start = normalizedDate(startValue);
+    String end = normalizedDate(endValue);
+    if (start.isBlank() || end.isBlank() || start.compareTo(end) > 0) {
+      throw new IllegalArgumentException("京东低活同步日期范围无效");
+    }
+    boolean outsideRange = rows.stream()
+        .map(row -> String.valueOf(row.get("日期")))
+        .anyMatch(date -> date.compareTo(start) < 0 || date.compareTo(end) > 0);
+    if (outsideRange) throw new IllegalArgumentException("上游返回了所选日期范围外的数据");
+
+    try (Connection connection = dataSource.getConnection()) {
+      connection.setAutoCommit(false);
+      try {
+        long runId = startRun(connection, "jd_low_activity", triggerType);
+        try (PreparedStatement statement = connection.prepareStatement("""
+            DELETE FROM `jd_low_activity_plan_rows`
+             WHERE business_date BETWEEN ? AND ?
+            """)) {
+          statement.setString(1, start);
+          statement.setString(2, end);
+          statement.executeUpdate();
+        }
+        int inserted = insertJdLowActivityRows(connection, rows);
+        finishRun(connection, runId, inserted);
+        connection.commit();
+      } catch (Exception error) {
+        connection.rollback();
+        recordFailedRun("jd_low_activity", triggerType, error);
         throw error;
       }
     } catch (Exception error) {
@@ -251,6 +378,100 @@ public class ReportRepository {
     }
   }
 
+  public List<Map<String, Object>> readJdLowActivityRows(
+      String startValue,
+      String endValue,
+      String accountQueryValue,
+      String taskValue) {
+    String start = normalizedDate(startValue);
+    String end = normalizedDate(endValue);
+    if (!start.isBlank() && !end.isBlank() && start.compareTo(end) > 0) {
+      throw new IllegalArgumentException("开始日期不能晚于结束日期");
+    }
+    String accountQuery = normalizedSearch(accountQueryValue, "账户搜索");
+    String task = normalizedSearch(taskValue, "任务筛选");
+    List<String> conditions = new ArrayList<>();
+    List<String> parameters = new ArrayList<>();
+    if (!start.isBlank()) {
+      conditions.add("business_date >= ?");
+      parameters.add(start);
+    }
+    if (!end.isBlank()) {
+      conditions.add("business_date <= ?");
+      parameters.add(end);
+    }
+    if (!accountQuery.isBlank()) {
+      conditions.add("(advertiser_id = ? OR advertiser_name LIKE ?)");
+      parameters.add(accountQuery);
+      parameters.add("%" + escapeLike(accountQuery) + "%");
+    }
+    if (!task.isBlank()) {
+      conditions.add("task_name = ?");
+      parameters.add(task);
+    }
+    StringBuilder sql = new StringBuilder("""
+        SELECT business_date, admin_user, task_name, advertiser_id, advertiser_name,
+               plan_id, plan_name, has_plan_dimension, spend, amount, impressions, clicks,
+               conversions, successful_conversions, filtered_conversions,
+               valid_parent_orders, valid_order_uv, unit_price, valid_click_uv, commission,
+               first_day_commission, low_commission_orders, t3_orders, total_orders,
+               upstream_profit, upstream_simulated_profit, profit_gap,
+               budgeted_gross_margin_rate, gap_ratio, media_type, league_account,
+               customer_agent, remark
+          FROM jd_low_activity_plan_rows
+        """);
+    if (!conditions.isEmpty()) sql.append(" WHERE ").append(String.join(" AND ", conditions));
+    sql.append(" ORDER BY business_date DESC, spend DESC");
+
+    List<Map<String, Object>> rows = new ArrayList<>();
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+      bindRangeParameters(statement, parameters);
+      try (ResultSet result = statement.executeQuery()) {
+        while (result.next()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("日期", String.valueOf(result.getObject("business_date")).substring(0, 10));
+          row.put("管理员", result.getString("admin_user"));
+          row.put("任务", result.getString("task_name"));
+          row.put("账户ID", result.getString("advertiser_id"));
+          row.put("账户名称", result.getString("advertiser_name"));
+          row.put("计划ID", result.getString("plan_id"));
+          row.put("计划名称", result.getString("plan_name"));
+          row.put("独立计划维度", result.getBoolean("has_plan_dimension"));
+          putDouble(row, result, "消耗", "spend");
+          putDouble(row, result, "金额", "amount");
+          putDouble(row, result, "展现", "impressions");
+          putDouble(row, result, "点击", "clicks");
+          putDouble(row, result, "转化数", "conversions");
+          putDouble(row, result, "成功转化数", "successful_conversions");
+          putDouble(row, result, "过滤转化数", "filtered_conversions");
+          putDouble(row, result, "有效父订单数", "valid_parent_orders");
+          putDouble(row, result, "有效订单UV", "valid_order_uv");
+          putDouble(row, result, "单价", "unit_price");
+          putDouble(row, result, "有效点击UV", "valid_click_uv");
+          putDouble(row, result, "佣金", "commission");
+          putDouble(row, result, "首日佣金", "first_day_commission");
+          putDouble(row, result, "低佣订单数", "low_commission_orders");
+          putDouble(row, result, "T3订单数", "t3_orders");
+          putDouble(row, result, "总订单数", "total_orders");
+          putDouble(row, result, "上游利润", "upstream_profit");
+          putDouble(row, result, "上游模拟利润", "upstream_simulated_profit");
+          putDouble(row, result, "利润差", "profit_gap");
+          putDouble(row, result, "预算毛利率", "budgeted_gross_margin_rate");
+          row.put("差值比例", result.getString("gap_ratio"));
+          row.put("媒体类型", result.getString("media_type"));
+          row.put("联盟账户", result.getString("league_account"));
+          row.put("客户代理", result.getString("customer_agent"));
+          row.put("备注", result.getString("remark"));
+          rows.add(row);
+        }
+      }
+      return rows;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
   private static RangeQuery rangeQuery(
       String selectSql,
       String startValue,
@@ -324,6 +545,19 @@ public class ReportRepository {
     return accountId;
   }
 
+  private static String normalizedSearch(String value, String label) {
+    String search = value == null ? "" : value.trim();
+    if (search.length() > 100 || search.indexOf('\0') >= 0
+        || search.indexOf('\r') >= 0 || search.indexOf('\n') >= 0) {
+      throw new IllegalArgumentException(label + "格式无效");
+    }
+    return search;
+  }
+
+  private static String escapeLike(String value) {
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+  }
+
   private static void bindRangeParameters(
       PreparedStatement statement, List<String> parameters) throws SQLException {
     for (int index = 0; index < parameters.size(); index++) {
@@ -377,6 +611,34 @@ public class ReportRepository {
         "首购已完成订单", "回流已完成订单", "消耗", "条件内预估赔付金额",
         "首购预估佣金", "回流预估佣金", "首购实际佣金", "回流实际佣金")) {
       values.add(row.get(field));
+    }
+    values.add(rowHash(row));
+    return values;
+  }
+
+  public List<Object> jdLowActivityValues(Map<String, Object> row) {
+    List<Object> values = new ArrayList<>();
+    for (String field : List.of(
+        "日期", "管理员", "任务", "账户ID", "账户名称", "计划ID", "计划名称")) {
+      values.add(row.get(field));
+    }
+    values.add(Boolean.TRUE.equals(row.get("独立计划维度")) ? 1 : 0);
+    for (String field : List.of(
+        "消耗", "金额", "展现", "点击", "转化数", "成功转化数", "过滤转化数",
+        "有效父订单数", "有效订单UV", "单价", "有效点击UV", "佣金", "首日佣金",
+        "低佣订单数", "T3订单数", "总订单数", "上游利润", "上游模拟利润",
+        "利润差", "预算毛利率")) {
+      values.add(CsvImportService.number(row.get(field)));
+    }
+    for (String field : List.of(
+        "差值比例", "媒体类型", "联盟账户", "客户代理", "备注")) {
+      values.add(row.get(field));
+    }
+    try {
+      values.add(objectMapper.writeValueAsString(
+          row.get("原始数据") instanceof Map<?, ?> raw ? raw : Map.of()));
+    } catch (Exception error) {
+      throw new IllegalStateException("京东低活原始数据序列化失败", error);
     }
     values.add(rowHash(row));
     return values;
@@ -436,6 +698,29 @@ public class ReportRepository {
       int inserted = 0;
       for (Map<String, Object> row : rows) {
         List<Object> values = dhh ? dhhValues(row) : jdValues(row);
+        for (int index = 0; index < values.size(); index++) {
+          statement.setObject(index + 1, values.get(index));
+        }
+        statement.addBatch();
+        if (++pending % 500 == 0) inserted += insertedCount(statement.executeBatch());
+      }
+      if (pending % 500 != 0) inserted += insertedCount(statement.executeBatch());
+      return inserted;
+    }
+  }
+
+  private int insertJdLowActivityRows(
+      Connection connection,
+      List<Map<String, Object>> rows) throws SQLException {
+    String placeholders =
+        String.join(", ", java.util.Collections.nCopies(JD_LOW_ACTIVITY_COLUMNS.size(), "?"));
+    String sql = "INSERT IGNORE INTO `jd_low_activity_plan_rows` (`"
+        + String.join("`, `", JD_LOW_ACTIVITY_COLUMNS) + "`) VALUES (" + placeholders + ")";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      int pending = 0;
+      int inserted = 0;
+      for (Map<String, Object> row : rows) {
+        List<Object> values = jdLowActivityValues(row);
         for (int index = 0; index < values.size(); index++) {
           statement.setObject(index + 1, values.get(index));
         }

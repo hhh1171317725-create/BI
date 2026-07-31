@@ -36,6 +36,7 @@ public class RuntimeConfig {
     loadFile("ai.env");
     loadOptionalFile("deeplink.env");
     loadOptionalFile("ssh.env");
+    loadOptionalFile("jd-low-activity.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
   }
@@ -118,6 +119,36 @@ public class RuntimeConfig {
       values.put("XZ_DEEPLINK_SIGN", sign);
     } catch (IOException error) {
       throw new IllegalStateException("保存深链接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  public synchronized void saveJdLowActivityCredentials(
+      String tokenValue,
+      String signValue) {
+    String token = clean(tokenValue);
+    String sign = clean(signValue);
+    if (token.isBlank()) token = decodedSecret("JD_LOW_ACTIVITY_TOKEN_B64");
+    if (sign.isBlank()) sign = get("JD_LOW_ACTIVITY_SIGN", "");
+    if (token.length() < 20 || token.length() > 2_000
+        || token.chars().anyMatch(Character::isWhitespace)) {
+      throw new IllegalArgumentException("请填写有效的京东低活接口 token");
+    }
+    if (!sign.matches("(?i)^[0-9a-f]{40}$")) {
+      throw new IllegalArgumentException("X-Request-Sign 应为 40 位十六进制字符串");
+    }
+
+    Path path = runtimeDir.resolve("jd-low-activity.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("JD_LOW_ACTIVITY_TOKEN_B64", encodeSecret(token));
+      saved.put("JD_LOW_ACTIVITY_SIGN", sign.toUpperCase());
+      saveEnvironmentFile(path, "# Managed by the JD low-activity report page.", saved);
+      saved.forEach(values::put);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存京东低活接口配置失败：" + error.getMessage(), error);
     }
   }
 

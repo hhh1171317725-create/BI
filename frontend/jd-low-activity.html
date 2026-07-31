@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
+  <script>
+    window.sessionReady=fetch('/api/session',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(s=>{
+      if(!s.authenticated)throw Error();
+      window.currentSessionUser=s.user||{};
+      if(s.user?.role==='admin')document.documentElement.classList.add('admin');
+      document.documentElement.classList.add('authenticated');
+    }).catch(()=>location.replace('/login'));
+  </script>
+  <title>京东低活任务报表</title>
+  <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
+  <style>
+    :root{--blue:#1677ff;--ink:#172b4d;--muted:#667085;--line:#d9e2ec;--bg:#f5f8fb;--good:#12805c;--bad:#cf3d3d;--warn:#9a6700}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px "Microsoft YaHei","PingFang SC",sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer}
+    header{padding:18px 32px 15px;background:#fff;border-bottom:1px solid var(--line)}
+    .header-row{display:flex;align-items:center;justify-content:space-between;gap:18px}
+    .brand{display:flex;align-items:center;gap:10px}.mark{display:grid;width:30px;height:30px;place-items:center;border-radius:6px;background:#202938;color:#fff;font-weight:700}
+    h1{margin:0;font-size:22px;letter-spacing:0}header p{margin:6px 0 0;color:var(--muted)}
+    .nav,.actions,.filters{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+    .nav a,.nav button,.button{height:36px;padding:0 13px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;text-decoration:none;font-weight:600}
+    .nav a{display:flex;align-items:center}.nav a:hover,.nav button:hover,.button:hover{border-color:var(--blue);background:#eaf3ff}
+    .button.primary{border-color:var(--blue);background:var(--blue);color:#fff}.button.primary:hover{background:#0958d9}.button:disabled{opacity:.5;cursor:not-allowed}
+    .band{margin:18px 32px 0;padding:16px 18px;border:1px solid var(--line);border-radius:7px;background:#fff}
+    .sync-grid{display:grid;grid-template-columns:minmax(200px,1fr) minmax(180px,.7fr) 145px 145px auto;align-items:end;gap:12px}
+    label{display:grid;gap:6px;min-width:0;color:#475467;font-size:12px;font-weight:600}
+    input,select{width:100%;height:36px;padding:0 10px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:var(--ink)}
+    input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(22,119,255,.1);outline:none}
+    .note{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.55}.note.good{color:var(--good)}.note.bad{color:var(--bad)}
+    .filter-band{display:flex;align-items:end;justify-content:space-between;gap:16px}.filters{flex:1}.filters label{min-width:145px}.filters .account{min-width:240px}.filters .task{min-width:190px}
+    .source-note{display:flex;align-items:flex-start;gap:8px;margin:14px 32px 0;padding:10px 12px;border-left:3px solid #f0b429;background:#fff9e8;color:#6f5410;font-size:12px;line-height:1.5}
+    .source-note.available{border-left-color:#12b76a;background:#f0fbf7;color:#126b4f}
+    .cards{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin:14px 32px}
+    .card{min-height:84px;padding:13px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}.card .key{color:var(--muted);font-size:12px}.card .value{margin-top:9px;font-size:20px;font-weight:700;overflow-wrap:anywhere}.value.good{color:var(--good)}.value.bad{color:var(--bad)}
+    .chart-band{margin:0 32px 14px;padding:15px 18px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff}
+    .section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.section-head h2{margin:0;font-size:15px}.section-head span{color:var(--muted);font-size:12px}
+    .chart{width:100%;height:300px}
+    .workspace{margin:0 32px 20px;background:#fff;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+    .tabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid var(--line);overflow-x:auto}.tab{height:36px;padding:0 14px;border:0;border-radius:5px 5px 0 0;background:transparent;color:var(--muted);font-weight:600;white-space:nowrap}.tab.active{background:#eaf3ff;color:var(--blue)}
+    .table-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;color:var(--muted);font-size:12px}
+    .table-wrap{max-height:560px;overflow:auto;border-top:1px solid #edf1f5}
+    table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:10px 11px;border-bottom:1px solid #edf1f5;text-align:right}th:first-child,td:first-child{text-align:left}
+    th{position:sticky;z-index:1;top:0;background:#f2f6fa;color:#344054;font-size:12px}.sort{height:auto;padding:0;border:0;background:transparent;color:inherit;font-weight:700}.sort:hover{color:#1756a9}
+    .drill{height:auto;padding:2px 4px;border:0;border-radius:4px;background:transparent;color:#376fa8;font-weight:600}.drill:hover{background:#eaf3ff}
+    .pager{display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:11px 14px;color:var(--muted);font-size:12px}.pager button{height:30px;padding:0 10px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9}.pager button:disabled{opacity:.45}
+    .account-detail{margin:0 32px 24px;padding:16px 18px;border-top:2px solid #c8d8e8;background:#fff}.account-detail .section-head{align-items:end}.account-detail label{width:min(420px,100%)}.detail-table{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+    .hidden{display:none!important}
+    @media(max-width:1100px){.sync-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sync-grid .button{width:100%}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:700px){
+      body{overflow-x:hidden}header{padding:14px 12px}.header-row{align-items:stretch;flex-direction:column}.nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.nav a,.nav button{justify-content:center;min-width:0;padding:0 7px}
+      h1{font-size:19px}header p{line-height:1.5}.band,.source-note,.cards,.chart-band,.workspace,.account-detail{margin-left:10px;margin-right:10px}
+      .band{padding:13px}.sync-grid,.filters{display:grid;grid-template-columns:minmax(0,1fr)}.filter-band{align-items:stretch;flex-direction:column}.filter-band .actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.filter-band .button{width:100%;padding:0 7px}
+      .filters label,.filters .account,.filters .task{min-width:0}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.card{min-height:76px;padding:11px}.card .value{font-size:17px}
+      .chart-band{padding:13px 8px 6px}.section-head{align-items:flex-start;flex-direction:column}.chart{height:260px}
+      .workspace{overflow:visible}.table-meta{align-items:flex-start;flex-direction:column}
+      .table-wrap,.detail-table{max-height:none;overflow:visible;padding:0 8px 8px;border:0}.table-wrap table,.table-wrap tbody,.detail-table table,.detail-table tbody{display:block;width:100%;white-space:normal}.table-wrap thead,.detail-table thead{display:none}
+      .table-wrap tr,.detail-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin:9px 0;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:#fff}
+      .table-wrap td,.detail-table td{display:grid;min-width:0;gap:3px;padding:7px 0;border-bottom:1px solid #edf1f5;text-align:left;overflow-wrap:anywhere}.table-wrap td::before,.detail-table td::before{content:attr(data-label);color:var(--muted);font-size:11px;font-weight:600}
+      .table-wrap td:first-child,.detail-table td:first-child{grid-column:1/-1;padding-bottom:9px;border-bottom:1px solid var(--line);font-size:14px;font-weight:700}.table-wrap td:first-child::before,.detail-table td:first-child::before{display:none}
+      .pager{justify-content:space-between}.account-detail{padding:14px 10px}.account-detail .section-head{align-items:stretch}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div><div class="brand"><span class="mark">低</span><h1>京东低活任务报表</h1></div><p>计划明细入库，按账户、日期、计划、任务和管理员汇总。利润口径：佣金 - 消耗。</p></div>
+      <nav class="nav"><a href="/jd">京东日报</a><a href="/tools">工具中心</a><a href="/account">账户设置</a><button id="logout" type="button">退出登录</button></nav>
+    </div>
+  </header>
+
+  <section class="band admin-only">
+    <div class="sync-grid">
+      <label>接口 token<input id="token" type="password" autocomplete="off" placeholder="留空使用服务器已保存的 token" /></label>
+      <label>X-Request-Sign<input id="sign" type="password" autocomplete="off" maxlength="40" placeholder="留空使用已保存签名" /></label>
+      <label>同步开始日期<input id="syncStart" type="date" /></label>
+      <label>同步结束日期<input id="syncEnd" type="date" /></label>
+      <button class="button primary" id="sync" type="button">同步上游数据</button>
+    </div>
+    <p class="note" id="syncStatus">正在检查接口配置。同步成功后凭据只保存在服务器，并于每天 09:10 自动更新当月数据。</p>
+  </section>
+
+  <section class="band filter-band">
+    <div class="filters">
+      <label>开始日期<input id="start" type="date" /></label>
+      <label>结束日期<input id="end" type="date" /></label>
+      <label class="account">账户搜索<input id="account" type="search" maxlength="100" placeholder="输入账户 ID 或名称" /></label>
+      <label class="task">任务<select id="task"><option value="">全部任务</option></select></label>
+    </div>
+    <div class="actions"><button class="button primary" id="apply" type="button">应用筛选</button><button class="button" id="reset" type="button">重置</button><button class="button" id="export" type="button">导出当前表</button></div>
+    <span class="note" id="filterStatus"></span>
+  </section>
+
+  <div class="source-note hidden" id="sourceNote"></div>
+  <section class="cards hidden" id="cards"></section>
+  <section class="chart-band hidden" id="trendBand">
+    <div class="section-head"><h2>每日消耗、佣金与 ROI</h2><span id="trendRange"></span></div>
+    <div class="chart" id="trendChart" role="img" aria-label="京东低活每日趋势图"></div>
+  </section>
+
+  <section class="workspace hidden" id="workspace">
+    <nav class="tabs" id="tabs" role="tablist" aria-label="分析维度">
+      <button class="tab active" data-view="by_account" type="button" role="tab" aria-selected="true">账户</button>
+      <button class="tab" data-view="by_date" type="button" role="tab" aria-selected="false">日期</button>
+      <button class="tab" data-view="by_plan" type="button" role="tab" aria-selected="false">计划</button>
+      <button class="tab" data-view="by_task" type="button" role="tab" aria-selected="false">任务</button>
+      <button class="tab" data-view="by_admin" type="button" role="tab" aria-selected="false">管理员</button>
+    </nav>
+    <div class="table-meta"><span id="tableSummary"></span><span id="sortSummary">按消耗降序</span></div>
+    <div class="table-wrap"><table id="table"></table></div>
+    <div class="pager" id="pager"></div>
+  </section>
+
+  <section class="account-detail hidden" id="accountDetail">
+    <div class="section-head"><div><h2>账户关联日期</h2><p class="note">选择账户查看逐日消耗、佣金、成本与订单变化。</p></div><label>账户<select id="accountSelect"></select></label></div>
+    <div class="chart" id="accountChart" role="img" aria-label="账户每日趋势图"></div>
+    <div class="detail-table"><table id="accountTable"></table></div>
+  </section>
+
+  <script src="/echarts.min.js"></script>
+  <script>
+    const $=selector=>document.querySelector(selector);
+    const PAGE_SIZE=20;
+    const money=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const number=new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2});
+    const percent=new Intl.NumberFormat('zh-CN',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2});
+    const percentFields=new Set(['ROI','CTR','CVR','有效订单率','有效点击率','过滤率','T3率']);
+    const moneyFields=new Set(['消耗','金额','佣金','首日佣金','利润','CPC','CPM','转化成本','有效订单成本']);
+    const viewConfig={
+      by_account:{label:'账户',identity:['账户名称','账户ID'],columns:['账户名称','账户ID','消耗','佣金','利润','ROI','展现','点击','CTR','CPC','转化数','成功转化数','CVR','转化成本','有效父订单数','有效订单成本','T3订单数','T3率']},
+      by_date:{label:'日期',identity:['日期'],columns:['日期','消耗','佣金','利润','ROI','展现','点击','CTR','CPC','转化数','成功转化数','CVR','转化成本','有效父订单数','有效订单成本','过滤转化数','过滤率']},
+      by_plan:{label:'计划',identity:['计划名称','计划ID'],columns:['计划名称','计划ID','消耗','佣金','利润','ROI','展现','点击','CTR','CPC','成功转化数','转化成本','有效父订单数','有效订单成本','T3订单数','T3率']},
+      by_task:{label:'任务',identity:['任务'],columns:['任务','消耗','佣金','利润','ROI','展现','点击','CTR','CPC','成功转化数','转化成本','有效父订单数','有效订单成本']},
+      by_admin:{label:'管理员',identity:['管理员'],columns:['管理员','消耗','佣金','利润','ROI','展现','点击','CTR','CPC','成功转化数','转化成本','有效父订单数','有效订单成本']}
+    };
+    let report=null,activeView='by_account',page=1,sortField='消耗',sortDirection=-1,trendChart=null,accountChart=null;
+
+    function beijingDateOffset(days){
+      const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));
+      return new Date(Date.UTC(parts.year,parts.month-1,parts.day+days)).toISOString().slice(0,10);
+    }
+    const defaultEnd=beijingDateOffset(-1),defaultStart=`${defaultEnd.slice(0,8)}01`;
+    for(const id of ['start','syncStart'])$('#'+id).value=defaultStart;
+    for(const id of ['end','syncEnd'])$('#'+id).value=defaultEnd;
+
+    async function api(url,options={}){
+      const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+      if(response.status===401){location.replace('/login');throw Error('登录已失效')}
+      const raw=await response.text();let result={};
+      try{result=raw?JSON.parse(raw):{}}catch{throw Error('服务端返回了无法解析的内容')}
+      if(!response.ok)throw Error(result.error||result.message||'请求失败');
+      return result;
+    }
+    const post=(url,body)=>api(url,{method:'POST',body:JSON.stringify(body)});
+    const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+    const numeric=value=>Number.isFinite(Number(value))?Number(value):0;
+    function fmt(field,value){
+      const n=numeric(value);
+      if(percentFields.has(field))return percent.format(n);
+      if(moneyFields.has(field))return money.format(n);
+      return number.format(n);
+    }
+    function setStatus(element,message,tone=''){element.textContent=message;element.className=`note ${tone}`.trim()}
+
+    function renderCards(){
+      const s=report.summary||{};
+      const cards=[
+        ['消耗',money.format(numeric(s.消耗)),''],
+        ['佣金',money.format(numeric(s.佣金)),''],
+        ['利润',money.format(numeric(s.利润)),numeric(s.利润)>=0?'good':'bad'],
+        ['ROI',percent.format(numeric(s.ROI)),numeric(s.ROI)>=1?'good':'bad'],
+        ['成功转化',number.format(numeric(s.成功转化数)),''],
+        ['有效订单成本',money.format(numeric(s.有效订单成本)),'']
+      ];
+      $('#cards').innerHTML=cards.map(([key,value,tone])=>`<article class="card"><div class="key">${key}</div><div class="value ${tone}">${value}</div></article>`).join('');
+      $('#cards').classList.remove('hidden');
+    }
+
+    function lineOptions(rows,title){
+      const ordered=[...rows].sort((a,b)=>String(a.日期).localeCompare(String(b.日期)));
+      return{
+        animationDuration:300,color:['#1677ff','#12b76a','#e6a700'],
+        grid:{left:66,right:68,top:44,bottom:58},
+        legend:{top:8,data:['消耗','佣金','ROI']},
+        tooltip:{trigger:'axis',formatter:params=>{const row=ordered[params[0]?.dataIndex]||{};return [`${esc(title)} · ${esc(row.日期||'-')}`,`消耗：${money.format(numeric(row.消耗))}`,`佣金：${money.format(numeric(row.佣金))}`,`利润：${money.format(numeric(row.利润))}`,`ROI：${percent.format(numeric(row.ROI))}`,`转化成本：${money.format(numeric(row.转化成本))}`].join('<br>')}},
+        xAxis:{type:'category',data:ordered.map(r=>r.日期),axisTick:{alignWithLabel:true},axisLabel:{rotate:30}},
+        yAxis:[{type:'value',name:'金额（元）',splitLine:{lineStyle:{color:'#e8eef5'}}},{type:'value',name:'ROI',axisLabel:{formatter:v=>`${v}%`},splitLine:{show:false}}],
+        dataZoom:ordered.length>14?[{type:'inside'},{type:'slider',height:17,bottom:5}]:[],
+        series:[
+          {name:'消耗',type:'line',smooth:true,symbolSize:6,data:ordered.map(r=>numeric(r.消耗)),lineStyle:{width:2}},
+          {name:'佣金',type:'line',smooth:true,symbolSize:6,data:ordered.map(r=>numeric(r.佣金)),lineStyle:{width:2}},
+          {name:'ROI',type:'line',smooth:true,yAxisIndex:1,symbolSize:5,data:ordered.map(r=>Number((numeric(r.ROI)*100).toFixed(2))),markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:'#98a2b3'},label:{formatter:'ROI = 1'},data:[{yAxis:100}]}}
+        ]
+      };
+    }
+    function renderTrend(){
+      const rows=report.by_date||[];
+      $('#trendBand').classList.remove('hidden');
+      $('#trendRange').textContent=report.range?.[0]==='-'?'当前无数据':`${report.range[0]} 至 ${report.range[1]}`;
+      trendChart=trendChart||echarts.init($('#trendChart'));
+      trendChart.setOption(lineOptions(rows,'全量'),true);
+    }
+
+    function sortedRows(){
+      const rows=[...(report?.[activeView]||[])];
+      rows.sort((left,right)=>{
+        const a=left[sortField],b=right[sortField];
+        if(typeof a==='number'||typeof b==='number')return (numeric(a)-numeric(b))*sortDirection;
+        return String(a??'').localeCompare(String(b??''),'zh-CN')*sortDirection;
+      });
+      return rows;
+    }
+    function tableHtml(rows,columns,accountLinks=false,sortable=true){
+      const head=`<thead><tr>${columns.map(column=>sortable?`<th><button class="sort" type="button" data-sort="${esc(column)}">${esc(column)}${sortField===column?(sortDirection<0?' ↓':' ↑'):''}</button></th>`:`<th>${esc(column)}</th>`).join('')}</tr></thead>`;
+      const body=rows.length?rows.map(row=>`<tr>${columns.map(column=>{
+        let content=moneyFields.has(column)||percentFields.has(column)||typeof row[column]==='number'?fmt(column,row[column]):esc(row[column]??'-');
+        if(accountLinks&&column==='账户名称')content=`<button class="drill" type="button" data-account="${esc(row.账户ID)}">${esc(row.账户名称||'-')}</button>`;
+        return `<td data-label="${esc(column)}">${content}</td>`;
+      }).join('')}</tr>`).join(''):`<tr><td colspan="${columns.length}">当前范围没有数据</td></tr>`;
+      return head+`<tbody>${body}</tbody>`;
+    }
+    function renderTable(){
+      const config=viewConfig[activeView],rows=sortedRows(),pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));page=Math.min(page,pages);
+      const visible=rows.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
+      $('#table').innerHTML=tableHtml(visible,config.columns,activeView==='by_account');
+      $('#tableSummary').textContent=`${config.label}维度共 ${number.format(rows.length)} 行`;
+      $('#sortSummary').textContent=`按${sortField}${sortDirection<0?'降序':'升序'}`;
+      $('#pager').innerHTML=`<button type="button" data-page="-1" ${page<=1?'disabled':''}>上一页</button><span>第 ${page} / ${pages} 页</span><button type="button" data-page="1" ${page>=pages?'disabled':''}>下一页</button>`;
+      $('#workspace').classList.remove('hidden');
+    }
+
+    function setTaskOptions(){
+      const select=$('#task'),previous=select.value;
+      select.replaceChildren(new Option('全部任务',''),...(report.tasks||[]).map(task=>new Option(task,task)));
+      if([...select.options].some(option=>option.value===previous))select.value=previous;
+    }
+    function renderSourceNote(){
+      const note=$('#sourceNote');
+      const summary=report.summary||{};
+      const scope=`当前范围：${number.format(summary.账户数||0)} 个账户、${number.format(summary.数据天数||0)} 天、${number.format(report.rows||0)} 行明细`;
+      note.textContent=`${report.planDimensionNote||''}。${scope}`;
+      note.classList.toggle('available',Boolean(report.sourcePlanAvailable));
+      note.classList.remove('hidden');
+    }
+    function renderAccountDetail(preferred=''){
+      const accounts=report.by_account||[],select=$('#accountSelect'),previous=preferred||select.value;
+      select.replaceChildren(...accounts.map(row=>new Option(`${row.账户名称} · ${row.账户ID}`,row.账户ID)));
+      if(accounts.some(row=>String(row.账户ID)===String(previous)))select.value=previous;
+      if(!select.value&&accounts[0])select.value=accounts[0].账户ID;
+      const rows=(report.by_account_date||[]).filter(row=>String(row.账户ID)===String(select.value));
+      $('#accountDetail').classList.toggle('hidden',!accounts.length);
+      if(!accounts.length)return;
+      const account=accounts.find(row=>String(row.账户ID)===String(select.value));
+      accountChart=accountChart||echarts.init($('#accountChart'));
+      accountChart.setOption(lineOptions(rows,account?.账户名称||'账户'),true);
+      const columns=['日期','消耗','佣金','利润','ROI','点击','成功转化数','转化成本','有效父订单数','有效订单成本','T3订单数'];
+      $('#accountTable').innerHTML=tableHtml(rows,columns,false,false);
+    }
+    function renderAll(){
+      renderCards();renderSourceNote();renderTrend();renderTable();setTaskOptions();renderAccountDetail();
+      requestAnimationFrame(()=>{trendChart?.resize();accountChart?.resize()});
+    }
+    function requestPayload(){return{start:$('#start').value,end:$('#end').value,account:$('#account').value.trim(),task:$('#task').value}}
+    async function analyze(){
+      if($('#start').value&&$('#end').value&&$('#start').value>$('#end').value){setStatus($('#filterStatus'),'开始日期不能晚于结束日期','bad');return}
+      const button=$('#apply');
+      try{button.disabled=true;setStatus($('#filterStatus'),'正在读取数据库…');report=await post('/api/jd-low-activity/analyze',requestPayload());page=1;renderAll();setStatus($('#filterStatus'),`已读取 ${number.format(report.rows||0)} 行明细。最近同步：${report.cachedAt?new Date(report.cachedAt).toLocaleString('zh-CN'):'暂无'}`,'good')}
+      catch(error){setStatus($('#filterStatus'),error.message,'bad')}
+      finally{button.disabled=false}
+    }
+    async function sync(){
+      const start=$('#syncStart').value,end=$('#syncEnd').value;
+      if(!start||!end||start>end){setStatus($('#syncStatus'),'请选择有效的同步日期范围','bad');return}
+      const button=$('#sync');
+      try{
+        button.disabled=true;button.textContent='同步中…';setStatus($('#syncStatus'),'正在分页拉取、校验并写入计划明细，请勿重复提交。');
+        report=await post('/api/jd-low-activity/sync',{start,end,token:$('#token').value,sign:$('#sign').value});
+        $('#token').value='';$('#sign').value='';$('#start').value=start;$('#end').value=end;$('#account').value='';$('#task').value='';page=1;renderAll();
+        setStatus($('#syncStatus'),`同步成功，共保存 ${number.format(report.rows||0)} 行；凭据已保存在服务器。`,'good');
+        setStatus($('#filterStatus'),`当前展示 ${start} 至 ${end}。`,'good');
+      }catch(error){setStatus($('#syncStatus'),error.message,'bad')}
+      finally{button.disabled=false;button.textContent='同步上游数据'}
+    }
+    function exportCurrent(){
+      if(!report)return;
+      const config=viewConfig[activeView],rows=sortedRows(),columns=config.columns;
+      const cell=value=>`"${String(value??'').replaceAll('"','""')}"`;
+      const csv=[columns.map(cell).join(','),...rows.map(row=>columns.map(column=>cell(row[column])).join(','))].join('\r\n');
+      const blob=new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});
+      const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`京东低活-${config.label}-${$('#start').value||'全部'}-${$('#end').value||'全部'}.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    }
+
+    $('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
+    $('#apply').onclick=analyze;$('#sync').onclick=sync;$('#export').onclick=exportCurrent;
+    $('#reset').onclick=()=>{$('#start').value=defaultStart;$('#end').value=defaultEnd;$('#account').value='';$('#task').value='';analyze()};
+    $('#account').onkeydown=event=>{if(event.key==='Enter')analyze()};
+    $('#tabs').onclick=event=>{const button=event.target.closest('[data-view]');if(!button)return;activeView=button.dataset.view;page=1;sortField=activeView==='by_date'?'日期':'消耗';sortDirection=-1;document.querySelectorAll('.tab').forEach(tab=>{const active=tab===button;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active))});renderTable()};
+    $('#table').onclick=event=>{const sort=event.target.closest('[data-sort]');if(sort){if(sortField===sort.dataset.sort)sortDirection*=-1;else{sortField=sort.dataset.sort;sortDirection=-1}page=1;renderTable();return}const drill=event.target.closest('[data-account]');if(drill){renderAccountDetail(drill.dataset.account);$('#accountDetail').scrollIntoView({behavior:'smooth',block:'start'})}};
+    $('#pager').onclick=event=>{const button=event.target.closest('[data-page]');if(!button)return;page+=Number(button.dataset.page);renderTable()};
+    $('#accountSelect').onchange=()=>renderAccountDetail();
+    window.addEventListener('resize',()=>{trendChart?.resize();accountChart?.resize()});
+
+    window.sessionReady.then(()=>{
+      if(document.documentElement.classList.contains('admin')){
+        api('/api/jd-low-activity/settings').then(settings=>setStatus($('#syncStatus'),settings.configured?'接口凭据已保存在服务器；留空即可继续使用。每天 09:10 自动更新当月数据。':'尚未配置接口凭据，请填写 token 与 X-Request-Sign 后首次同步。',settings.configured?'good':'')).catch(error=>setStatus($('#syncStatus'),error.message,'bad'));
+      }
+      post('/api/jd-low-activity/analyze',requestPayload()).then(result=>{report=result;renderAll();setStatus($('#filterStatus'),report.rows?`已读取 ${number.format(report.rows)} 行明细。`:'数据库暂无低活数据，请由管理员先同步。',report.rows?'good':'')}).catch(error=>setStatus($('#filterStatus'),error.message,'bad'));
+    });
+  </script>
+</body>
+</html>

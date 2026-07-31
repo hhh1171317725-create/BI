@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <style>html:not(.authenticated) body{visibility:hidden}</style>
+  <script>
+    fetch('/api/session',{cache:'no-store'})
+      .then(response=>response.ok?response.json():Promise.reject())
+      .then(result=>{
+        if(!result.authenticated||result.user?.role!=='admin')throw Error();
+        window.currentSessionUser=result.user;
+        document.documentElement.classList.add('authenticated');
+      })
+      .catch(()=>location.replace('/login'));
+  </script>
+  <title>服务器终端</title>
+  <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
+  <style>
+    :root{--blue:#1677ff;--ink:#172b4d;--muted:#667085;--line:#d9e2ec;--bg:#f5f8fb;--good:#12805c;--bad:#cf3d3d;--terminal:#0d1117}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{display:flex;flex-direction:column;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font:14px "Microsoft YaHei","PingFang SC",sans-serif}
+    button,input,select,textarea{font:inherit}
+    header{flex:none;height:74px;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+    .header-row{display:flex;align-items:center;justify-content:space-between;gap:16px;height:100%}
+    .brand{display:flex;align-items:center;gap:10px}
+    .mark{display:grid;width:30px;height:30px;place-items:center;border-radius:7px;background:#202938;color:#fff;font-weight:700}
+    h1{margin:0;font-size:20px}
+    .nav,.terminal-actions,.connection-meta{display:flex;align-items:center;gap:8px}
+    .nav a,.nav button,.action{height:34px;padding:0 12px;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:#1756a9;text-decoration:none;font-weight:600;line-height:32px;cursor:pointer}
+    .nav button,.action{line-height:normal}
+    .nav a:hover,.nav button:hover,.action:hover{border-color:var(--blue);background:#eaf3ff}
+    .action.primary{border-color:var(--blue);background:var(--blue);color:#fff}
+    .action.primary:hover{background:#0958d9}
+    .action:disabled{opacity:.45;cursor:not-allowed}
+    main{display:grid;flex:1;min-height:0;grid-template-rows:auto minmax(0,1fr);padding:14px 18px 18px}
+    .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 2px 12px}
+    .host{max-width:min(52vw,620px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+    .status{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+    .status::before{content:"";width:8px;height:8px;border-radius:50%;background:#98a2b3}
+    .status.connecting::before{background:#e6a700}
+    .status.connected::before{background:var(--good)}
+    .status.error::before{background:var(--bad)}
+    .terminal-shell{min-height:0;padding:12px 8px 8px 12px;overflow:hidden;border:1px solid #202938;border-radius:7px;background:var(--terminal);box-shadow:0 8px 24px rgba(23,43,77,.12)}
+    #terminal{width:100%;height:100%}
+    dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 28px);padding:0;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 20px 60px rgba(23,43,77,.28)}
+    dialog::backdrop{background:rgba(23,43,77,.45)}
+    .dialog-body{padding:18px}
+    .dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .dialog-head h2{margin:0;font-size:17px}
+    .close{width:32px;height:32px;padding:0;border:0;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}
+    .form{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:13px 12px;margin-top:18px}
+    label{display:grid;gap:7px;color:#475467;font-size:13px;font-weight:600}
+    label.full{grid-column:1/-1}
+    input,select,textarea{width:100%;border:1px solid #c7d3df;border-radius:5px;background:#fff;color:var(--ink)}
+    input,select{height:38px;padding:0 10px}
+    textarea{min-height:150px;padding:10px;resize:vertical;font:12px Consolas,"Courier New",monospace;line-height:1.5}
+    input:focus,select:focus,textarea:focus{border-color:var(--blue);outline:3px solid rgba(22,119,255,.1)}
+    .credential-panel{display:grid;gap:13px;grid-column:1/-1}
+    .dialog-status{min-height:18px;margin-top:12px;color:var(--muted);font-size:12px}
+    .dialog-status.good{color:var(--good)}
+    .dialog-status.bad{color:var(--bad)}
+    .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+    .hidden{display:none!important}
+    @media(max-width:700px){
+      header{height:auto;padding:12px}
+      .header-row{align-items:stretch;flex-direction:column;gap:10px}
+      .nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+      .nav a,.nav button{display:flex;align-items:center;justify-content:center;min-width:0;padding:0 6px;text-align:center}
+      h1{font-size:18px}
+      main{padding:10px 8px 8px}
+      .toolbar{align-items:flex-start;flex-direction:column;padding:0 2px 9px}
+      .connection-meta{width:100%;justify-content:space-between}
+      .host{max-width:62vw}
+      .terminal-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%}
+      .action{min-width:0;padding:0 6px}
+      .terminal-shell{padding:9px 4px 4px 8px;border-radius:5px}
+      .dialog-body{padding:16px}
+      .form{grid-template-columns:minmax(0,1fr) 96px}
+      .dialog-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @media(max-width:380px){
+      .terminal-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div class="brand"><span class="mark">&gt;_</span><h1>服务器终端</h1></div>
+      <nav class="nav"><a href="/tools">工具中心</a><a href="/account">账户设置</a><button id="logout" type="button">退出登录</button></nav>
+    </div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <div class="connection-meta"><span class="host" id="hostLabel">尚未配置服务器</span><span class="status" id="status">未连接</span></div>
+      <div class="terminal-actions">
+        <button class="action primary" id="connect" type="button">连接</button>
+        <button class="action" id="disconnect" type="button" disabled>断开</button>
+        <button class="action" id="clear" type="button">清屏</button>
+        <button class="action" id="settings" type="button">设置</button>
+      </div>
+    </div>
+    <section class="terminal-shell" aria-label="SSH 终端"><div id="terminal"></div></section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form class="dialog-body" id="settingsForm">
+      <div class="dialog-head"><h2>SSH 服务器设置</h2><button class="close" id="closeSettings" type="button" aria-label="关闭">&times;</button></div>
+      <div class="form">
+        <label>主机地址<input name="host" required maxlength="253" placeholder="服务器公网 IP 或 127.0.0.1" /></label>
+        <label>端口<input name="port" required type="number" min="1" max="65535" value="22" inputmode="numeric" /></label>
+        <label class="full">用户名<input name="username" required maxlength="64" autocomplete="username" placeholder="例如 root" /></label>
+        <label class="full">认证方式<select name="authMethod"><option value="password">密码</option><option value="privateKey">私钥</option></select></label>
+        <div class="credential-panel" id="passwordPanel"><label>SSH 密码<input name="password" type="password" maxlength="1000" autocomplete="new-password" placeholder="留空保留服务器上已保存的密码" /></label></div>
+        <div class="credential-panel hidden" id="privateKeyPanel">
+          <label>SSH 私钥<textarea name="privateKey" spellcheck="false" placeholder="留空保留服务器上已保存的私钥"></textarea></label>
+          <label>私钥口令<input name="passphrase" type="password" maxlength="1000" autocomplete="new-password" placeholder="没有口令可留空" /></label>
+        </div>
+      </div>
+      <div class="dialog-status" id="dialogStatus"></div>
+      <div class="dialog-actions"><button class="action" id="testConnection" type="button">保存并测试</button><button class="action primary" type="submit">保存设置</button></div>
+    </form>
+  </dialog>
+
+  <script src="/vendor/xterm/xterm.js"></script>
+  <script src="/vendor/xterm/addon-fit.js"></script>
+  <script>
+    const $=selector=>document.querySelector(selector);
+    const terminal=new Terminal({
+      cursorBlink:true,
+      cursorStyle:'block',
+      fontFamily:'Consolas, "Cascadia Mono", "Courier New", monospace',
+      fontSize:14,
+      lineHeight:1.15,
+      scrollback:5000,
+      allowProposedApi:false,
+      theme:{background:'#0d1117',foreground:'#d7dde8',cursor:'#f2f4f7',selectionBackground:'#264f78',black:'#0d1117',red:'#ff7b72',green:'#7ee787',yellow:'#e3b341',blue:'#79c0ff',magenta:'#d2a8ff',cyan:'#76e3ea',white:'#b1bac4',brightBlack:'#6e7681',brightRed:'#ffa198',brightGreen:'#aff5b4',brightYellow:'#f2cc60',brightBlue:'#a5d6ff',brightMagenta:'#dabaff',brightCyan:'#b3f0ff',brightWhite:'#f0f6fc'}
+    });
+    const fitAddon=new FitAddon.FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open($('#terminal'));
+    let settings=null,socket=null,resizeFrame=0;
+
+    async function api(url,options={}){
+      const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+      if(response.status===401){location.replace('/login');throw Error('登录已失效')}
+      if(response.status===403){location.replace('/tools');throw Error('仅管理员可以使用服务器终端')}
+      const raw=await response.text();
+      let result={};
+      try{result=raw?JSON.parse(raw):{}}catch{throw Error('服务端返回异常')}
+      if(!response.ok)throw Error(result.error||result.message||'请求失败');
+      return result;
+    }
+    function updateHost(){
+      $('#hostLabel').textContent=settings?.configured?`${settings.username}@${settings.host}:${settings.port}`:'尚未配置服务器';
+      $('#connect').disabled=!settings?.configured||socket?.readyState===WebSocket.OPEN||socket?.readyState===WebSocket.CONNECTING;
+    }
+    function setStatus(message,tone=''){
+      const status=$('#status');
+      status.textContent=message;
+      status.className=`status ${tone}`;
+    }
+    function setDialogStatus(message,tone=''){
+      const status=$('#dialogStatus');
+      status.textContent=message;
+      status.className=`dialog-status ${tone}`;
+    }
+    function fit(){
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame=requestAnimationFrame(()=>{
+        try{
+          fitAddon.fit();
+          if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'resize',columns:terminal.cols,rows:terminal.rows}));
+        }catch{}
+      });
+    }
+    function connect(){
+      if(!settings?.configured){openSettings();return}
+      if(socket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(socket.readyState))return;
+      terminal.clear();
+      terminal.writeln('\x1b[38;5;245m正在建立安全连接...\x1b[0m');
+      setStatus('连接中','connecting');
+      $('#connect').disabled=true;
+      const protocol=location.protocol==='https:'?'wss:':'ws:';
+      socket=new WebSocket(`${protocol}//${location.host}/ws/terminal`);
+      socket.binaryType='arraybuffer';
+      socket.onopen=()=>{fit();$('#disconnect').disabled=false};
+      socket.onmessage=event=>{
+        if(typeof event.data!=='string'){terminal.write(new Uint8Array(event.data));return}
+        let message;
+        try{message=JSON.parse(event.data)}catch{return}
+        if(message.type==='connected'){
+          terminal.clear();
+          setStatus('已连接','connected');
+          $('#connect').disabled=true;
+          $('#disconnect').disabled=false;
+          terminal.focus();
+          fit();
+        }else if(message.type==='status'){
+          setStatus(message.message||'连接中','connecting');
+        }else if(message.type==='error'){
+          setStatus('连接失败','error');
+          terminal.writeln(`\r\n\x1b[31m${message.message||'SSH 连接失败'}\x1b[0m`);
+        }else if(message.type==='disconnected'){
+          setStatus('已断开');
+        }
+      };
+      socket.onclose=()=>{
+        setStatus($('#status').classList.contains('error')?'连接失败':'已断开',$('#status').classList.contains('error')?'error':'');
+        $('#disconnect').disabled=true;
+        socket=null;
+        updateHost();
+      };
+      socket.onerror=()=>setStatus('连接失败','error');
+    }
+    function disconnect(){
+      if(socket)socket.close(1000,'User disconnected');
+    }
+    function openSettings(){
+      const form=$('#settingsForm');
+      form.host.value=settings?.host||'';
+      form.port.value=settings?.port||22;
+      form.username.value=settings?.username||'';
+      form.authMethod.value=settings?.authMethod||'password';
+      form.password.value='';
+      form.privateKey.value='';
+      form.passphrase.value='';
+      toggleCredentialPanels();
+      setDialogStatus(settings?.credentialSaved?'凭据已保存在服务器上':'');
+      $('#settingsDialog').showModal();
+      form.host.focus();
+    }
+    function toggleCredentialPanels(){
+      const key=$('#settingsForm').authMethod.value==='privateKey';
+      $('#passwordPanel').classList.toggle('hidden',key);
+      $('#privateKeyPanel').classList.toggle('hidden',!key);
+    }
+    function payload(){
+      const form=$('#settingsForm');
+      return{host:form.host.value.trim(),port:Number(form.port.value),username:form.username.value.trim(),authMethod:form.authMethod.value,password:form.password.value,privateKey:form.privateKey.value,passphrase:form.passphrase.value};
+    }
+    async function save(test){
+      const form=$('#settingsForm');
+      if(!form.reportValidity())return;
+      const buttons=[...form.querySelectorAll('button')];
+      buttons.forEach(button=>button.disabled=true);
+      setDialogStatus(test?'正在保存并测试连接...':'正在保存...');
+      try{
+        settings=await api('/api/terminal/settings',{method:'POST',body:JSON.stringify(payload())});
+        updateHost();
+        if(test){
+          const result=await api('/api/terminal/test',{method:'POST',body:'{}'});
+          setDialogStatus(`${result.message} · ${result.hostKeyType} · ${result.hostKeyFingerprint}`,'good');
+        }else{
+          $('#settingsDialog').close();
+          setStatus('未连接');
+        }
+      }catch(error){setDialogStatus(error.message,'bad')}
+      finally{buttons.forEach(button=>button.disabled=false)}
+    }
+
+    terminal.onData(data=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'input',data}))});
+    new ResizeObserver(fit).observe($('.terminal-shell'));
+    window.addEventListener('resize',fit);
+    $('#connect').onclick=connect;
+    $('#disconnect').onclick=disconnect;
+    $('#clear').onclick=()=>{terminal.clear();terminal.focus()};
+    $('#settings').onclick=openSettings;
+    $('#closeSettings').onclick=()=>$('#settingsDialog').close();
+    $('#settingsForm').authMethod.onchange=toggleCredentialPanels;
+    $('#settingsForm').onsubmit=event=>{event.preventDefault();save(false)};
+    $('#testConnection').onclick=()=>save(true);
+    $('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
+    api('/api/terminal/settings').then(result=>{settings=result;updateHost();fit();if(settings.configured)connect();else openSettings()}).catch(error=>{setStatus(error.message,'error');terminal.writeln(`\x1b[31m${error.message}\x1b[0m`)});
+  </script>
+</body>
+</html>

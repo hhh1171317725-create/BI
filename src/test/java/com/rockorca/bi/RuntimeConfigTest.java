@@ -49,4 +49,52 @@ class RuntimeConfigTest {
         IllegalArgumentException.class,
         () -> config.saveAiCredentials("openai", "short", "gpt-5.6-terra"));
   }
+
+  @Test
+  void sshPasswordIsPersistedEncodedAndAvailableWithoutRestart() throws Exception {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    config.saveSshCredentials(
+        "127.0.0.1", 22, "root", "password", "server-secret", "", "");
+
+    Path path = temporaryDirectory.resolve("ssh.env");
+    assertTrue(Files.isRegularFile(path));
+    Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
+        Files.readString(path, StandardCharsets.UTF_8));
+    assertEquals("127.0.0.1", saved.get("SSH_HOST"));
+    assertEquals("22", saved.get("SSH_PORT"));
+    assertEquals("root", saved.get("SSH_USERNAME"));
+    assertEquals("password", saved.get("SSH_AUTH_METHOD"));
+    assertTrue(!saved.get("SSH_PASSWORD_B64").contains("server-secret"));
+    assertEquals("server-secret", config.decodedSecret("SSH_PASSWORD_B64"));
+
+    config.saveSshCredentials(
+        "server.example.com", 2222, "deploy", "password", "", "", "");
+    assertEquals("server-secret", config.decodedSecret("SSH_PASSWORD_B64"));
+    assertEquals("server.example.com", config.get("SSH_HOST", ""));
+  }
+
+  @Test
+  void sshCredentialsRejectInvalidConnectionSettings() {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveSshCredentials(
+            "https://server.example.com", 22, "root", "password", "secret", "", ""));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveSshCredentials(
+            "server.example.com", 0, "root", "password", "secret", "", ""));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveSshCredentials(
+            "server.example.com", 22, "bad user", "password", "secret", "", ""));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> config.saveSshCredentials(
+            "server.example.com", 22, "root", "privateKey", "", "", ""));
+  }
 }

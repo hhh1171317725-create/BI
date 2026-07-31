@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +35,7 @@ public class RuntimeConfig {
     loadFile("mysql.env");
     loadFile("ai.env");
     loadOptionalFile("deeplink.env");
+    loadOptionalFile("ssh.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
   }
@@ -159,6 +161,88 @@ public class RuntimeConfig {
     }
   }
 
+  public synchronized void saveSshCredentials(
+      String hostValue,
+      int port,
+      String usernameValue,
+      String authMethodValue,
+      String passwordValue,
+      String privateKeyValue,
+      String passphraseValue) {
+    String host = clean(hostValue);
+    String username = clean(usernameValue);
+    String authMethod = clean(authMethodValue);
+    if (!host.matches("^[A-Za-z0-9._:-]{1,253}$")) {
+      throw new IllegalArgumentException("SSH 主机地址格式无效");
+    }
+    if (port < 1 || port > 65535) {
+      throw new IllegalArgumentException("SSH 端口必须在 1 到 65535 之间");
+    }
+    if (!username.matches("^[A-Za-z_][A-Za-z0-9._-]{0,63}$")) {
+      throw new IllegalArgumentException("SSH 用户名格式无效");
+    }
+    if (!authMethod.equals("password") && !authMethod.equals("privateKey")) {
+      throw new IllegalArgumentException("SSH 认证方式无效");
+    }
+
+    Path path = runtimeDir.resolve("ssh.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("SSH_HOST", host);
+      saved.put("SSH_PORT", String.valueOf(port));
+      saved.put("SSH_USERNAME", username);
+      saved.put("SSH_AUTH_METHOD", authMethod);
+
+      String password = secret(passwordValue, "SSH 密码");
+      if (!password.isBlank()) saved.put("SSH_PASSWORD_B64", encodeSecret(password));
+
+      String privateKey = String.valueOf(privateKeyValue == null ? "" : privateKeyValue).trim();
+      if (!privateKey.isBlank()) {
+        if (privateKey.length() > 100_000
+            || !privateKey.contains("PRIVATE KEY")
+            || privateKey.indexOf('\0') >= 0) {
+          throw new IllegalArgumentException("SSH 私钥内容无效");
+        }
+        Path privateKeyPath = runtimeDir.resolve("ssh-private-key");
+        Files.writeString(privateKeyPath, privateKey + '\n', StandardCharsets.UTF_8);
+        setOwnerOnlyPermissions(privateKeyPath);
+        saved.put("SSH_PRIVATE_KEY_PATH", privateKeyPath.toString());
+      }
+
+      String passphrase = secret(passphraseValue, "私钥口令");
+      if (!passphrase.isBlank()) saved.put("SSH_PASSPHRASE_B64", encodeSecret(passphrase));
+
+      if (authMethod.equals("password")
+          && clean(saved.get("SSH_PASSWORD_B64")).isBlank()) {
+        throw new IllegalArgumentException("请填写 SSH 密码");
+      }
+      if (authMethod.equals("privateKey")) {
+        String keyPath = clean(saved.get("SSH_PRIVATE_KEY_PATH"));
+        if (keyPath.isBlank() || !Files.isRegularFile(Path.of(keyPath))) {
+          throw new IllegalArgumentException("请粘贴 SSH 私钥");
+        }
+      }
+
+      saveEnvironmentFile(path, "# Managed by the server terminal settings page.", saved);
+      saved.forEach(values::put);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存 SSH 配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  public String decodedSecret(String key) {
+    String encoded = get(key, "");
+    if (encoded.isBlank()) return "";
+    try {
+      return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException ignored) {
+      return "";
+    }
+  }
+
   private static void saveEnvironmentFile(
       Path path,
       String header,
@@ -183,6 +267,23 @@ public class RuntimeConfig {
     } catch (UnsupportedOperationException ignored) {
       // Windows 等非 POSIX 文件系统不支持 Unix 权限。
     }
+  }
+
+  private static String clean(String value) {
+    return String.valueOf(value == null ? "" : value).trim();
+  }
+
+  private static String secret(String value, String label) {
+    String result = String.valueOf(value == null ? "" : value);
+    if (result.length() > 1_000 || result.indexOf('\0') >= 0
+        || result.indexOf('\r') >= 0 || result.indexOf('\n') >= 0) {
+      throw new IllegalArgumentException(label + "格式无效");
+    }
+    return result;
+  }
+
+  private static String encodeSecret(String value) {
+    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
   }
 
   private static String randomHex(int bytes) {

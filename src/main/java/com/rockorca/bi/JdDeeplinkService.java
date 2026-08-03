@@ -119,19 +119,10 @@ public class JdDeeplinkService {
   }
 
   private UpstreamResult request(JdProduct product) {
-    String landingPage = product.h5();
-
     String token = required("XZ_DEEPLINK_TOKEN");
     String signature = required("XZ_DEEPLINK_SIGN");
     String timestamp = String.valueOf(Instant.now().getEpochSecond());
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("interface_version", 1);
-    payload.put("lp_url", landingPage);
-    payload.put("channel", config.get("XZ_DEEPLINK_CHANNEL", "ttyl1"));
-    payload.put("platform", config.get("XZ_DEEPLINK_PLATFORM", "toutiao-v2"));
-    payload.put("account", config.get("XZ_DEEPLINK_ACCOUNT", "yinfu-qac"));
-    payload.put("pid", config.get("XZ_DEEPLINK_PID", "2036510647_4101491011_3107491173"));
-    payload.put("account_list", List.of());
+    Map<String, Object> payload = requestBody(product);
 
     try {
       HttpRequest request = HttpRequest.newBuilder()
@@ -161,6 +152,18 @@ public class JdDeeplinkService {
       if (error instanceof IllegalStateException) throw (IllegalStateException) error;
       throw new IllegalStateException("深链请求失败：" + error.getMessage(), error);
     }
+  }
+
+  Map<String, Object> requestBody(JdProduct product) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("interface_version", 1);
+    payload.put("lp_url", product.externalUrl());
+    payload.put("channel", config.get("XZ_DEEPLINK_CHANNEL", "ttyl1"));
+    payload.put("platform", config.get("XZ_DEEPLINK_PLATFORM", "toutiao-v2"));
+    payload.put("account", config.get("XZ_DEEPLINK_ACCOUNT", "yinfu-qac"));
+    payload.put("pid", config.get("XZ_DEEPLINK_PID", "2036510647_4101491011_3107491173"));
+    payload.put("account_list", List.of());
+    return payload;
   }
 
   private String required(String key) {
@@ -257,7 +260,7 @@ public class JdDeeplinkService {
     zip.closeEntry();
   }
 
-  public record JdProduct(String skuId, String name, String h5) {}
+  public record JdProduct(String skuId, String name, String externalUrl) {}
 
   private record UpstreamResult(Map<String, Object> requestBody, Object response) {}
 

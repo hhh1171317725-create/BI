@@ -71,7 +71,7 @@ chmod 600 .runtime/deeplink.env
 systemctl restart dahanghai-analysis
 ```
 
-打开 `/deeplink` 后搜索并选择 SKU，再点击生成。批量 SKU 支持粘贴换行、空格或逗号分隔的多个 SKU，下载的 `.xlsx` 仅填写“直达链接名称”“DeepLink”“ULink”三列：名称为 SKU 加商品名的前 30 个字，DeepLink 与 ULink 分别取上游响应的 `deeplink_cvt` 和 `universal_link`。SKU-H5 映射来自随程序发布的 `jd-deeplink-products.json`；上游授权或签名失效时，替换该私有配置中的对应值后重启服务。
+打开 `/deeplink` 后搜索并选择 SKU，再点击生成。批量 SKU 支持粘贴换行、空格或逗号分隔的多个 SKU，下载的 `.xlsx` 仅填写“直达链接名称”“DeepLink”“ULink”三列：名称为 SKU 加商品名的前 30 个字，DeepLink 与 ULink 分别取上游响应的 `deeplink_cvt` 和 `universal_link`。SKU-外投链接映射来自随程序发布的 `jd-deeplink-products.json`，外投链接作为请求体的 `lp_url`；上游授权或签名失效时，替换该私有配置中的对应值后重启服务。
 
 ## 宝塔部署
 

@@ -31,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 class ApiControllerTest {
   private SessionService sessions;
   private ReportService reports;
+  private JdLowActivityService lowActivityReports;
   private PetService pets;
   private UserService users;
   private UserRepository.UserAccount user;
@@ -40,6 +41,7 @@ class ApiControllerTest {
   void setUp() {
     sessions = mock(SessionService.class);
     reports = mock(ReportService.class);
+    lowActivityReports = mock(JdLowActivityService.class);
     pets = mock(PetService.class);
     users = mock(UserService.class);
     LocalDateTime now = LocalDateTime.of(2026, 7, 30, 12, 0);
@@ -53,6 +55,7 @@ class ApiControllerTest {
             new AuthApiController(sessions, users),
             new AccountApiController(sessions, users),
             new ReportApiController(reports, sessions, users),
+            new JdLowActivityApiController(lowActivityReports, sessions, users),
             new PetApiController(pets, sessions, users))
         .setControllerAdvice(new ApiExceptionHandler())
         .build();
@@ -182,6 +185,48 @@ class ApiControllerTest {
   }
 
   @Test
+  void jdLowActivityApisDelegateAndProtectSettings() throws Exception {
+    when(lowActivityReports.current()).thenReturn(Map.of("source", "current"));
+    when(lowActivityReports.analyze("2026-07-01", "2026-07-31", "账户A", "任务A"))
+        .thenReturn(Map.of("source", "analyze"));
+    when(lowActivityReports.credentialStatus())
+        .thenReturn(Map.of("configured", true, "tokenSaved", true, "signSaved", true));
+    when(lowActivityReports.sync(
+            "2026-07-01", "2026-07-31", "low-activity-token", "A".repeat(40)))
+        .thenReturn(Map.of("source", "sync"));
+
+    mvc.perform(get("/api/jd-low-activity/current"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("current"));
+    mvc.perform(post("/api/jd-low-activity/analyze")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-07-01","end":"2026-07-31",
+                 "account":"账户A","task":"任务A"}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("analyze"));
+    mvc.perform(get("/api/jd-low-activity/settings"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.configured").value(true))
+        .andExpect(jsonPath("$.token").doesNotExist())
+        .andExpect(jsonPath("$.sign").doesNotExist());
+    mvc.perform(post("/api/jd-low-activity/sync")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-07-01","end":"2026-07-31",
+                 "token":"low-activity-token","sign":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("sync"));
+
+    verify(lowActivityReports).analyze("2026-07-01", "2026-07-31", "账户A", "任务A");
+    verify(lowActivityReports).sync(
+        "2026-07-01", "2026-07-31", "low-activity-token", "A".repeat(40));
+  }
+
+  @Test
   void ordinaryUsersCannotTriggerFullReportRefresh() throws Exception {
     UserRepository.UserAccount ordinaryUser = new UserRepository.UserAccount(
         2L, "viewer", "hash", "user", true, 1,
@@ -204,10 +249,24 @@ class ApiControllerTest {
     mvc.perform(get("/api/report-credentials"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(get("/api/jd-low-activity/settings"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(post("/api/jd-low-activity/sync")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-07-01","end":"2026-07-31",
+                 "token":"hidden-token","sign":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+                """))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
 
     verify(reports, never()).loadDhh(anyString(), anyString());
     verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
     verify(reports, never()).savedReportCredentials();
+    verify(lowActivityReports, never())
+        .sync(anyString(), anyString(), anyString(), anyString());
+    verify(lowActivityReports, never()).credentialStatus();
   }
 
   @Test

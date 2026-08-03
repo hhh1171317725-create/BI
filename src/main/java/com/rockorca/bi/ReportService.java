@@ -77,13 +77,27 @@ public class ReportService {
         selectedStart, selectedEnd, repository.latestSyncTime("dhh"));
   }
 
-  public Map<String, Object> loadDhh(String token, String userId) {
+  public Map<String, Object> loadDhh(
+      String token, String userId, String startValue, String endValue) {
     return runExclusiveRefresh(() -> {
-      List<Map<String, Object>> rows = importer.fetchDhhRows(token, userId);
-      // 凭据文件先原子写入；若保存失败，不开始破坏性的全量表替换。
-      saveSchedulerCredentials(token, userId);
-      repository.replaceOne("dhh", rows, "manual");
-      return currentDhh();
+      String start = requireDate(startValue, "同步开始日期");
+      String end = requireDate(endValue, "同步结束日期");
+      String resolvedToken = text(token);
+      String resolvedUserId = text(userId);
+      if (resolvedToken.isBlank()) {
+        Map<String, String> saved = readSchedulerCredentials();
+        resolvedToken = saved.get("token");
+        if (resolvedUserId.isBlank()) resolvedUserId = saved.get("userId");
+      }
+      if (start.compareTo(end) > 0) {
+        throw new IllegalArgumentException("同步开始日期不能晚于结束日期");
+      }
+      List<Map<String, Object>> rows =
+          importer.fetchDhhRows(resolvedToken, resolvedUserId, start, end);
+      // 凭据文件先原子写入；若保存失败，不开始日期范围替换。
+      saveSchedulerCredentials(resolvedToken, resolvedUserId);
+      repository.replaceDhhRange(rows, start, end, "manual");
+      return analyzeDhh(start, end, "");
     });
   }
 
@@ -122,21 +136,24 @@ public class ReportService {
   public void scheduledRefresh() {
     try {
       refreshAllReports();
-      System.out.println("定时全量更新成功：" + ZonedDateTime.now(BEIJING));
+      System.out.println("定时报表更新成功：" + ZonedDateTime.now(BEIJING));
     } catch (Exception error) {
-      System.err.println("定时全量更新失败：" + error.getMessage());
+      System.err.println("定时报表更新失败：" + error.getMessage());
     }
   }
 
   public void refreshAllReports() {
     runExclusiveRefresh(() -> {
       Map<String, String> credentials = readSchedulerCredentials();
-      // 两份上游数据必须都拉取成功，随后才在一个数据库事务中同时替换。
+      String end = previousBeijingDate(Instant.now());
+      String start = end.substring(0, 8) + "01";
       List<Map<String, Object>> dhhRows =
-          importer.fetchDhhRows(credentials.get("token"), credentials.get("userId"));
+          importer.fetchDhhRows(
+              credentials.get("token"), credentials.get("userId"), start, end);
       List<Map<String, Object>> jdRows =
           importer.fetchJdRows(credentials.get("token"), credentials.get("userId"));
-      repository.replaceAll(dhhRows, jdRows, "scheduled");
+      // 两份上游数据均拉取成功后在一个事务中入库；大航海仅覆盖本月日期段。
+      repository.replaceDhhRangeAndJd(dhhRows, start, end, jdRows, "scheduled");
       jdAnalysisCache.clear();
       return null;
     });
@@ -652,6 +669,15 @@ public class ReportService {
 
   public static String text(Object value) {
     return value == null ? "" : String.valueOf(value).trim();
+  }
+
+  private static String requireDate(Object value, String label) {
+    String date = text(value);
+    try {
+      return LocalDate.parse(date).toString();
+    } catch (RuntimeException error) {
+      throw new IllegalArgumentException(label + "格式无效");
+    }
   }
 
   private static String defaultText(Object value) {

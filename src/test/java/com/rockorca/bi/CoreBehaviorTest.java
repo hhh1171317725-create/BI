@@ -3,6 +3,11 @@ package com.rockorca.bi;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,6 +81,35 @@ class CoreBehaviorTest {
     assertEquals(
         Map.of("token", "server-report-token", "userId", "21"),
         service.savedReportCredentials());
+  }
+
+  @Test
+  void dhhManualSyncOnlyReplacesTheSelectedDateRange(
+      @TempDir Path runtimeDirectory) {
+    ObjectMapper objectMapper = new ObjectMapper();
+    RuntimeConfig config = new RuntimeConfig(objectMapper);
+    ReflectionTestUtils.setField(config, "runtimeDir", runtimeDirectory);
+    ReportRepository repository = mock(ReportRepository.class);
+    CsvImportService upstream = mock(CsvImportService.class);
+    ReportService service = new ReportService(repository, upstream, config, objectMapper);
+    List<Map<String, Object>> rows = List.of(map(
+        "日期", "2026-07-25", "优化师", "宏辉", "项目", "京东",
+        "任务名", "任务A", "消耗", 100, "现金消耗", 80,
+        "赠款消耗", 20, "预估佣金", 120, "结算数", 8,
+        "转化数", 10, "注册数", 9, "账户列表", List.of()));
+    when(upstream.fetchDhhRows(
+        "temporary-token", "20", "2026-07-01", "2026-07-25"))
+        .thenReturn(rows);
+    when(repository.readDhhRows(
+        eq("2026-07-01"), eq("2026-07-25"), anyString(), eq("")))
+        .thenReturn(rows);
+
+    Map<String, Object> result = service.loadDhh(
+        "temporary-token", "20", "2026-07-01", "2026-07-25");
+
+    assertEquals(List.of("2026-07-25", "2026-07-25"), result.get("range"));
+    verify(repository).replaceDhhRange(
+        rows, "2026-07-01", "2026-07-25", "manual");
   }
 
   @Test

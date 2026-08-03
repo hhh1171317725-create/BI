@@ -128,7 +128,8 @@ class ApiControllerTest {
         .thenReturn(Map.of("token", "report-token", "userId", "20"));
     when(reports.saveReportCredentials("new-report-token", "21"))
         .thenReturn(Map.of("configured", true, "userId", "21"));
-    when(reports.loadDhh("report-token", "20")).thenReturn(Map.of("source", "load"));
+    when(reports.loadDhh("report-token", "20", "2026-07-01", "2026-07-25"))
+        .thenReturn(Map.of("source", "load"));
     when(reports.analyzeDhh("2026-07-01", "2026-07-25", "86784411"))
         .thenReturn(Map.of("source", "analyze"));
 
@@ -149,7 +150,10 @@ class ApiControllerTest {
         .andExpect(jsonPath("$.userId").value("21"));
     mvc.perform(post("/api/load")
             .contentType("application/json")
-            .content("{\"token\":\"report-token\",\"userId\":\"\"}"))
+            .content("""
+                {"token":"report-token","userId":"",
+                 "start":"2026-07-01","end":"2026-07-25"}
+                """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("load"));
     mvc.perform(post("/api/analyze")
@@ -160,7 +164,7 @@ class ApiControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("analyze"));
 
-    verify(reports).loadDhh("report-token", "20");
+    verify(reports).loadDhh("report-token", "20", "2026-07-01", "2026-07-25");
     verify(reports).saveReportCredentials("new-report-token", "21");
     verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411");
   }
@@ -290,7 +294,7 @@ class ApiControllerTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
 
-    verify(reports, never()).loadDhh(anyString(), anyString());
+    verify(reports, never()).loadDhh(anyString(), anyString(), anyString(), anyString());
     verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
     verify(reports, never()).savedReportCredentials();
     verify(reports, never()).saveReportCredentials(anyString(), anyString());

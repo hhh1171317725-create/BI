@@ -80,8 +80,14 @@ public class CsvImportService {
   }
 
   public List<Map<String, Object>> fetchDhhRows(String token, String userId) {
+    return fetchDhhRows(token, userId, "", "");
+  }
+
+  public List<Map<String, Object>> fetchDhhRows(
+      String token, String userId, String startValue, String endValue) {
+    String url = exportUrlWithDateRange(dhhExportUrl, startValue, endValue);
     List<Map<String, Object>> rows = fetchCsvRows(
-        dhhExportUrl, token, userId, "大航海报表", DHH_REQUIRED_HEADERS, this::dhhRow);
+        url, token, userId, "大航海报表", DHH_REQUIRED_HEADERS, this::dhhRow);
     requireDataRows(rows, "大航海报表");
     return rows;
   }
@@ -100,6 +106,29 @@ public class CsvImportService {
       if (row != null) rows.add(row);
     }
     return rows;
+  }
+
+  private static String exportUrlWithDateRange(
+      String baseUrl, String startValue, String endValue) {
+    String start = text(startValue);
+    String end = text(endValue);
+    if (start.isBlank() && end.isBlank()) return baseUrl;
+    if (start.isBlank() || end.isBlank()) {
+      throw new IllegalArgumentException("同步开始日期和结束日期必须同时填写");
+    }
+    LocalDate startDate;
+    LocalDate endDate;
+    try {
+      startDate = LocalDate.parse(start);
+      endDate = LocalDate.parse(end);
+    } catch (DateTimeParseException error) {
+      throw new IllegalArgumentException("同步日期格式无效");
+    }
+    if (startDate.isAfter(endDate)) {
+      throw new IllegalArgumentException("同步开始日期不能晚于结束日期");
+    }
+    String separator = baseUrl.contains("?") ? "&" : "?";
+    return baseUrl + separator + "startTime=" + startDate + "&endTime=" + endDate;
   }
 
   public static List<Map<String, String>> parseCsv(String text) {

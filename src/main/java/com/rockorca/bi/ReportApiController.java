@@ -59,7 +59,9 @@ public class ReportApiController {
     users.requireAdmin(sessions.currentUser(request));
     return reports.loadDhh(
         ReportService.text(payload.get("token")),
-        defaultUserId(payload.get("userId")));
+        defaultUserId(payload.get("userId")),
+        ReportService.text(payload.get("start")),
+        ReportService.text(payload.get("end")));
   }
 
   @PostMapping("/analyze")

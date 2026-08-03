@@ -48,10 +48,12 @@ class CsvImportServiceTest {
   void upstreamRequestUsesRequiredHeadersAndImportsBomCsv() throws Exception {
     AtomicReference<String> tokenHeader = new AtomicReference<>();
     AtomicReference<String> userHeader = new AtomicReference<>();
+    AtomicReference<String> query = new AtomicReference<>();
     server = HttpServer.create(new InetSocketAddress(0), 0);
     server.createContext("/dhh", exchange -> {
       tokenHeader.set(exchange.getRequestHeaders().getFirst("X-Token"));
       userHeader.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
+      query.set(exchange.getRequestURI().getRawQuery());
       respond(exchange, 200, dhhCsv());
     });
     server.createContext("/jd", exchange -> respond(exchange, 200, "not-used"));
@@ -60,12 +62,14 @@ class CsvImportServiceTest {
     CsvImportService importer = new CsvImportService(
         new ObjectMapper(), HttpClient.newHttpClient(), base + "/dhh", base + "/jd");
 
-    List<Map<String, Object>> rows = importer.fetchDhhRows("temporary-token", "20");
+    List<Map<String, Object>> rows = importer.fetchDhhRows(
+        "temporary-token", "20", "2026-07-01", "2026-07-25");
 
     assertEquals(1, rows.size());
     assertEquals("2026-07-25", rows.getFirst().get("日期"));
     assertEquals("temporary-token", tokenHeader.get());
     assertEquals("20", userHeader.get());
+    assertEquals("startTime=2026-07-01&endTime=2026-07-25", query.get());
   }
 
   @Test

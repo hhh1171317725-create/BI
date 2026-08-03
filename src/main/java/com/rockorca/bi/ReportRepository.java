@@ -218,6 +218,101 @@ public class ReportRepository {
     }
   }
 
+  public void replaceDhhRange(
+      List<Map<String, Object>> rows,
+      String startValue,
+      String endValue,
+      String triggerType) {
+    if (rows == null || rows.isEmpty()) {
+      throw new IllegalArgumentException("大航海所选日期数据为空，已取消数据库覆盖");
+    }
+    String start = normalizedDate(startValue);
+    String end = normalizedDate(endValue);
+    if (start.isBlank() || end.isBlank() || start.compareTo(end) > 0) {
+      throw new IllegalArgumentException("大航海同步日期范围无效");
+    }
+    boolean outsideRange = rows.stream()
+        .map(row -> String.valueOf(row.get("日期")))
+        .anyMatch(date -> date.compareTo(start) < 0 || date.compareTo(end) > 0);
+    if (outsideRange) throw new IllegalArgumentException("上游返回了所选日期范围外的数据");
+
+    try (Connection connection = dataSource.getConnection()) {
+      connection.setAutoCommit(false);
+      try {
+        long runId = startRun(connection, "dhh", triggerType);
+        try (PreparedStatement statement = connection.prepareStatement("""
+            DELETE FROM `dhh_daily_rows`
+             WHERE business_date BETWEEN ? AND ?
+            """)) {
+          statement.setString(1, start);
+          statement.setString(2, end);
+          statement.executeUpdate();
+        }
+        int inserted = insertRows(connection, "dhh_daily_rows", DHH_COLUMNS, rows, true);
+        finishRun(connection, runId, inserted);
+        connection.commit();
+      } catch (Exception error) {
+        connection.rollback();
+        recordFailedRun("dhh", triggerType, error);
+        throw error;
+      }
+    } catch (Exception error) {
+      if (error instanceof RuntimeException runtime) throw runtime;
+      throw databaseError(error);
+    }
+  }
+
+  public void replaceDhhRangeAndJd(
+      List<Map<String, Object>> dhhRows,
+      String startValue,
+      String endValue,
+      List<Map<String, Object>> jdRows,
+      String triggerType) {
+    if (dhhRows == null || jdRows == null || dhhRows.isEmpty() || jdRows.isEmpty()) {
+      throw new IllegalArgumentException("任一报表为空，已取消数据库更新");
+    }
+    String start = normalizedDate(startValue);
+    String end = normalizedDate(endValue);
+    if (start.isBlank() || end.isBlank() || start.compareTo(end) > 0) {
+      throw new IllegalArgumentException("大航海同步日期范围无效");
+    }
+    boolean outsideRange = dhhRows.stream()
+        .map(row -> String.valueOf(row.get("日期")))
+        .anyMatch(date -> date.compareTo(start) < 0 || date.compareTo(end) > 0);
+    if (outsideRange) throw new IllegalArgumentException("上游返回了所选日期范围外的数据");
+
+    try (Connection connection = dataSource.getConnection()) {
+      connection.setAutoCommit(false);
+      try {
+        long runId = startRun(connection, "all", triggerType);
+        try (PreparedStatement statement = connection.prepareStatement("""
+            DELETE FROM `dhh_daily_rows`
+             WHERE business_date BETWEEN ? AND ?
+            """)) {
+          statement.setString(1, start);
+          statement.setString(2, end);
+          statement.executeUpdate();
+        }
+        try (Statement statement = connection.createStatement()) {
+          statement.executeUpdate("DELETE FROM `jd_daily_rows`");
+        }
+        int dhhInserted = insertRows(
+            connection, "dhh_daily_rows", DHH_COLUMNS, dhhRows, true);
+        int jdInserted = insertRows(
+            connection, "jd_daily_rows", JD_COLUMNS, jdRows, false);
+        finishRun(connection, runId, dhhInserted + jdInserted);
+        connection.commit();
+      } catch (Exception error) {
+        connection.rollback();
+        recordFailedRun("all", triggerType, error);
+        throw error;
+      }
+    } catch (Exception error) {
+      if (error instanceof RuntimeException runtime) throw runtime;
+      throw databaseError(error);
+    }
+  }
+
   public void replaceJdLowActivityRange(
       List<Map<String, Object>> rows,
       String startValue,

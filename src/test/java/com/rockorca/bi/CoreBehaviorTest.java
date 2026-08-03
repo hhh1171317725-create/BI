@@ -58,6 +58,27 @@ class CoreBehaviorTest {
   }
 
   @Test
+  void reportCredentialsCanBeSavedWithoutRunningAReportRefresh(
+      @TempDir Path runtimeDirectory) throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    RuntimeConfig config = new RuntimeConfig(objectMapper);
+    ReflectionTestUtils.setField(config, "runtimeDir", runtimeDirectory);
+    ReportService service = new ReportService(null, null, config, objectMapper);
+
+    assertEquals(
+        Map.of("configured", true, "userId", "21"),
+        service.saveReportCredentials("server-report-token", "21"));
+    assertEquals(
+        Map.of("token", "server-report-token", "userId", "21"),
+        service.savedReportCredentials());
+
+    service.saveReportCredentials("", "");
+    assertEquals(
+        Map.of("token", "server-report-token", "userId", "21"),
+        service.savedReportCredentials());
+  }
+
+  @Test
   void csvParserSupportsQuotedCommasAndEscapedQuotes() {
     List<Map<String, String>> rows = CsvImportService.parseCsv(
         "名称,备注,金额\r\n账户A,\"包含,逗号\",100\r\n账户B,\"含\"\"引号\",200"

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
   <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
-  <title>京东 CPA 日报分析</title>
+  <title>京东广义新日报分析</title>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <link rel="stylesheet" href="/pet.css?v=20260730-mobile" />
   <style>
@@ -597,14 +597,14 @@
   <header>
     <div class="header-row">
       <div>
-        <div class="brand"><button class="brand-mark admin-only" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东 CPA 日报分析</h1></div>
+        <div class="brand"><button class="brand-mark admin-only" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">京</button><h1>京东广义新日报分析</h1></div>
         <p>按优化师、日期、媒体、媒体账户和推客归因汇总，联动查看优化师每日趋势与订单明细。</p>
       </div>
       <div class="header-actions">
-        <a class="report-link" href="/tools">工具中心</a>
-        <a class="report-link" href="/account">账户设置</a>
+        <a class="report-link" href="/">大航海日报</a>
         <a class="report-link" href="/jd-low-activity">京东低活</a>
-        <a class="report-link" href="/">返回大航海日报</a>
+        <a class="report-link" href="/tools">工具中心</a>
+        <a class="report-link" href="/account">设置</a>
         <button class="report-link" id="logout" type="button">退出登录</button>
       </div>
     </div>
@@ -646,7 +646,7 @@
     </div>
   </section>
 
-  <section class="cards hidden" id="cards" aria-label="京东日报汇总"></section>
+  <section class="cards hidden" id="cards" aria-label="京东广义新日报汇总"></section>
 
   <nav class="tabs hidden" id="tabs" aria-label="分析维度" role="tablist">
     <button class="tab active" type="button" data-key="by_optimizer" role="tab" aria-selected="true">优化师</button>
@@ -661,7 +661,7 @@
     <section class="hidden" id="mainChartSection" aria-labelledby="mainChartTitle">
       <h2 class="chart-heading" id="mainChartTitle"></h2>
       <p class="chart-subtitle">横向拖动底部滑块可查看较长日期范围。</p>
-      <div class="chart" id="mainChart" role="img" aria-label="京东日报日期趋势图"></div>
+      <div class="chart" id="mainChart" role="img" aria-label="京东广义新日期趋势图"></div>
     </section>
     <div class="table-tools" id="mainTableTools"></div>
     <div class="table-wrap"><table id="table"></table></div>
@@ -1175,7 +1175,7 @@
 
         const chartSection = $("#mainChartSection");
         if (active === "by_date") {
-          $("#mainChartTitle").textContent = "京东 CPA 每日消耗、预估 ROI 与实际 ROI 趋势";
+          $("#mainChartTitle").textContent = "京东广义新每日消耗、预估 ROI 与实际 ROI 趋势";
           chartSection.classList.remove("hidden");
           mainChart = renderTrend($("#mainChart"), mainChart, rows);
           requestAnimationFrame(() => mainChart?.resize());
@@ -1462,7 +1462,7 @@
       });
 
       window.getPetReportContext = () => ({
-        reportType: "京东 CPA 日报",
+        reportType: "京东广义新日报",
         range: report?.range || ["-", "-"],
         summary: report?.summary || {},
         excludeUnknownOptimizer: report?.excludeUnknownOptimizer ?? true,

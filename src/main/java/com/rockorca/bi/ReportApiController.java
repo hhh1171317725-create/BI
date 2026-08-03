@@ -40,6 +40,18 @@ public class ReportApiController {
         .body(reports.savedReportCredentials());
   }
 
+  @PostMapping("/report-credentials")
+  public ResponseEntity<Map<String, Object>> saveReportCredentials(
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(reports.saveReportCredentials(
+            ReportService.text(payload.get("token")),
+            ReportService.text(payload.get("userId"))));
+  }
+
   @PostMapping("/load")
   public Map<String, Object> loadDhh(
       @RequestBody Map<String, Object> payload,

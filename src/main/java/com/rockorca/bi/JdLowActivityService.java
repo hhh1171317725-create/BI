@@ -73,6 +73,14 @@ public class JdLowActivityService {
     return upstream.credentialStatus();
   }
 
+  public Map<String, Object> saveCredentials(String token, String sign) {
+    JdLowActivityUpstreamService.Credentials credentials =
+        upstream.resolvedCredentials(token, sign);
+    credentials.validate();
+    config.saveJdLowActivityCredentials(credentials.token(), credentials.sign());
+    return upstream.credentialStatus();
+  }
+
   @Scheduled(cron = "0 10 9 * * *", zone = "Asia/Shanghai")
   public void scheduledSync() {
     if (!Boolean.TRUE.equals(upstream.credentialStatus().get("configured"))) return;

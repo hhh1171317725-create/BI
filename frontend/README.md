@@ -3,7 +3,7 @@
 这里是独立部署的静态前端，不参与 Maven 构建，也不会进入后端 JAR。
 
 - `index.html`：大航海日报
-- `jd.html`：京东日报
+- `jd.html`：京东广义新日报
 - `jd-low-activity.html`：京东低活任务报表
 - `tools.html`：报表工具中心
 - `login.html`：登录页

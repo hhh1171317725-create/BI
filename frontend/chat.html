@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <header><div class="header-row"><div><div class="brand"><span class="mark">聊</span><h1>聊天室</h1></div><p>已登录设备可共享文字、图片和文件。</p></div><nav class="nav"><a href="/tools">工具中心</a><a href="/">大航海日报</a><a href="/jd">京东日报</a><a href="/account">账户设置</a><button id="logout" type="button">退出登录</button></nav></div></header>
+  <header><div class="header-row"><div><div class="brand"><span class="mark">聊</span><h1>聊天室</h1></div><p>已登录设备可共享文字、图片和文件。</p></div><nav class="nav"><a href="/tools">工具中心</a><a href="/">大航海日报</a><a href="/jd">京东广义新</a><a href="/jd-low-activity">京东低活</a><a href="/account">设置</a><button id="logout" type="button">退出登录</button></nav></div></header>
   <main class="layout"><aside class="panel settings"><label>房间名称<input id="room" maxlength="32" value="公共聊天室" /></label><label>设备昵称<input id="sender" maxlength="32" placeholder="例如：宏辉电脑" /></label><p class="note">房间与昵称仅保存在当前浏览器。消息和文件保存在服务器运行目录，文件大小上限为 50MB。</p></aside><section class="panel chat"><div class="chat-head"><h2 id="roomTitle">公共聊天室</h2><span class="status" id="status">正在连接…</span></div><div class="messages" id="messages" aria-live="polite"></div><form class="composer" id="composer"><textarea id="text" maxlength="4000" placeholder="输入消息，或选择文件后发送…"></textarea><div class="composer-row"><label class="file-label">选择文件<input id="file" type="file" /><span class="file-name" id="fileName">未选择文件</span></label><button class="primary" id="send" type="submit">发送</button></div></form></section></main>
   <script>
     const $=selector=>document.querySelector(selector),settingsKey='marketing-report-chat-settings-v1';let knownIds='',poller;

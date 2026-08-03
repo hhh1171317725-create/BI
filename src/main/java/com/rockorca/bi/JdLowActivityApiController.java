@@ -48,6 +48,18 @@ public class JdLowActivityApiController {
         .body(reports.credentialStatus());
   }
 
+  @PostMapping("/settings")
+  public ResponseEntity<Map<String, Object>> saveSettings(
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(reports.saveCredentials(
+            ReportService.text(payload.get("token")),
+            ReportService.text(payload.get("sign"))));
+  }
+
   @PostMapping("/sync")
   public Map<String, Object> sync(
       @RequestBody Map<String, Object> payload,

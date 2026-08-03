@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +13,24 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class JdLowActivityServiceTest {
+  @Test
+  void credentialsCanBeSavedWithoutFetchingReportRows() {
+    ReportRepository repository = mock(ReportRepository.class);
+    JdLowActivityUpstreamService upstream = mock(JdLowActivityUpstreamService.class);
+    RuntimeConfig config = mock(RuntimeConfig.class);
+    JdLowActivityService service = new JdLowActivityService(repository, upstream, config);
+    JdLowActivityUpstreamService.Credentials credentials =
+        new JdLowActivityUpstreamService.Credentials("saved-low-token-value", "A".repeat(40));
+    when(upstream.resolvedCredentials("", "")).thenReturn(credentials);
+    when(upstream.credentialStatus()).thenReturn(
+        Map.of("configured", true, "tokenSaved", true, "signSaved", true));
+
+    assertTrue((Boolean) service.saveCredentials("", "").get("configured"));
+
+    verify(config).saveJdLowActivityCredentials("saved-low-token-value", "A".repeat(40));
+    verify(upstream).credentialStatus();
+  }
+
   @Test
   void aggregatesAccountAndDateMetricsUsingCommissionMinusSpend() {
     JdLowActivityService service = new JdLowActivityService(

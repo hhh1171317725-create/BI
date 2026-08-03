@@ -149,6 +149,29 @@ public class ReportService {
         "userId", credentials.get("userId"));
   }
 
+  public Map<String, Object> saveReportCredentials(String tokenValue, String userIdValue) {
+    String token = text(tokenValue);
+    String userId = text(userIdValue);
+    if (token.isBlank() || userId.isBlank()) {
+      try {
+        Map<String, String> saved = readSchedulerCredentials();
+        if (token.isBlank()) token = saved.get("token");
+        if (userId.isBlank()) userId = saved.get("userId");
+      } catch (IllegalStateException ignored) {
+        // 首次配置时由下面的统一校验返回清晰提示。
+      }
+    }
+    if (token.length() < 10 || token.length() > 4_000
+        || token.chars().anyMatch(Character::isWhitespace)) {
+      throw new IllegalArgumentException("请填写有效的报表 x-token");
+    }
+    if (!userId.matches("^[0-9]{1,20}$")) {
+      throw new IllegalArgumentException("用户 ID 只能包含数字");
+    }
+    saveSchedulerCredentials(token, userId);
+    return mapOf("configured", true, "userId", userId);
+  }
+
   private <T> T runExclusiveRefresh(Supplier<T> action) {
     // 手动更新和 09:00 定时更新共用同一把进程锁，避免 DELETE+INSERT 互相覆盖。
     if (!refreshRunning.compareAndSet(false, true)) {

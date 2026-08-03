@@ -141,7 +141,7 @@
     const fitAddon=new FitAddon.FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open($('#terminal'));
-    let settings=null,socket=null,resizeFrame=0;
+    let settings=null,socket=null,resizeFrame=0,reconnectTimer=0,reconnectAttempts=0,manualDisconnect=false;
 
     async function api(url,options={}){
       const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
@@ -176,12 +176,20 @@
         }catch{}
       });
     }
-    function connect(){
+    function scheduleReconnect(){
+      if(manualDisconnect||!settings?.configured||reconnectTimer)return;
+      const delay=Math.min(10000,1000*Math.max(1,reconnectAttempts+1));
+      reconnectAttempts+=1;
+      setStatus(`${Math.ceil(delay/1000)} 秒后自动重连`,'connecting');
+      reconnectTimer=setTimeout(()=>{reconnectTimer=0;connect(true)},delay);
+    }
+    function connect(reconnecting=false){
       if(!settings?.configured){openSettings();return}
       if(socket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(socket.readyState))return;
-      terminal.clear();
-      terminal.writeln('\x1b[38;5;245m正在建立安全连接...\x1b[0m');
-      setStatus('连接中','connecting');
+      manualDisconnect=false;
+      if(!reconnecting)terminal.clear();
+      terminal.writeln(`\x1b[38;5;245m${reconnecting?'服务已恢复，正在重新连接...':'正在建立安全连接...'}\x1b[0m`);
+      setStatus(reconnecting?'自动重连中':'连接中','connecting');
       $('#connect').disabled=true;
       const protocol=location.protocol==='https:'?'wss:':'ws:';
       socket=new WebSocket(`${protocol}//${location.host}/ws/terminal`);
@@ -193,6 +201,7 @@
         try{message=JSON.parse(event.data)}catch{return}
         if(message.type==='connected'){
           terminal.clear();
+          reconnectAttempts=0;
           setStatus('已连接','connected');
           $('#connect').disabled=true;
           $('#disconnect').disabled=false;
@@ -208,15 +217,22 @@
         }
       };
       socket.onclose=()=>{
-        setStatus($('#status').classList.contains('error')?'连接失败':'已断开',$('#status').classList.contains('error')?'error':'');
+        const reconnect=!manualDisconnect&&settings?.configured;
+        setStatus(reconnect?'服务暂不可用':'已断开',reconnect?'connecting':'');
         $('#disconnect').disabled=true;
         socket=null;
         updateHost();
+        if(reconnect){terminal.writeln('\r\n\x1b[33m服务连接已中断，恢复后将自动重连。\x1b[0m');scheduleReconnect()}
       };
-      socket.onerror=()=>setStatus('连接失败','error');
+      socket.onerror=()=>{if(!manualDisconnect)setStatus('服务暂不可用','connecting')};
     }
     function disconnect(){
+      manualDisconnect=true;
+      clearTimeout(reconnectTimer);
+      reconnectTimer=0;
+      reconnectAttempts=0;
       if(socket)socket.close(1000,'User disconnected');
+      else{setStatus('已断开');updateHost()}
     }
     function openSettings(){
       const form=$('#settingsForm');
@@ -264,7 +280,7 @@
     terminal.onData(data=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'input',data}))});
     new ResizeObserver(fit).observe($('.terminal-shell'));
     window.addEventListener('resize',fit);
-    $('#connect').onclick=connect;
+    $('#connect').onclick=()=>connect();
     $('#disconnect').onclick=disconnect;
     $('#clear').onclick=()=>{terminal.clear();terminal.focus()};
     $('#settings').onclick=openSettings;

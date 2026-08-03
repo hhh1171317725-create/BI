@@ -2,6 +2,7 @@ package com.rockorca.bi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 
@@ -11,9 +12,23 @@ import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
 class JdLowActivityUpstreamServiceTest {
+  @Test
+  void springSelectsTheProductionConstructor() {
+    try (AnnotationConfigApplicationContext context =
+        new AnnotationConfigApplicationContext()) {
+      context.registerBean(RuntimeConfig.class, () -> mock(RuntimeConfig.class));
+      context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+      context.register(JdLowActivityUpstreamService.class);
+      context.refresh();
+
+      assertNotNull(context.getBean(JdLowActivityUpstreamService.class));
+    }
+  }
+
   @Test
   void mapsAccountDayRowAndConvertsSpendFromThousandthsOfYuan() {
     JdLowActivityUpstreamService service = new JdLowActivityUpstreamService(

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -29,6 +30,7 @@ public class JdLowActivityUpstreamService {
   private final ObjectMapper objectMapper;
   private final HttpClient client;
 
+  @Autowired
   public JdLowActivityUpstreamService(RuntimeConfig config, ObjectMapper objectMapper) {
     this(
         config,

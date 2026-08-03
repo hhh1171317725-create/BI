@@ -18,6 +18,26 @@ class RuntimeConfigTest {
   Path temporaryDirectory;
 
   @Test
+  void reportVisibilityIsEnabledByDefaultAndPersisted() throws Exception {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    assertEquals(
+        Map.of("dhh", true, "jd", true, "jdLowActivity", true),
+        config.reportVisibility());
+    assertEquals(
+        Map.of("dhh", true, "jd", false, "jdLowActivity", true),
+        config.saveReportVisibility(true, false, true));
+
+    Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
+        Files.readString(
+            temporaryDirectory.resolve("report-visibility.env"), StandardCharsets.UTF_8));
+    assertEquals("true", saved.get("REPORT_DHH_VISIBLE"));
+    assertEquals("false", saved.get("REPORT_JD_VISIBLE"));
+    assertEquals("true", saved.get("REPORT_JD_LOW_ACTIVITY_VISIBLE"));
+  }
+
+  @Test
   void aiCredentialsArePersistedAndAvailableWithoutRestart() throws Exception {
     RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
     ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);

@@ -6,6 +6,7 @@
   <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
   <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
   <title>大航海日报分析</title>
+  <script src="/report-visibility.js"></script>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <link rel="stylesheet" href="/pet.css?v=20260730-mobile" />
   <style>

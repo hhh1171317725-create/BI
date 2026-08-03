@@ -52,6 +52,26 @@ public class ReportApiController {
             ReportService.text(payload.get("userId"))));
   }
 
+  @GetMapping("/report-visibility")
+  public ResponseEntity<Map<String, Object>> reportVisibility() {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(reports.reportVisibility());
+  }
+
+  @PostMapping("/report-visibility")
+  public ResponseEntity<Map<String, Object>> saveReportVisibility(
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(reports.saveReportVisibility(
+            !Boolean.FALSE.equals(payload.get("dhh")),
+            !Boolean.FALSE.equals(payload.get("jd")),
+            !Boolean.FALSE.equals(payload.get("jdLowActivity"))));
+  }
+
   @PostMapping("/load")
   public Map<String, Object> loadDhh(
       @RequestBody Map<String, Object> payload,

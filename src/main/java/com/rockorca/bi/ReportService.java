@@ -166,6 +166,15 @@ public class ReportService {
         "userId", credentials.get("userId"));
   }
 
+  public Map<String, Object> reportVisibility() {
+    return config.reportVisibility();
+  }
+
+  public Map<String, Object> saveReportVisibility(
+      boolean dhh, boolean jd, boolean jdLowActivity) {
+    return config.saveReportVisibility(dhh, jd, jdLowActivity);
+  }
+
   public Map<String, Object> saveReportCredentials(String tokenValue, String userIdValue) {
     String token = text(tokenValue);
     String userId = text(userIdValue);

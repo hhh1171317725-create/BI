@@ -126,6 +126,10 @@ class ApiControllerTest {
     when(reports.currentDhh()).thenReturn(Map.of("source", "current"));
     when(reports.savedReportCredentials())
         .thenReturn(Map.of("token", "report-token", "userId", "20"));
+    when(reports.reportVisibility())
+        .thenReturn(Map.of("dhh", true, "jd", true, "jdLowActivity", true));
+    when(reports.saveReportVisibility(true, false, true))
+        .thenReturn(Map.of("dhh", true, "jd", false, "jdLowActivity", true));
     when(reports.saveReportCredentials("new-report-token", "21"))
         .thenReturn(Map.of("configured", true, "userId", "21"));
     when(reports.loadDhh("report-token", "20", "2026-07-01", "2026-07-25"))
@@ -141,6 +145,16 @@ class ApiControllerTest {
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.token").value("report-token"))
         .andExpect(jsonPath("$.userId").value("20"));
+    mvc.perform(get("/api/report-visibility"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.dhh").value(true))
+        .andExpect(jsonPath("$.jd").value(true));
+    mvc.perform(post("/api/report-visibility")
+            .contentType("application/json")
+            .content("{\"dhh\":true,\"jd\":false,\"jdLowActivity\":true}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.jd").value(false));
     mvc.perform(post("/api/report-credentials")
             .contentType("application/json")
             .content("{\"token\":\"new-report-token\",\"userId\":\"21\"}"))
@@ -166,6 +180,7 @@ class ApiControllerTest {
 
     verify(reports).loadDhh("report-token", "20", "2026-07-01", "2026-07-25");
     verify(reports).saveReportCredentials("new-report-token", "21");
+    verify(reports).saveReportVisibility(true, false, true);
     verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411");
   }
 
@@ -277,6 +292,11 @@ class ApiControllerTest {
             .content("{\"token\":\"hidden-token\",\"userId\":\"20\"}"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(post("/api/report-visibility")
+            .contentType("application/json")
+            .content("{\"dhh\":false,\"jd\":false,\"jdLowActivity\":false}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
     mvc.perform(get("/api/jd-low-activity/settings"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
@@ -298,6 +318,7 @@ class ApiControllerTest {
     verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
     verify(reports, never()).savedReportCredentials();
     verify(reports, never()).saveReportCredentials(anyString(), anyString());
+    verify(reports, never()).saveReportVisibility(anyBoolean(), anyBoolean(), anyBoolean());
     verify(lowActivityReports, never())
         .sync(anyString(), anyString(), anyString(), anyString());
     verify(lowActivityReports, never()).credentialStatus();

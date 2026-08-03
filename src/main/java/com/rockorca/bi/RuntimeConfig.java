@@ -37,6 +37,7 @@ public class RuntimeConfig {
     loadOptionalFile("deeplink.env");
     loadOptionalFile("ssh.env");
     loadOptionalFile("jd-low-activity.env");
+    loadOptionalFile("report-visibility.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
   }
@@ -98,6 +99,32 @@ public class RuntimeConfig {
 
   public ObjectMapper objectMapper() {
     return objectMapper;
+  }
+
+  public Map<String, Object> reportVisibility() {
+    return Map.of(
+        "dhh", enabled("REPORT_DHH_VISIBLE"),
+        "jd", enabled("REPORT_JD_VISIBLE"),
+        "jdLowActivity", enabled("REPORT_JD_LOW_ACTIVITY_VISIBLE"));
+  }
+
+  public synchronized Map<String, Object> saveReportVisibility(
+      boolean dhh,
+      boolean jd,
+      boolean jdLowActivity) {
+    Path path = runtimeDir.resolve("report-visibility.env");
+    Map<String, String> saved = new LinkedHashMap<>();
+    saved.put("REPORT_DHH_VISIBLE", String.valueOf(dhh));
+    saved.put("REPORT_JD_VISIBLE", String.valueOf(jd));
+    saved.put("REPORT_JD_LOW_ACTIVITY_VISIBLE", String.valueOf(jdLowActivity));
+    try {
+      Files.createDirectories(runtimeDir);
+      saveEnvironmentFile(path, "# Managed by the report visibility settings page.", saved);
+      saved.forEach(values::put);
+      return reportVisibility();
+    } catch (IOException error) {
+      throw new IllegalStateException("保存日报展示设置失败：" + error.getMessage(), error);
+    }
   }
 
   public synchronized void saveDeeplinkCredentials(String tokenValue, String signValue) {
@@ -302,6 +329,10 @@ public class RuntimeConfig {
 
   private static String clean(String value) {
     return String.valueOf(value == null ? "" : value).trim();
+  }
+
+  private boolean enabled(String key) {
+    return !"false".equalsIgnoreCase(get(key, "true"));
   }
 
   private static String secret(String value, String label) {

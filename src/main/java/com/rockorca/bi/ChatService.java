@@ -89,6 +89,36 @@ public class ChatService {
     return uploadsDir.resolve(id).normalize();
   }
 
+  public synchronized ClearResult clearRoom(String roomValue) {
+    String targetRoom = room(roomValue);
+    List<ChatMessage> removed = messages.stream()
+        .filter(message -> targetRoom.equals(message.room()))
+        .toList();
+    if (removed.isEmpty()) return new ClearResult(targetRoom, 0, 0, 0);
+
+    List<ChatMessage> original = new ArrayList<>(messages);
+    messages.removeAll(removed);
+    try {
+      save();
+    } catch (RuntimeException error) {
+      messages.clear();
+      messages.addAll(original);
+      throw error;
+    }
+
+    int filesDeleted = 0;
+    int fileDeleteFailures = 0;
+    for (ChatMessage message : removed) {
+      if (message.attachment() == null) continue;
+      try {
+        if (Files.deleteIfExists(filePath(message.attachment().id()))) filesDeleted++;
+      } catch (IOException ignored) {
+        fileDeleteFailures++;
+      }
+    }
+    return new ClearResult(targetRoom, removed.size(), filesDeleted, fileDeleteFailures);
+  }
+
   private ChatMessage append(String room, String sender, String text, ChatAttachment attachment) {
     ChatMessage message = new ChatMessage(UUID.randomUUID().toString(), room, sender, text, attachment, Instant.now().toString());
     messages.add(message);
@@ -149,4 +179,6 @@ public class ChatService {
       String text,
       ChatAttachment attachment,
       String createdAt) {}
+
+  public record ClearResult(String room, int messagesDeleted, int filesDeleted, int fileDeleteFailures) {}
 }

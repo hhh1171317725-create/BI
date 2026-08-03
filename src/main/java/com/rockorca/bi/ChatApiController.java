@@ -1,5 +1,6 @@
 package com.rockorca.bi;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,9 +23,13 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/chat")
 public class ChatApiController {
   private final ChatService chat;
+  private final SessionService sessions;
+  private final UserService users;
 
-  public ChatApiController(ChatService chat) {
+  public ChatApiController(ChatService chat, SessionService sessions, UserService users) {
     this.chat = chat;
+    this.sessions = sessions;
+    this.users = users;
   }
 
   @GetMapping("/messages")
@@ -38,6 +44,14 @@ public class ChatApiController {
         ReportService.text(payload.get("room")),
         ReportService.text(payload.get("sender")),
         ReportService.text(payload.get("text")));
+  }
+
+  @DeleteMapping("/messages")
+  public ChatService.ClearResult clear(
+      @RequestParam(defaultValue = "公共聊天室") String room,
+      HttpServletRequest request) {
+    users.requireAdmin(sessions.currentUser(request));
+    return chat.clearRoom(room);
   }
 
   @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

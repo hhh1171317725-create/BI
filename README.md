@@ -5,7 +5,7 @@
 - `frontend/` 是纯静态前端，由 Nginx 直接托管；
 - Spring Boot 是纯 JSON 后端，只处理 `/api/*`，不再返回 HTML、JS、CSS、图片或页面跳转。
 
-前端继续使用 `/`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/jd-images`、`/terminal`、`/account` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
+前端继续使用 `/`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
 用户访问地址保持不变。未登录时后端返回 JSON `401`，由前端跳转到登录页；后端异常也统一
 返回 JSON，避免前端收到 HTML 错误页。
 
@@ -19,6 +19,7 @@
 - `/jd-images`：按 SKU 获取京东商品轮播主图，单次最多 20 个 SKU。检测到 v1.2.0 以上配套 Chrome 插件时，使用当前电脑的浏览器会话逐张下载，避免京东对云服务器的访问限制；未连接插件时保留服务器 ZIP 备用方式。
 - `/chat`：已登录设备之间共享文字、图片和文件的公共聊天室；单个文件上限 50MB。
 - `/deeplink`：京东深链生成工具。按 SKU 或商品名搜索并选择底表商品，服务端自动读取对应 H5 链接，再按 `.runtime/deeplink.env` 中的默认渠道参数请求上游接口。
+- `/deeplink-account`：通投账户取链工具。沿用同一商品底表和接口凭据，填写 `accountid`、`siteid` 后按通投参数生成单条深链或批量导入模板。
 - `/terminal`：仅管理员可用的完整 SSH 网页终端。支持密码或私钥认证，凭据保存在服务器 `.runtime/ssh.env`，私钥保存在 `.runtime/ssh-private-key`，页面不会回显凭据。首次连接自动记录主机指纹到 `.runtime/ssh-known-hosts`，后续指纹变化时拒绝连接。
 - `/account`：账户设置。所有用户可修改自己的密码，管理员还可创建用户、重置密码以及停用或启用账号。
 
@@ -75,6 +76,8 @@ systemctl restart dahanghai-analysis
 
 打开 `/deeplink` 后搜索并选择 SKU，再点击生成。批量 SKU 支持粘贴换行、空格或逗号分隔的多个 SKU，下载的 `.xlsx` 仅填写“直达链接名称”“DeepLink”“ULink”三列：名称为 SKU 加商品名的前 30 个字，DeepLink 与 ULink 分别取上游响应的 `deeplink_cvt` 和 `universal_link`。SKU-外投链接映射来自随程序发布的 `jd-deeplink-products.json`，外投链接作为请求体的 `lp_url`；上游授权或签名失效时，替换该私有配置中的对应值后重启服务。
 
+`/deeplink-account` 使用同一份 token、签名和 SKU 底表。页面填写的 `accountid` 与 `siteid` 会同时写入请求体顶层字段和 `account_list`，通投请求固定使用接口版本 2、账户 `yinfu-qac-tt` 与对应 PID。账户和站点 ID 只保存在当前浏览器，不写入服务器凭据文件。
+
 ## 宝塔部署
 
 1. 将仓库拉取到 `/www/wwwroot/BI`。
@@ -84,7 +87,7 @@ systemctl restart dahanghai-analysis
    50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 3. 在宝塔网站配置中将网站根目录设为 `/www/wwwroot/BI/frontend`。
 4. 不要把整个网站代理到 Java。将 `/api/` 和支持 WebSocket 升级的 `/ws/` 反向代理到
-   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/jd-images`、`/terminal`、`/account` 配置静态页面映射。可参考
+   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account` 配置静态页面映射。可参考
    `deploy/nginx-huanghaha.fun.conf` 中的 `location` 配置；已有 SSL 配置应保留。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：

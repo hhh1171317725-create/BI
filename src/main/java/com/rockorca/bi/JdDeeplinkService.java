@@ -82,7 +82,27 @@ public class JdDeeplinkService {
     return ReportService.mapOf("product", product, "requestBody", result.requestBody(), "response", result.response());
   }
 
+  public Map<String, Object> createAccount(String skuIdValue, String accountIdValue, String siteIdValue) {
+    String skuId = String.valueOf(skuIdValue == null ? "" : skuIdValue).trim();
+    JdProduct product = productsBySku.get(skuId);
+    if (product == null) throw new IllegalArgumentException("\u8bf7\u9009\u62e9\u5e95\u8868\u4e2d\u7684 SKU");
+    String accountId = identifier(accountIdValue, "accountid");
+    String siteId = identifier(siteIdValue, "siteid");
+    UpstreamResult result = request(accountRequestBody(product, accountId, siteId));
+    return ReportService.mapOf("product", product, "requestBody", result.requestBody(), "response", result.response());
+  }
+
   public BatchExport batch(List<String> skuIds) {
+    return batch(skuIds, "", "", false);
+  }
+
+  public BatchExport batchAccount(List<String> skuIds, String accountIdValue, String siteIdValue) {
+    String accountId = identifier(accountIdValue, "accountid");
+    String siteId = identifier(siteIdValue, "siteid");
+    return batch(skuIds, accountId, siteId, true);
+  }
+
+  private BatchExport batch(List<String> skuIds, String accountId, String siteId, boolean accountMode) {
     List<String> requested = skuIds == null ? List.of() : skuIds.stream()
         .map(value -> String.valueOf(value == null ? "" : value).trim())
         .filter(value -> !value.isBlank())
@@ -94,7 +114,8 @@ public class JdDeeplinkService {
     }
     try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
       List<CompletableFuture<BatchItem>> futures = requested.stream()
-          .map(skuId -> CompletableFuture.supplyAsync(() -> createBatchItem(skuId), executor))
+          .map(skuId -> CompletableFuture.supplyAsync(
+              () -> createBatchItem(skuId, accountId, siteId, accountMode), executor))
           .toList();
       List<BatchItem> items = futures.stream().map(CompletableFuture::join).toList();
       long successful = items.stream().filter(item -> item.error().isBlank()).count();
@@ -102,11 +123,13 @@ public class JdDeeplinkService {
     }
   }
 
-  private BatchItem createBatchItem(String skuId) {
+  private BatchItem createBatchItem(String skuId, String accountId, String siteId, boolean accountMode) {
     JdProduct product = productsBySku.get(skuId);
     if (product == null) return new BatchItem(skuId, "", "", "", "底表中未找到 SKU");
     try {
-      UpstreamResult result = request(product);
+      UpstreamResult result = accountMode
+          ? request(accountRequestBody(product, accountId, siteId))
+          : request(product);
       String deeplink = valueForKey(result.response(), "deeplink_cvt");
       String universalLink = valueForKey(result.response(), "universal_link");
       if (deeplink.isBlank() && universalLink.isBlank()) {
@@ -119,11 +142,13 @@ public class JdDeeplinkService {
   }
 
   private UpstreamResult request(JdProduct product) {
+    return request(requestBody(product));
+  }
+
+  private UpstreamResult request(Map<String, Object> payload) {
     String token = required("XZ_DEEPLINK_TOKEN");
     String signature = required("XZ_DEEPLINK_SIGN");
     String timestamp = String.valueOf(Instant.now().getEpochSecond());
-    Map<String, Object> payload = requestBody(product);
-
     try {
       HttpRequest request = HttpRequest.newBuilder()
           .uri(URI.create(config.get("XZ_DEEPLINK_URL", DEFAULT_URL)))
@@ -164,6 +189,30 @@ public class JdDeeplinkService {
     payload.put("pid", config.get("XZ_DEEPLINK_PID", "2036510647_4101491011_3107491173"));
     payload.put("account_list", List.of());
     return payload;
+  }
+
+  Map<String, Object> accountRequestBody(JdProduct product, String accountIdValue, String siteIdValue) {
+    String accountId = identifier(accountIdValue, "accountid");
+    String siteId = identifier(siteIdValue, "siteid");
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("interface_version", 2);
+    payload.put("platform", config.get("XZ_DEEPLINK_TONGTOU_PLATFORM", "toutiao-v2"));
+    payload.put("account", config.get("XZ_DEEPLINK_TONGTOU_ACCOUNT", "yinfu-qac-tt"));
+    payload.put("pid", config.get("XZ_DEEPLINK_TONGTOU_PID", "2038356894_4106198117_3107697823"));
+    payload.put("channel", config.get("XZ_DEEPLINK_TONGTOU_CHANNEL", "ttyl1"));
+    payload.put("lp_url", product.externalUrl());
+    payload.put("account_list", List.of(Map.of("account_id", accountId, "site_id", siteId)));
+    payload.put("accountid", accountId);
+    payload.put("siteid", siteId);
+    return payload;
+  }
+
+  private static String identifier(String value, String label) {
+    String identifier = String.valueOf(value == null ? "" : value).trim();
+    if (!identifier.matches("\\d{1,32}")) {
+      throw new IllegalArgumentException("\u8bf7\u8f93\u5165\u6709\u6548\u7684 " + label);
+    }
+    return identifier;
   }
 
   private String required(String key) {

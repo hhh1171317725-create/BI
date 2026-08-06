@@ -76,7 +76,7 @@ systemctl restart dahanghai-analysis
 
 打开 `/deeplink` 后搜索并选择 SKU，再点击生成。批量 SKU 支持粘贴换行、空格或逗号分隔的多个 SKU，下载的 `.xlsx` 仅填写“直达链接名称”“DeepLink”“ULink”三列：名称为 SKU 加商品名的前 30 个字，DeepLink 与 ULink 分别取上游响应的 `deeplink_cvt` 和 `universal_link`。SKU-外投链接映射来自随程序发布的 `jd-deeplink-products.json`，外投链接作为请求体的 `lp_url`；上游授权或签名失效时，替换该私有配置中的对应值后重启服务。
 
-`/deeplink-account` 使用同一份 token、签名和 SKU 底表。页面填写的 `accountid` 与 `siteid` 会同时写入请求体顶层字段和 `account_list`，通投请求固定使用接口版本 2、账户 `yinfu-qac-tt` 与对应 PID。账户和站点 ID 只保存在当前浏览器，不写入服务器凭据文件。
+`/deeplink-account` 使用同一份 token、签名和 SKU 底表。页面填写的 `accountid` 与 `siteid` 会同时写入请求体顶层字段和 `account_list`；接口版本、平台、账户标识、PID 和渠道默认使用通投配置，也可在页面展开“请求体配置”后临时修改。账户、站点 ID 和自定义请求参数只保存在当前浏览器，不写入服务器凭据文件。
 
 ## 宝塔部署
 

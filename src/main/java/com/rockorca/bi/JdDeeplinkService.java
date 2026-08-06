@@ -70,6 +70,16 @@ public class JdDeeplinkService {
         "signConfigured", !config.get("XZ_DEEPLINK_SIGN", "").isBlank());
   }
 
+  public Map<String, Object> accountRequestDefaults() {
+    AccountRequestConfig defaults = defaultAccountRequestConfig();
+    return ReportService.mapOf(
+        "interfaceVersion", defaults.interfaceVersion(),
+        "platform", defaults.platform(),
+        "account", defaults.account(),
+        "pid", defaults.pid(),
+        "channel", defaults.channel());
+  }
+
   public void saveCredentials(String token, String sign) {
     config.saveDeeplinkCredentials(token, sign);
   }
@@ -83,12 +93,17 @@ public class JdDeeplinkService {
   }
 
   public Map<String, Object> createAccount(String skuIdValue, String accountIdValue, String siteIdValue) {
+    return createAccount(skuIdValue, accountIdValue, siteIdValue, defaultAccountRequestConfig());
+  }
+
+  public Map<String, Object> createAccount(String skuIdValue, String accountIdValue, String siteIdValue,
+      AccountRequestConfig requestConfig) {
     String skuId = String.valueOf(skuIdValue == null ? "" : skuIdValue).trim();
     JdProduct product = productsBySku.get(skuId);
     if (product == null) throw new IllegalArgumentException("\u8bf7\u9009\u62e9\u5e95\u8868\u4e2d\u7684 SKU");
     String accountId = identifier(accountIdValue, "accountid");
     String siteId = identifier(siteIdValue, "siteid");
-    UpstreamResult result = request(accountRequestBody(product, accountId, siteId));
+    UpstreamResult result = request(accountRequestBody(product, accountId, siteId, requestConfig));
     return ReportService.mapOf("product", product, "requestBody", result.requestBody(), "response", result.response());
   }
 
@@ -97,12 +112,22 @@ public class JdDeeplinkService {
   }
 
   public BatchExport batchAccount(List<String> skuIds, String accountIdValue, String siteIdValue) {
+    return batchAccount(skuIds, accountIdValue, siteIdValue, defaultAccountRequestConfig());
+  }
+
+  public BatchExport batchAccount(List<String> skuIds, String accountIdValue, String siteIdValue,
+      AccountRequestConfig requestConfig) {
     String accountId = identifier(accountIdValue, "accountid");
     String siteId = identifier(siteIdValue, "siteid");
-    return batch(skuIds, accountId, siteId, true);
+    return batch(skuIds, accountId, siteId, true, requestConfig);
   }
 
   private BatchExport batch(List<String> skuIds, String accountId, String siteId, boolean accountMode) {
+    return batch(skuIds, accountId, siteId, accountMode, defaultAccountRequestConfig());
+  }
+
+  private BatchExport batch(List<String> skuIds, String accountId, String siteId, boolean accountMode,
+      AccountRequestConfig requestConfig) {
     List<String> requested = skuIds == null ? List.of() : skuIds.stream()
         .map(value -> String.valueOf(value == null ? "" : value).trim())
         .filter(value -> !value.isBlank())
@@ -115,7 +140,7 @@ public class JdDeeplinkService {
     try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
       List<CompletableFuture<BatchItem>> futures = requested.stream()
           .map(skuId -> CompletableFuture.supplyAsync(
-              () -> createBatchItem(skuId, accountId, siteId, accountMode), executor))
+              () -> createBatchItem(skuId, accountId, siteId, accountMode, requestConfig), executor))
           .toList();
       List<BatchItem> items = futures.stream().map(CompletableFuture::join).toList();
       long successful = items.stream().filter(item -> item.error().isBlank()).count();
@@ -123,12 +148,13 @@ public class JdDeeplinkService {
     }
   }
 
-  private BatchItem createBatchItem(String skuId, String accountId, String siteId, boolean accountMode) {
+  private BatchItem createBatchItem(String skuId, String accountId, String siteId, boolean accountMode,
+      AccountRequestConfig requestConfig) {
     JdProduct product = productsBySku.get(skuId);
     if (product == null) return new BatchItem(skuId, "", "", "", "底表中未找到 SKU");
     try {
       UpstreamResult result = accountMode
-          ? request(accountRequestBody(product, accountId, siteId))
+          ? request(accountRequestBody(product, accountId, siteId, requestConfig))
           : request(product);
       String deeplink = valueForKey(result.response(), "deeplink_cvt");
       String universalLink = valueForKey(result.response(), "universal_link");
@@ -192,19 +218,87 @@ public class JdDeeplinkService {
   }
 
   Map<String, Object> accountRequestBody(JdProduct product, String accountIdValue, String siteIdValue) {
+    return accountRequestBody(product, accountIdValue, siteIdValue, defaultAccountRequestConfig());
+  }
+
+  Map<String, Object> accountRequestBody(JdProduct product, String accountIdValue, String siteIdValue,
+      AccountRequestConfig requestConfig) {
     String accountId = identifier(accountIdValue, "accountid");
     String siteId = identifier(siteIdValue, "siteid");
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("interface_version", 2);
-    payload.put("platform", config.get("XZ_DEEPLINK_TONGTOU_PLATFORM", "toutiao-v2"));
-    payload.put("account", config.get("XZ_DEEPLINK_TONGTOU_ACCOUNT", "yinfu-qac-tt"));
-    payload.put("pid", config.get("XZ_DEEPLINK_TONGTOU_PID", "2038356894_4106198117_3107697823"));
-    payload.put("channel", config.get("XZ_DEEPLINK_TONGTOU_CHANNEL", "ttyl1"));
+    AccountRequestConfig validated = validateAccountRequestConfig(requestConfig);
+    payload.put("interface_version", validated.interfaceVersion());
+    payload.put("platform", validated.platform());
+    payload.put("account", validated.account());
+    payload.put("pid", validated.pid());
+    payload.put("channel", validated.channel());
     payload.put("lp_url", product.externalUrl());
     payload.put("account_list", List.of(Map.of("account_id", accountId, "site_id", siteId)));
     payload.put("accountid", accountId);
     payload.put("siteid", siteId);
     return payload;
+  }
+
+  public AccountRequestConfig accountRequestConfig(Object interfaceVersionValue, String platformValue,
+      String accountValue, String pidValue, String channelValue) {
+    AccountRequestConfig defaults = defaultAccountRequestConfig();
+    int interfaceVersion = defaults.interfaceVersion();
+    String version = String.valueOf(interfaceVersionValue == null ? "" : interfaceVersionValue).trim();
+    if (!version.isBlank()) {
+      try {
+        interfaceVersion = Integer.parseInt(version);
+      } catch (NumberFormatException error) {
+        throw new IllegalArgumentException("\u8bf7\u8f93\u5165\u6709\u6548\u7684 interface_version");
+      }
+    }
+    return validateAccountRequestConfig(new AccountRequestConfig(
+        interfaceVersion,
+        defaultWhenBlank(platformValue, defaults.platform()),
+        defaultWhenBlank(accountValue, defaults.account()),
+        defaultWhenBlank(pidValue, defaults.pid()),
+        defaultWhenBlank(channelValue, defaults.channel())));
+  }
+
+  private AccountRequestConfig defaultAccountRequestConfig() {
+    return new AccountRequestConfig(
+        integerConfig("XZ_DEEPLINK_TONGTOU_INTERFACE_VERSION", 2),
+        config.get("XZ_DEEPLINK_TONGTOU_PLATFORM", "toutiao-v2"),
+        config.get("XZ_DEEPLINK_TONGTOU_ACCOUNT", "yinfu-qac-tt"),
+        config.get("XZ_DEEPLINK_TONGTOU_PID", "2038356894_4106198117_3107697823"),
+        config.get("XZ_DEEPLINK_TONGTOU_CHANNEL", "ttyl1"));
+  }
+
+  private AccountRequestConfig validateAccountRequestConfig(AccountRequestConfig value) {
+    if (value == null || value.interfaceVersion() < 1 || value.interfaceVersion() > 100) {
+      throw new IllegalArgumentException("\u8bf7\u8f93\u5165\u6709\u6548\u7684 interface_version");
+    }
+    return new AccountRequestConfig(
+        value.interfaceVersion(),
+        requestField(value.platform(), "platform"),
+        requestField(value.account(), "account"),
+        requestField(value.pid(), "pid"),
+        requestField(value.channel(), "channel"));
+  }
+
+  private int integerConfig(String key, int defaultValue) {
+    try {
+      return Integer.parseInt(config.get(key, String.valueOf(defaultValue)).trim());
+    } catch (NumberFormatException error) {
+      return defaultValue;
+    }
+  }
+
+  private static String defaultWhenBlank(String value, String defaultValue) {
+    String text = String.valueOf(value == null ? "" : value).trim();
+    return text.isBlank() ? defaultValue : text;
+  }
+
+  private static String requestField(String value, String label) {
+    String text = String.valueOf(value == null ? "" : value).trim();
+    if (text.isBlank() || text.length() > 200 || text.chars().anyMatch(Character::isISOControl)) {
+      throw new IllegalArgumentException("\u8bf7\u8f93\u5165\u6709\u6548\u7684 " + label);
+    }
+    return text;
   }
 
   private static String identifier(String value, String label) {
@@ -310,6 +404,9 @@ public class JdDeeplinkService {
   }
 
   public record JdProduct(String skuId, String name, String externalUrl) {}
+
+  public record AccountRequestConfig(int interfaceVersion, String platform, String account, String pid,
+      String channel) {}
 
   private record UpstreamResult(Map<String, Object> requestBody, Object response) {}
 

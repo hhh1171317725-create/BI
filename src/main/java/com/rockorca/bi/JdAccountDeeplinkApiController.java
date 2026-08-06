@@ -26,10 +26,12 @@ public class JdAccountDeeplinkApiController {
 
   @PostMapping
   public Map<String, Object> create(@RequestBody Map<String, Object> payload) {
+    JdDeeplinkService.AccountRequestConfig requestConfig = requestConfig(payload);
     return deeplinks.createAccount(
         ReportService.text(payload.get("skuId")),
         ReportService.text(payload.get("accountId")),
-        ReportService.text(payload.get("siteId")));
+        ReportService.text(payload.get("siteId")),
+        requestConfig);
   }
 
   @GetMapping("/products")
@@ -39,7 +41,9 @@ public class JdAccountDeeplinkApiController {
 
   @GetMapping("/config")
   public Map<String, Object> config() {
-    return deeplinks.credentialStatus();
+    Map<String, Object> result = new java.util.LinkedHashMap<>(deeplinks.credentialStatus());
+    result.put("requestDefaults", deeplinks.accountRequestDefaults());
+    return result;
   }
 
   @PostMapping("/config")
@@ -59,7 +63,8 @@ public class JdAccountDeeplinkApiController {
     JdDeeplinkService.BatchExport export = deeplinks.batchAccount(
         skuIds,
         ReportService.text(payload.get("accountId")),
-        ReportService.text(payload.get("siteId")));
+        ReportService.text(payload.get("siteId")),
+        requestConfig(payload));
     String filename = "JD_account_deeplink_"
         + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
     return ResponseEntity.ok()
@@ -71,5 +76,14 @@ public class JdAccountDeeplinkApiController {
         .header("X-Batch-Success", String.valueOf(export.successful()))
         .header("X-Batch-Failed", String.valueOf(export.failed()))
         .body(export.content());
+  }
+
+  private JdDeeplinkService.AccountRequestConfig requestConfig(Map<String, Object> payload) {
+    return deeplinks.accountRequestConfig(
+        payload.get("interfaceVersion"),
+        ReportService.text(payload.get("platform")),
+        ReportService.text(payload.get("account")),
+        ReportService.text(payload.get("pid")),
+        ReportService.text(payload.get("channel")));
   }
 }

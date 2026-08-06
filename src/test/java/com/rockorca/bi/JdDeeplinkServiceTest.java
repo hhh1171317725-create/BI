@@ -66,4 +66,22 @@ class JdDeeplinkServiceTest {
     assertThrows(IllegalArgumentException.class,
         () -> service.accountRequestBody(product, "abc", "4106412853"));
   }
+
+  @Test
+  void appliesCustomAccountRequestConfiguration() {
+    JdDeeplinkService service = new JdDeeplinkService(
+        new RuntimeConfig(new ObjectMapper()), new ObjectMapper());
+    JdDeeplinkService.JdProduct product = new JdDeeplinkService.JdProduct(
+        "1", "test", "https://pro.m.jd.com/product");
+    JdDeeplinkService.AccountRequestConfig config = service.accountRequestConfig(
+        "3", "custom-platform", "custom-account", "custom-pid", "custom-channel");
+
+    Map<String, Object> request = service.accountRequestBody(product, "123", "456", config);
+
+    assertEquals(3, request.get("interface_version"));
+    assertEquals("custom-platform", request.get("platform"));
+    assertEquals("custom-account", request.get("account"));
+    assertEquals("custom-pid", request.get("pid"));
+    assertEquals("custom-channel", request.get("channel"));
+  }
 }

@@ -47,6 +47,7 @@ class JdDeeplinkServiceTest {
     assertEquals(2, request.get("interface_version"));
     assertEquals("yinfu-qac-tt", request.get("account"));
     assertEquals("2038356894_4106198117_3107697823", request.get("pid"));
+    assertEquals("ttyl2", request.get("channel"));
     assertEquals("https://pro.m.jd.com/product", request.get("lp_url"));
     assertEquals("1869943308174339", request.get("accountid"));
     assertEquals("4106412853", request.get("siteid"));

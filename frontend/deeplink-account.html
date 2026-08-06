@@ -49,7 +49,7 @@
           <div class="field"><label for="platform">platform</label><input id="platform" value="toutiao-v2" autocomplete="off" /></div>
           <div class="field"><label for="requestAccount">account</label><input id="requestAccount" value="yinfu-qac-tt" autocomplete="off" /></div>
           <div class="field wide"><label for="pid">pid</label><input id="pid" value="2038356894_4106198117_3107697823" autocomplete="off" /></div>
-          <div class="field"><label for="channel">channel</label><input id="channel" value="ttyl1" autocomplete="off" /></div>
+          <div class="field"><label for="channel">channel</label><input id="channel" value="ttyl2" autocomplete="off" /></div>
         </div>
         <div class="request-actions"><button id="resetRequestConfig" class="secondary" type="button">恢复默认</button></div>
       </details>
@@ -74,7 +74,7 @@
   <script>
     const $=selector=>document.querySelector(selector);
     const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
-    let output='',requestOutput='',searchTimer,requestDefaults={interfaceVersion:2,platform:'toutiao-v2',account:'yinfu-qac-tt',pid:'2038356894_4106198117_3107697823',channel:'ttyl1'};
+    let output='',requestOutput='',searchTimer,requestDefaults={interfaceVersion:2,platform:'toutiao-v2',account:'yinfu-qac-tt',pid:'2038356894_4106198117_3107697823',channel:'ttyl2'};
     async function api(url,options={}){const response=await fetch(url,options);const payload=await response.json().catch(()=>({error:`请求失败（HTTP ${response.status}）`}));if(!response.ok)throw Error(payload.error||`请求失败（HTTP ${response.status}）`);return payload}
     function setStatus(message,type=''){$('#status').textContent=message;$('#status').className=`status ${type}`}
     function accountParams(){const accountId=$('#accountId').value.trim(),siteId=$('#siteId').value.trim();if(!/^\d{1,32}$/.test(accountId))throw Error('请输入有效的 accountid');if(!/^\d{1,32}$/.test(siteId))throw Error('请输入有效的 siteid');localStorage.setItem('jdTongtouAccountId',accountId);localStorage.setItem('jdTongtouSiteId',siteId);return{accountId,siteId}}

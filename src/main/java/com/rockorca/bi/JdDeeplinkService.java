@@ -265,7 +265,7 @@ public class JdDeeplinkService {
         config.get("XZ_DEEPLINK_TONGTOU_PLATFORM", "toutiao-v2"),
         config.get("XZ_DEEPLINK_TONGTOU_ACCOUNT", "yinfu-qac-tt"),
         config.get("XZ_DEEPLINK_TONGTOU_PID", "2038356894_4106198117_3107697823"),
-        config.get("XZ_DEEPLINK_TONGTOU_CHANNEL", "ttyl1"));
+        config.get("XZ_DEEPLINK_TONGTOU_CHANNEL", "ttyl2"));
   }
 
   private AccountRequestConfig validateAccountRequestConfig(AccountRequestConfig value) {

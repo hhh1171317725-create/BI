@@ -1,6 +1,7 @@
 package com.rockorca.bi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 
@@ -13,6 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class AccountVaultServiceTest {
+  @Test
+  void acceptsArticleUrlsWithAdvertisingMacros() {
+    assertDoesNotThrow(() -> AccountVaultService.validateUrl(
+        "https://hub.next-game.org/2783/?utm_campaign={campaign_id}"
+            + "&clickid={cf_click_id}&click_id={cf_click_id}"));
+  }
+
   @Test
   void keepsMultipleAccountsInOneKeywordMapping() throws Exception {
     try (XSSFWorkbook workbook = new XSSFWorkbook()) {

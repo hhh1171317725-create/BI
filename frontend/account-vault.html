@@ -30,7 +30,7 @@
     <label class="field span-2"><span>账户 ID（每行一个）</span><textarea id="editAccounts" required maxlength="20000" placeholder="1869943308174339&#10;1869943308174340"></textarea></label>
     <label class="field"><span>channel</span><input id="editChannel" required maxlength="255" /></label>
     <label class="field"><span>style ID</span><input id="editStyle" required maxlength="255" /></label>
-    <label class="field span-2"><span>文章链接</span><input id="editArticleUrl" type="url" required maxlength="2000" placeholder="https://" /></label>
+    <label class="field span-2"><span>文章链接</span><input id="editArticleUrl" type="text" inputmode="url" required maxlength="2000" placeholder="支持 {campaign_id}、{cf_click_id} 等宏参数" /></label>
   </div></div><div class="dialog-actions"><button class="secondary" id="cancelEditor" type="button">取消</button><button class="primary" id="saveButton" type="submit">保存</button></div></form></dialog>
   <dialog id="importDialog"><div class="dialog-head"><h2>导入 Excel</h2><button class="close" id="closeImport" type="button" aria-label="关闭">×</button></div><div class="dialog-body"><p class="import-note">Excel 仅需五列：关键词、账户ID、channel、style ID、文章链接。一个关键词的多个账户请在同一个单元格内换行填写。也兼容原表中的“账户”和“url”列名。</p><div id="importFilename" class="meta"></div></div><div class="dialog-actions"><button class="secondary" id="cancelImport" type="button">取消</button><button class="primary" id="confirmImport" type="button">开始导入</button></div></dialog>
   <script>

@@ -217,10 +217,10 @@ public class AccountVaultService {
     return result;
   }
 
-  private static void validateUrl(String value) {
+  static void validateUrl(String value) {
     if (value.isBlank()) return;
     try {
-      URI uri = URI.create(value);
+      URI uri = URI.create(value.replace("{", "%7B").replace("}", "%7D"));
       if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
         throw new IllegalArgumentException();
       }

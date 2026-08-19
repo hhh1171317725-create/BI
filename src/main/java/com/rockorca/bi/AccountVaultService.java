@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AccountVaultService {
   private static final List<String> EXPORT_HEADERS =
-      List.of("关键词", "账户ID", "channel", "style ID", "文章链接");
+      List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接");
   private final AccountVaultRepository repository;
 
   public AccountVaultService(AccountVaultRepository repository) {
@@ -94,14 +94,15 @@ public class AccountVaultService {
       for (AccountVaultRepository.Entry entry : entries) {
         Row row = sheet.createRow(rowIndex++);
         List<String> values = List.of(
-            entry.keyword(), entry.accountId(), entry.channelId(), entry.styleId(), entry.url());
+            entry.keyword(), entry.accountId(), entry.country(), entry.channelId(),
+            entry.styleId(), entry.url());
         for (int index = 0; index < values.size(); index++) {
           Cell cell = row.createCell(index);
           cell.setCellValue(values.get(index));
           if (index == 1) cell.setCellStyle(wrapped);
         }
       }
-      int[] widths = {28, 30, 20, 20, 70};
+      int[] widths = {28, 30, 18, 20, 20, 70};
       for (int index = 0; index < widths.length; index++) sheet.setColumnWidth(index, widths[index] * 256);
       sheet.createFreezePane(0, 1);
       sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(
@@ -119,6 +120,8 @@ public class AccountVaultService {
     if (keyword.isBlank()) throw new IllegalArgumentException("请填写关键词");
     String accountIds = normalizeAccounts(text(payload.get("accountIds")));
     if (accountIds.isBlank()) throw new IllegalArgumentException("请至少填写一个账户 ID");
+    String country = clean(text(payload.get("country")), 255, "投放国家");
+    if (country.isBlank()) throw new IllegalArgumentException("请填写投放国家");
     String channel = clean(text(payload.get("channelId")), 255, "channel");
     if (channel.isBlank()) throw new IllegalArgumentException("请填写 channel");
     String styleId = clean(text(payload.get("styleId")), 255, "style ID");
@@ -128,7 +131,7 @@ public class AccountVaultService {
     if (articleUrl.isBlank()) throw new IllegalArgumentException("请填写文章链接");
     return new AccountVaultRepository.Entry(
         0, "ad_account", keyword, accountIds, "", "", articleUrl, keyword,
-        channel, styleId, "", "", "", createdBy, updatedBy, null, null);
+        channel, styleId, country, "", "", createdBy, updatedBy, null, null);
   }
 
   private static Map<String, Object> view(AccountVaultRepository.Entry entry) {
@@ -137,6 +140,7 @@ public class AccountVaultService {
         "keyword", entry.keyword().isBlank() ? entry.name() : entry.keyword(),
         "accountIds", entry.accountId(),
         "accountCount", accountLines(entry.accountId()).size(),
+        "country", entry.country(),
         "channelId", entry.channelId(),
         "styleId", entry.styleId(),
         "articleUrl", entry.url(),
@@ -159,6 +163,7 @@ public class AccountVaultService {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("keyword", keyword);
         item.put("accountIds", accounts);
+        item.put("country", firstValue(row, headers, "投放国家", "国家"));
         item.put("channelId", value(row, headers, "channel"));
         item.put("styleId", firstValue(row, headers, "style ID", "styleid", "styleId"));
         item.put("articleUrl", firstValue(row, headers, "文章链接", "url", "URL"));

@@ -31,12 +31,14 @@ class AccountVaultServiceTest {
       header.createCell(2).setCellValue("url");
       header.createCell(3).setCellValue("channel");
       header.createCell(4).setCellValue("style ID");
+      header.createCell(5).setCellValue("国家");
       Row mapping = sheet.createRow(1);
       mapping.createCell(0).setCellValue("Borrow");
       mapping.createCell(1).setCellValue("10001\n10002");
       mapping.createCell(2).setCellValue("https://example.com/article");
       mapping.createCell(3).setCellValue("channel-a");
       mapping.createCell(4).setCellValue("style-1");
+      mapping.createCell(5).setCellValue("美国");
 
       List<Map<String, Object>> rows = AccountVaultService.parseWorkbook(workbook);
 
@@ -45,6 +47,7 @@ class AccountVaultServiceTest {
       assertEquals("10001\n10002", rows.getFirst().get("accountIds"));
       assertEquals("channel-a", rows.getFirst().get("channelId"));
       assertEquals("style-1", rows.getFirst().get("styleId"));
+      assertEquals("美国", rows.getFirst().get("country"));
       assertEquals("https://example.com/article", rows.getFirst().get("articleUrl"));
     }
   }

@@ -37,6 +37,7 @@ class AccountVaultServiceTest {
       header.createCell(4).setCellValue("style ID");
       header.createCell(5).setCellValue("国家");
       header.createCell(6).setCellValue("素材链接");
+      header.createCell(7).setCellValue("文案");
       Row mapping = sheet.createRow(1);
       mapping.createCell(0).setCellValue("Borrow");
       mapping.createCell(1).setCellValue("10001\n10002");
@@ -45,6 +46,7 @@ class AccountVaultServiceTest {
       mapping.createCell(4).setCellValue("style-1");
       mapping.createCell(5).setCellValue("美国,英国");
       mapping.createCell(6).setCellValue("https://example.com/materials");
+      mapping.createCell(7).setCellValue("这是完整广告文案");
 
       List<Map<String, Object>> rows = AccountVaultService.parseWorkbook(workbook);
 
@@ -56,6 +58,7 @@ class AccountVaultServiceTest {
       assertEquals("美国,英国", rows.getFirst().get("country"));
       assertEquals("https://example.com/article", rows.getFirst().get("articleUrl"));
       assertEquals("https://example.com/materials", rows.getFirst().get("materialUrl"));
+      assertEquals("这是完整广告文案", rows.getFirst().get("copyText"));
     }
   }
 
@@ -113,7 +116,8 @@ class AccountVaultServiceTest {
         "channelId", "channel-a",
         "styleId", "style-1",
         "articleUrl", "https://example.com/article",
-        "materialUrl", "https://example.com/materials"), 1);
+        "materialUrl", "https://example.com/materials",
+        "copyText", "广告文案"), 1);
 
     assertEquals("美国,英国", result.get("country"));
   }
@@ -142,7 +146,7 @@ class AccountVaultServiceTest {
   private static AccountVaultRepository.Entry storedEntry(
       long id, String keyword, String accountIds, String channel) {
     return new AccountVaultRepository.Entry(
-        id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "",
+        id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "", "",
         keyword, channel, "style-1", "美国", "", "", 1, 1, null, null);
   }
 }

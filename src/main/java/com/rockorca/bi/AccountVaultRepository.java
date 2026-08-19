@@ -21,6 +21,7 @@ public class AccountVaultRepository {
       String secretEncrypted,
       String url,
       String materialUrl,
+      String copyText,
       String keyword,
       String channelId,
       String styleId,
@@ -37,7 +38,7 @@ public class AccountVaultRepository {
   public record OptionEntry(long id, String type, String value) {}
 
   private static final String COLUMNS = "id, category, name, account_id, username, secret_encrypted,"
-      + " url, material_url, keyword_text, channel_id, style_id, country, owner_name, notes, created_by, updated_by,"
+      + " url, material_url, copy_text, keyword_text, channel_id, style_id, country, owner_name, notes, created_by, updated_by,"
       + " created_at, updated_at";
   private final ReportRepository reports;
   private volatile boolean initialized;
@@ -59,6 +60,7 @@ public class AccountVaultRepository {
             secret_encrypted TEXT NOT NULL,
             url VARCHAR(2000) NOT NULL DEFAULT '',
             material_url VARCHAR(2000) NOT NULL DEFAULT '',
+            copy_text TEXT NOT NULL,
             keyword_text VARCHAR(1000) NOT NULL DEFAULT '',
             channel_id VARCHAR(255) NOT NULL DEFAULT '',
             style_id VARCHAR(255) NOT NULL DEFAULT '',
@@ -90,6 +92,7 @@ public class AccountVaultRepository {
           """);
       migrateAccountIdColumn(connection);
       migrateMaterialUrlColumn(connection);
+      migrateCopyTextColumn(connection);
       statement.execute("""
           INSERT IGNORE INTO account_vault_options (option_type, option_value)
           SELECT 'channel', TRIM(channel_id)
@@ -232,6 +235,30 @@ public class AccountVaultRepository {
     }
   }
 
+  private static void migrateCopyTextColumn(Connection connection) throws SQLException {
+    boolean exists;
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT 1
+          FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_entries'
+           AND COLUMN_NAME = 'copy_text'
+         LIMIT 1
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        exists = result.next();
+      }
+    }
+    if (!exists) {
+      try (Statement statement = connection.createStatement()) {
+        statement.execute("ALTER TABLE account_vault_entries"
+            + " ADD COLUMN copy_text TEXT NULL AFTER material_url");
+        statement.execute("UPDATE account_vault_entries SET copy_text = '' WHERE copy_text IS NULL");
+        statement.execute("ALTER TABLE account_vault_entries MODIFY copy_text TEXT NOT NULL");
+      }
+    }
+  }
+
   public Page list(String query, String category, int page, int pageSize) {
     initialize();
     StringBuilder where = new StringBuilder(" WHERE 1=1");
@@ -242,11 +269,11 @@ public class AccountVaultRepository {
     }
     if (!query.isBlank()) {
       where.append(" AND (name LIKE ? OR account_id LIKE ? OR username LIKE ? OR url LIKE ?"
-          + " OR material_url LIKE ?"
+          + " OR material_url LIKE ? OR copy_text LIKE ?"
           + " OR keyword_text LIKE ? OR channel_id LIKE ? OR style_id LIKE ? OR country LIKE ?"
           + " OR owner_name LIKE ? OR notes LIKE ?)");
       String pattern = "%" + query + "%";
-      for (int index = 0; index < 11; index++) parameters.add(pattern);
+      for (int index = 0; index < 12; index++) parameters.add(pattern);
     }
     try (Connection connection = reports.openConnection()) {
       long total;
@@ -310,9 +337,9 @@ public class AccountVaultRepository {
     initialize();
     String sql = """
         INSERT INTO account_vault_entries
-          (category, name, account_id, username, secret_encrypted, url, material_url, keyword_text,
+          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
            channel_id, style_id, country, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -332,9 +359,9 @@ public class AccountVaultRepository {
     if (entries.isEmpty()) return;
     String sql = """
         INSERT INTO account_vault_entries
-          (category, name, account_id, username, secret_encrypted, url, material_url, keyword_text,
+          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
            channel_id, style_id, country, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection()) {
       connection.setAutoCommit(false);
@@ -361,7 +388,7 @@ public class AccountVaultRepository {
     String sql = """
         UPDATE account_vault_entries
            SET category = ?, name = ?, account_id = ?, username = ?, secret_encrypted = ?,
-               url = ?, material_url = ?, keyword_text = ?, channel_id = ?, style_id = ?, country = ?,
+               url = ?, material_url = ?, copy_text = ?, keyword_text = ?, channel_id = ?, style_id = ?, country = ?,
                owner_name = ?, notes = ?, updated_by = ?
          WHERE id = ?
         """;
@@ -374,14 +401,15 @@ public class AccountVaultRepository {
       statement.setString(5, entry.secretEncrypted());
       statement.setString(6, entry.url());
       statement.setString(7, entry.materialUrl());
-      statement.setString(8, entry.keyword());
-      statement.setString(9, entry.channelId());
-      statement.setString(10, entry.styleId());
-      statement.setString(11, entry.country());
-      statement.setString(12, entry.owner());
-      statement.setString(13, entry.notes());
-      statement.setLong(14, entry.updatedBy());
-      statement.setLong(15, id);
+      statement.setString(8, entry.copyText());
+      statement.setString(9, entry.keyword());
+      statement.setString(10, entry.channelId());
+      statement.setString(11, entry.styleId());
+      statement.setString(12, entry.country());
+      statement.setString(13, entry.owner());
+      statement.setString(14, entry.notes());
+      statement.setLong(15, entry.updatedBy());
+      statement.setLong(16, id);
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("账户资料不存在");
       return find(id);
     } catch (SQLException error) {
@@ -415,14 +443,15 @@ public class AccountVaultRepository {
     statement.setString(5, entry.secretEncrypted());
     statement.setString(6, entry.url());
     statement.setString(7, entry.materialUrl());
-    statement.setString(8, entry.keyword());
-    statement.setString(9, entry.channelId());
-    statement.setString(10, entry.styleId());
-    statement.setString(11, entry.country());
-    statement.setString(12, entry.owner());
-    statement.setString(13, entry.notes());
-    statement.setLong(14, entry.createdBy());
-    statement.setLong(15, entry.updatedBy());
+    statement.setString(8, entry.copyText());
+    statement.setString(9, entry.keyword());
+    statement.setString(10, entry.channelId());
+    statement.setString(11, entry.styleId());
+    statement.setString(12, entry.country());
+    statement.setString(13, entry.owner());
+    statement.setString(14, entry.notes());
+    statement.setLong(15, entry.createdBy());
+    statement.setLong(16, entry.updatedBy());
   }
 
   private static Entry map(ResultSet result) throws SQLException {
@@ -430,7 +459,7 @@ public class AccountVaultRepository {
         result.getLong("id"), result.getString("category"), result.getString("name"),
         result.getString("account_id"), result.getString("username"),
         result.getString("secret_encrypted"), result.getString("url"),
-        result.getString("material_url"),
+        result.getString("material_url"), result.getString("copy_text"),
         result.getString("keyword_text"), result.getString("channel_id"),
         result.getString("style_id"), result.getString("country"), result.getString("owner_name"),
         result.getString("notes"), result.getLong("created_by"), result.getLong("updated_by"),

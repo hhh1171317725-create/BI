@@ -290,6 +290,22 @@ public class AccountVaultRepository {
     }
   }
 
+  public List<Entry> listUsageEntries() {
+    initialize();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "SELECT " + COLUMNS + " FROM account_vault_entries"
+                 + " WHERE category = 'ad_account' ORDER BY id")) {
+      List<Entry> entries = new ArrayList<>();
+      try (ResultSet result = statement.executeQuery()) {
+        while (result.next()) entries.add(map(result));
+      }
+      return entries;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
   public Entry create(Entry entry) {
     initialize();
     String sql = """

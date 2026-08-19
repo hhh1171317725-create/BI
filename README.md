@@ -22,7 +22,7 @@
 - `/deeplink-account`：通投账户取链工具。沿用同一商品底表和接口凭据，填写 `accountid`、`siteid` 后按通投参数生成单条深链或批量导入模板。
 - `/terminal`：仅管理员可用的完整 SSH 网页终端。支持密码或私钥认证，凭据保存在服务器 `.runtime/ssh.env`，私钥保存在 `.runtime/ssh-private-key`，页面不会回显凭据。首次连接自动记录主机指纹到 `.runtime/ssh-known-hosts`，后续指纹变化时拒绝连接。
 - `/account`：账户设置。所有用户可修改自己的密码，管理员还可创建用户、重置密码以及停用或启用账号。
-- `/account-vault`：管理员账户对应关系。每条记录保存一个关键词、多个账户 ID、多个投放国家、一个 channel、一个 style ID、一篇文章链接和一个素材网页；国家、channel 与 style ID 下拉框支持模糊查询，国家支持多选，channel 与 style ID 可集中保存，素材可从列表直接打开，并支持搜索、分页及 Excel 导入导出。
+- `/account-vault`：管理员账户对应关系。每条记录保存一个关键词、多个账户 ID、多个投放国家、一个 channel、一个 style ID、一篇文章链接和一个素材网页；国家、channel 与 style ID 下拉框支持模糊查询，国家支持多选，channel 与 style ID 可集中保存，素材可从列表直接打开。账户 ID 和 channel 不允许被不同关键词重复使用，搜索、分页及 Excel 导入导出同样支持这些规则。
 
 两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 报表查询会把用户选择的开始、结束日期直接作为 MySQL `business_date` 条件，只读取该日期

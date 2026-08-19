@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,6 +98,7 @@ class AccountVaultServiceTest {
   @Test
   void normalizesMultipleCountries() {
     AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.listUsageEntries()).thenReturn(List.of());
     when(repository.create(any())).thenAnswer(call -> call.getArgument(0));
     AccountVaultService service = new AccountVaultService(repository);
 
@@ -110,5 +112,33 @@ class AccountVaultServiceTest {
         "materialUrl", "https://example.com/materials"), 1);
 
     assertEquals("美国,英国", result.get("country"));
+  }
+
+  @Test
+  void rejectsAccountsAndChannelsUsedByAnotherKeyword() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.listUsageEntries()).thenReturn(List.of(
+        storedEntry(9, "Existing", "10001\n10002", "channel-a")));
+    AccountVaultService service = new AccountVaultService(repository);
+
+    IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+        () -> service.create(Map.of(
+            "keyword", "New keyword",
+            "accountIds", "10002\n10003",
+            "country", "美国",
+            "channelId", "channel-a",
+            "styleId", "style-2",
+            "articleUrl", "https://example.com/article"), 1));
+
+    assertTrue(error.getMessage().contains("账户 ID “10002”"));
+    assertTrue(error.getMessage().contains("channel “channel-a”"));
+    assertTrue(error.getMessage().contains("Existing"));
+  }
+
+  private static AccountVaultRepository.Entry storedEntry(
+      long id, String keyword, String accountIds, String channel) {
+    return new AccountVaultRepository.Entry(
+        id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "",
+        keyword, channel, "style-1", "美国", "", "", 1, 1, null, null);
   }
 }

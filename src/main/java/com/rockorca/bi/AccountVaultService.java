@@ -39,15 +39,17 @@ public class AccountVaultService {
         "pages", Math.max(1, (result.total() + pageSize - 1) / pageSize));
   }
 
-  public Map<String, Object> create(Map<String, Object> payload, long actorId) {
+  public synchronized Map<String, Object> create(Map<String, Object> payload, long actorId) {
     AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
+    ensureUnused(entry, 0, repository.listUsageEntries());
     ensureOptions(entry);
     return view(repository.create(entry));
   }
 
-  public Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
+  public synchronized Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
     AccountVaultRepository.Entry existing = repository.find(id);
     AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
+    ensureUnused(entry, id, repository.listUsageEntries());
     ensureOptions(entry);
     return view(repository.update(id, entry));
   }
@@ -76,7 +78,7 @@ public class AccountVaultService {
     repository.deleteOption(id);
   }
 
-  public int importWorkbook(byte[] content, long actorId) {
+  public synchronized int importWorkbook(byte[] content, long actorId) {
     if (content == null || content.length == 0) throw new IllegalArgumentException("请选择 Excel 文件");
     if (content.length > 10_000_000) throw new IllegalArgumentException("Excel 文件不能超过 10MB");
     List<Map<String, Object>> rows;
@@ -90,6 +92,11 @@ public class AccountVaultService {
     List<AccountVaultRepository.Entry> entries = rows.stream()
         .map(row -> entry(row, actorId, actorId))
         .toList();
+    List<AccountVaultRepository.Entry> used = new ArrayList<>(repository.listUsageEntries());
+    for (AccountVaultRepository.Entry entry : entries) {
+      ensureUnused(entry, 0, used);
+      used.add(entry);
+    }
     entries.forEach(this::ensureOptions);
     repository.createAll(entries);
     return entries.size();
@@ -178,6 +185,30 @@ public class AccountVaultService {
   private void ensureOptions(AccountVaultRepository.Entry entry) {
     repository.createOption("channel", entry.channelId());
     repository.createOption("style_id", entry.styleId());
+  }
+
+  private static void ensureUnused(
+      AccountVaultRepository.Entry entry,
+      long excludedId,
+      List<AccountVaultRepository.Entry> existingEntries) {
+    List<String> conflicts = new ArrayList<>();
+    List<String> accounts = accountLines(entry.accountId());
+    for (AccountVaultRepository.Entry existing : existingEntries) {
+      if (excludedId > 0 && existing.id() == excludedId) continue;
+      String keyword = existing.keyword().isBlank() ? existing.name() : existing.keyword();
+      if (existing.channelId().equalsIgnoreCase(entry.channelId())) {
+        conflicts.add("channel “" + entry.channelId() + "”已用于关键词“" + keyword + "”");
+      }
+      List<String> usedAccounts = accountLines(existing.accountId());
+      for (String account : accounts) {
+        if (usedAccounts.contains(account)) {
+          conflicts.add("账户 ID “" + account + "”已用于关键词“" + keyword + "”");
+        }
+      }
+    }
+    if (!conflicts.isEmpty()) {
+      throw new IllegalArgumentException("不能保存：" + String.join("；", conflicts.stream().distinct().toList()));
+    }
   }
 
   private static Map<String, Object> optionView(AccountVaultRepository.OptionEntry option) {

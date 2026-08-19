@@ -5,7 +5,7 @@
 - `frontend/` 是纯静态前端，由 Nginx 直接托管；
 - Spring Boot 是纯 JSON 后端，只处理 `/api/*`，不再返回 HTML、JS、CSS、图片或页面跳转。
 
-前端继续使用 `/`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
+前端继续使用 `/`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account-vault`、`/account` 和 `/login` 地址，并通过同源 `/api/*` 调用后端，因此页面功能和
 用户访问地址保持不变。未登录时后端返回 JSON `401`，由前端跳转到登录页；后端异常也统一
 返回 JSON，避免前端收到 HTML 错误页。
 
@@ -22,6 +22,9 @@
 - `/deeplink-account`：通投账户取链工具。沿用同一商品底表和接口凭据，填写 `accountid`、`siteid` 后按通投参数生成单条深链或批量导入模板。
 - `/terminal`：仅管理员可用的完整 SSH 网页终端。支持密码或私钥认证，凭据保存在服务器 `.runtime/ssh.env`，私钥保存在 `.runtime/ssh-private-key`，页面不会回显凭据。首次连接自动记录主机指纹到 `.runtime/ssh-known-hosts`，后续指纹变化时拒绝连接。
 - `/account`：账户设置。所有用户可修改自己的密码，管理员还可创建用户、重置密码以及停用或启用账号。
+- `/account-vault`：管理员账户资料库。管理投放账户、平台登录和链接资源，密码或 Token 使用服务器独立密钥加密入库，支持搜索、分类、分页、Excel 导入导出与按需查看敏感值。
+
+账户资料库首次使用时会在 `.runtime/account-vault.env` 自动生成独立加密密钥。部署备份必须同时保留该文件；密钥丢失后，数据库中已有的密码和 Token 无法恢复。
 
 两份报表均从 MySQL 底表实时查询，支持日期筛选、分页和按日消耗折线图。
 报表查询会把用户选择的开始、结束日期直接作为 MySQL `business_date` 条件，只读取该日期
@@ -87,7 +90,7 @@ systemctl restart dahanghai-analysis
    50% 内存；复制后执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 3. 在宝塔网站配置中将网站根目录设为 `/www/wwwroot/BI/frontend`。
 4. 不要把整个网站代理到 Java。将 `/api/` 和支持 WebSocket 升级的 `/ws/` 反向代理到
-   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account` 配置静态页面映射。可参考
+   `http://127.0.0.1:8765`，并为 `/login`、`/jd`、`/jd-low-activity`、`/tools`、`/todo`、`/chat`、`/deeplink`、`/deeplink-account`、`/jd-images`、`/terminal`、`/account-vault`、`/account` 配置静态页面映射。可参考
    `deploy/nginx-huanghaha.fun.conf` 中的 `location` 配置；已有 SSL 配置应保留。
 
 服务器需安装 Java 21。项目提供 Maven Wrapper，并已配置国内 Maven 下载与依赖镜像，无需单独安装 Maven。首次部署及每次更新代码后执行：

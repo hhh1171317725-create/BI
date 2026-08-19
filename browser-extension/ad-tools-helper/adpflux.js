@@ -2,7 +2,7 @@
   if (window.__adpfluxKeywordHelperLoaded) return;
   window.__adpfluxKeywordHelperLoaded = true;
 
-  const state = { entries: [], selected: null, accountInitialization: null };
+  const state = { entries: [], selected: null, accountInitialization: null, fillRun: 0 };
   const launchParams = new URLSearchParams(location.search);
   const launchEntryId = launchParams.get("bi_entry_id") || "";
   const launchKeyword = launchParams.get("bi_keyword") || "";
@@ -418,6 +418,17 @@
     status.className = `afh-status ${type}`;
   }
 
+  function collapsePanel(panel) {
+    if (!panel || panel.hidden) return;
+    const finish = () => {
+      panel.hidden = true;
+      panel.classList.remove("afh-collapsing");
+    };
+    panel.classList.add("afh-collapsing");
+    panel.addEventListener("animationend", finish, { once: true });
+    setTimeout(finish, 260);
+  }
+
   function renderSelected() {
     const entry = state.selected;
     const meta = document.querySelector("#adpflux-keyword-helper .afh-meta");
@@ -452,6 +463,7 @@
   async function fillForm() {
     const entry = state.selected;
     if (!entry) throw new Error("请先选择关键词配置");
+    const fillRun = ++state.fillRun;
     const completed = [];
     const failed = [];
     const run = async (name, task) => {
@@ -475,6 +487,11 @@
       return;
     }
     setStatus(`已填写：${completed.join("、")}。请手动选择数据连接和优化事件，并检查素材及 TikTok 账号后再提交。`, "ok");
+    setTimeout(() => {
+      if (fillRun !== state.fillRun) return;
+      const panel = document.querySelector("#adpflux-keyword-helper .afh-panel");
+      collapsePanel(panel);
+    }, 800);
   }
 
   function mount() {

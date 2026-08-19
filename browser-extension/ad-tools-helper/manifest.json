@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "投放工具助手",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "支持京东商品主图下载和 Adpflux 关键词配置自动填充。",
   "permissions": ["activeTab", "downloads", "scripting", "tabs"],
   "host_permissions": [

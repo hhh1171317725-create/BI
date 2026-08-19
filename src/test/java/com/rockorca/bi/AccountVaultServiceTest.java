@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,7 @@ class AccountVaultServiceTest {
       mapping.createCell(2).setCellValue("https://example.com/article");
       mapping.createCell(3).setCellValue("channel-a");
       mapping.createCell(4).setCellValue("style-1");
-      mapping.createCell(5).setCellValue("美国");
+      mapping.createCell(5).setCellValue("美国,英国");
       mapping.createCell(6).setCellValue("https://example.com/materials");
 
       List<Map<String, Object>> rows = AccountVaultService.parseWorkbook(workbook);
@@ -51,7 +52,7 @@ class AccountVaultServiceTest {
       assertEquals("10001\n10002", rows.getFirst().get("accountIds"));
       assertEquals("channel-a", rows.getFirst().get("channelId"));
       assertEquals("style-1", rows.getFirst().get("styleId"));
-      assertEquals("美国", rows.getFirst().get("country"));
+      assertEquals("美国,英国", rows.getFirst().get("country"));
       assertEquals("https://example.com/article", rows.getFirst().get("articleUrl"));
       assertEquals("https://example.com/materials", rows.getFirst().get("materialUrl"));
     }
@@ -91,5 +92,23 @@ class AccountVaultServiceTest {
 
     assertThrows(IllegalArgumentException.class,
         () -> service.createOption(Map.of("type", "other", "value", "x")));
+  }
+
+  @Test
+  void normalizesMultipleCountries() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.create(any())).thenAnswer(call -> call.getArgument(0));
+    AccountVaultService service = new AccountVaultService(repository);
+
+    Map<String, Object> result = service.create(Map.of(
+        "keyword", "Borrow",
+        "accountIds", "10001",
+        "country", List.of("美国", "英国", "美国"),
+        "channelId", "channel-a",
+        "styleId", "style-1",
+        "articleUrl", "https://example.com/article",
+        "materialUrl", "https://example.com/materials"), 1);
+
+    assertEquals("美国,英国", result.get("country"));
   }
 }

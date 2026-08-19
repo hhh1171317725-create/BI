@@ -145,7 +145,7 @@ public class AccountVaultService {
     if (keyword.isBlank()) throw new IllegalArgumentException("请填写关键词");
     String accountIds = normalizeAccounts(text(payload.get("accountIds")));
     if (accountIds.isBlank()) throw new IllegalArgumentException("请至少填写一个账户 ID");
-    String country = clean(text(payload.get("country")), 255, "投放国家");
+    String country = normalizeCountries(payload.get("country"));
     if (country.isBlank()) throw new IllegalArgumentException("请填写投放国家");
     String channel = clean(text(payload.get("channelId")), 255, "channel");
     if (channel.isBlank()) throw new IllegalArgumentException("请填写 channel");
@@ -194,6 +194,23 @@ public class AccountVaultService {
 
   private static String optionLabel(String type) {
     return "channel".equals(type) ? "channel" : "style ID";
+  }
+
+  private static String normalizeCountries(Object value) {
+    String raw;
+    if (value instanceof Iterable<?> values) {
+      List<String> parts = new ArrayList<>();
+      for (Object item : values) parts.add(text(item));
+      raw = String.join(",", parts);
+    } else {
+      raw = text(value);
+    }
+    List<String> countries = new ArrayList<>();
+    for (String part : raw.split("[\\r\\n,，、;；]+")) {
+      String country = part.trim();
+      if (!country.isBlank() && !countries.contains(country)) countries.add(country);
+    }
+    return clean(String.join(",", countries), 255, "投放国家");
   }
 
   static List<Map<String, Object>> parseWorkbook(Workbook workbook) {

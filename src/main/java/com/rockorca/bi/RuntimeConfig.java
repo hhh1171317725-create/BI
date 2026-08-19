@@ -38,7 +38,6 @@ public class RuntimeConfig {
     loadOptionalFile("ssh.env");
     loadOptionalFile("jd-low-activity.env");
     loadOptionalFile("report-visibility.env");
-    loadOptionalFile("account-vault.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
   }
@@ -100,31 +99,6 @@ public class RuntimeConfig {
 
   public ObjectMapper objectMapper() {
     return objectMapper;
-  }
-
-  public synchronized byte[] accountVaultKey() {
-    String configured = get("ACCOUNT_VAULT_KEY_B64", "");
-    if (!configured.isBlank()) {
-      try {
-        byte[] decoded = Base64.getDecoder().decode(configured);
-        if (decoded.length == 32) return decoded;
-      } catch (IllegalArgumentException ignored) {
-        // Invalid persisted value is replaced below.
-      }
-    }
-    byte[] key = new byte[32];
-    new SecureRandom().nextBytes(key);
-    String encoded = Base64.getEncoder().encodeToString(key);
-    Path path = runtimeDir.resolve("account-vault.env");
-    try {
-      Files.createDirectories(runtimeDir);
-      saveEnvironmentFile(path, "# Keep this key private; losing it makes stored secrets unreadable.",
-          Map.of("ACCOUNT_VAULT_KEY_B64", encoded));
-      values.put("ACCOUNT_VAULT_KEY_B64", encoded);
-      return key;
-    } catch (IOException error) {
-      throw new IllegalStateException("创建账户资料加密密钥失败：" + error.getMessage(), error);
-    }
   }
 
   public Map<String, Object> reportVisibility() {

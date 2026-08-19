@@ -51,7 +51,7 @@ public class AccountVaultRepository {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             category VARCHAR(40) NOT NULL DEFAULT 'ad_account',
             name VARCHAR(255) NOT NULL,
-            account_id VARCHAR(255) NOT NULL DEFAULT '',
+            account_id TEXT NOT NULL,
             username VARCHAR(500) NOT NULL DEFAULT '',
             secret_encrypted TEXT NOT NULL,
             url VARCHAR(2000) NOT NULL DEFAULT '',
@@ -68,13 +68,58 @@ public class AccountVaultRepository {
               ON UPDATE CURRENT_TIMESTAMP(3),
             PRIMARY KEY (id),
             KEY idx_account_vault_category (category),
-            KEY idx_account_vault_account_id (account_id),
+            KEY idx_account_vault_account_id (account_id(191)),
             KEY idx_account_vault_updated_at (updated_at)
           ) ENGINE=InnoDB COMMENT='管理员账户与链接资料库'
           """);
+      migrateAccountIdColumn(connection);
       initialized = true;
     } catch (SQLException error) {
       throw databaseError(error);
+    }
+  }
+
+  private static void migrateAccountIdColumn(Connection connection) throws SQLException {
+    String dataType = "";
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT DATA_TYPE
+          FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_entries'
+           AND COLUMN_NAME = 'account_id'
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        if (result.next()) dataType = result.getString(1);
+      }
+    }
+    if (!"text".equalsIgnoreCase(dataType)) {
+      try (Statement statement = connection.createStatement()) {
+        try {
+          statement.execute("ALTER TABLE account_vault_entries DROP INDEX idx_account_vault_account_id");
+        } catch (SQLException error) {
+          if (error.getErrorCode() != 1091) throw error;
+        }
+        statement.execute("ALTER TABLE account_vault_entries MODIFY account_id TEXT NOT NULL");
+      }
+    }
+    boolean hasIndex;
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT 1
+          FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_entries'
+           AND INDEX_NAME = 'idx_account_vault_account_id'
+         LIMIT 1
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        hasIndex = result.next();
+      }
+    }
+    if (!hasIndex) {
+      try (Statement statement = connection.createStatement()) {
+        statement.execute("CREATE INDEX idx_account_vault_account_id"
+            + " ON account_vault_entries (account_id(191))");
+      }
     }
   }
 

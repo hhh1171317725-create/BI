@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,19 +17,6 @@ import tools.jackson.databind.ObjectMapper;
 class RuntimeConfigTest {
   @TempDir
   Path temporaryDirectory;
-
-  @Test
-  void accountVaultKeyIsPersistedAndReloaded() {
-    RuntimeConfig first = new RuntimeConfig(new ObjectMapper());
-    ReflectionTestUtils.setField(first, "runtimeDir", temporaryDirectory);
-    byte[] generated = first.accountVaultKey();
-
-    RuntimeConfig second = new RuntimeConfig(new ObjectMapper());
-    ReflectionTestUtils.setField(second, "runtimeDir", temporaryDirectory);
-    ReflectionTestUtils.invokeMethod(second, "loadFile", "account-vault.env");
-
-    assertTrue(Arrays.equals(generated, second.accountVaultKey()));
-  }
 
   @Test
   void reportVisibilityIsEnabledByDefaultAndPersisted() throws Exception {

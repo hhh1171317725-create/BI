@@ -39,12 +39,11 @@ public class AccountVaultApiController {
   @GetMapping
   public Map<String, Object> list(
       @RequestParam(defaultValue = "") String query,
-      @RequestParam(defaultValue = "") String category,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "20") int pageSize,
       HttpServletRequest request) {
     admin(request);
-    return vault.list(query, category, page, pageSize);
+    return vault.list(query, page, pageSize);
   }
 
   @PostMapping
@@ -67,12 +66,6 @@ public class AccountVaultApiController {
     return ReportService.mapOf("ok", true);
   }
 
-  @GetMapping("/{id}/secret")
-  public Map<String, Object> reveal(@PathVariable long id, HttpServletRequest request) {
-    admin(request);
-    return vault.reveal(id);
-  }
-
   @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> importWorkbook(
       @RequestPart("file") MultipartFile file, HttpServletRequest request) throws Exception {
@@ -85,7 +78,7 @@ public class AccountVaultApiController {
   public ResponseEntity<byte[]> export(HttpServletRequest request) {
     admin(request);
     byte[] content = vault.exportWorkbook();
-    String filename = "账户资料_"
+    String filename = "关键词账户映射_"
         + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType(

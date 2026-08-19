@@ -77,6 +77,8 @@ class AccountVaultServiceTest {
     when(repository.listOptions()).thenReturn(List.of(
         new AccountVaultRepository.OptionEntry(1, "channel", "channel-a"),
         new AccountVaultRepository.OptionEntry(2, "style_id", "1751233588")));
+    when(repository.listUsageEntries()).thenReturn(List.of(
+        storedEntry(9, "Existing", "10001", "channel-a")));
     AccountVaultService service = new AccountVaultService(repository);
 
     Map<String, Object> result = service.options();
@@ -84,6 +86,8 @@ class AccountVaultServiceTest {
     List<Map<String, Object>> styleIds = (List<Map<String, Object>>) result.get("styleIds");
 
     assertEquals("channel-a", channels.getFirst().get("value"));
+    assertEquals(true, channels.getFirst().get("used"));
+    assertEquals(List.of("Existing"), channels.getFirst().get("usedBy"));
     assertEquals("1751233588", styleIds.getFirst().get("value"));
   }
 

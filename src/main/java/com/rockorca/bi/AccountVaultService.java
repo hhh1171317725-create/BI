@@ -60,9 +60,15 @@ public class AccountVaultService {
 
   public Map<String, Object> options() {
     List<AccountVaultRepository.OptionEntry> options = repository.listOptions();
+    Map<String, List<String>> channelUsage = new LinkedHashMap<>();
+    for (AccountVaultRepository.Entry entry : repository.listUsageEntries()) {
+      String keyword = entry.keyword().isBlank() ? entry.name() : entry.keyword();
+      channelUsage.computeIfAbsent(entry.channelId().toLowerCase(), ignored -> new ArrayList<>())
+          .add(keyword);
+    }
     return ReportService.mapOf(
         "channels", options.stream().filter(option -> "channel".equals(option.type()))
-            .map(AccountVaultService::optionView).toList(),
+            .map(option -> channelOptionView(option, channelUsage)).toList(),
         "styleIds", options.stream().filter(option -> "style_id".equals(option.type()))
             .map(AccountVaultService::optionView).toList());
   }
@@ -213,6 +219,15 @@ public class AccountVaultService {
 
   private static Map<String, Object> optionView(AccountVaultRepository.OptionEntry option) {
     return ReportService.mapOf("id", option.id(), "type", option.type(), "value", option.value());
+  }
+
+  private static Map<String, Object> channelOptionView(
+      AccountVaultRepository.OptionEntry option, Map<String, List<String>> usage) {
+    List<String> keywords = usage.getOrDefault(option.value().toLowerCase(), List.of()).stream()
+        .distinct().toList();
+    return ReportService.mapOf(
+        "id", option.id(), "type", option.type(), "value", option.value(),
+        "used", !keywords.isEmpty(), "usedBy", keywords);
   }
 
   private static String optionType(String value) {

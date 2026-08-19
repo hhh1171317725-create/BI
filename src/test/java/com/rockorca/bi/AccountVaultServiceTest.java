@@ -2,7 +2,10 @@ package com.rockorca.bi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -12,6 +15,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class AccountVaultServiceTest {
   private static byte[] key() {
@@ -74,6 +78,20 @@ class AccountVaultServiceTest {
       assertEquals("10002", rows.get(1).get("accountId"));
       assertEquals("账户甲", rows.get(2).get("name"));
       assertEquals("90001", rows.get(2).get("accountId"));
+    }
+  }
+
+  @Test
+  void springCanResolveTheServiceConstructor() {
+    RuntimeConfig config = mock(RuntimeConfig.class);
+    when(config.accountVaultKey()).thenReturn(key());
+    try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+      context.registerBean(AccountVaultRepository.class, () -> mock(AccountVaultRepository.class));
+      context.registerBean(RuntimeConfig.class, () -> config);
+      context.register(AccountVaultService.class);
+      context.refresh();
+
+      assertNotNull(context.getBean(AccountVaultService.class));
     }
   }
 }

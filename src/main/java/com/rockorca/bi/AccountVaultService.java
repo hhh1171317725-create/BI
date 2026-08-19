@@ -39,11 +39,6 @@ public class AccountVaultService {
     this.cipher = new SecretCipher(config.accountVaultKey());
   }
 
-  AccountVaultService(AccountVaultRepository repository, byte[] key) {
-    this.repository = repository;
-    this.cipher = new SecretCipher(key);
-  }
-
   public Map<String, Object> list(String queryValue, String categoryValue, int pageValue, int pageSizeValue) {
     String query = clean(queryValue, 200, "搜索词");
     String category = categoryValue == null || categoryValue.isBlank() ? "" : category(categoryValue);

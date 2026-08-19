@@ -40,16 +40,40 @@ public class AccountVaultService {
   }
 
   public Map<String, Object> create(Map<String, Object> payload, long actorId) {
-    return view(repository.create(entry(payload, actorId, actorId)));
+    AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
+    ensureOptions(entry);
+    return view(repository.create(entry));
   }
 
   public Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
     AccountVaultRepository.Entry existing = repository.find(id);
-    return view(repository.update(id, entry(payload, existing.createdBy(), actorId)));
+    AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
+    ensureOptions(entry);
+    return view(repository.update(id, entry));
   }
 
   public void delete(long id) {
     repository.delete(id);
+  }
+
+  public Map<String, Object> options() {
+    List<AccountVaultRepository.OptionEntry> options = repository.listOptions();
+    return ReportService.mapOf(
+        "channels", options.stream().filter(option -> "channel".equals(option.type()))
+            .map(AccountVaultService::optionView).toList(),
+        "styleIds", options.stream().filter(option -> "style_id".equals(option.type()))
+            .map(AccountVaultService::optionView).toList());
+  }
+
+  public Map<String, Object> createOption(Map<String, Object> payload) {
+    String type = optionType(text(payload.get("type")));
+    String value = clean(text(payload.get("value")), 255, optionLabel(type));
+    if (value.isBlank()) throw new IllegalArgumentException("请填写" + optionLabel(type));
+    return optionView(repository.createOption(type, value));
+  }
+
+  public void deleteOption(long id) {
+    repository.deleteOption(id);
   }
 
   public int importWorkbook(byte[] content, long actorId) {
@@ -66,6 +90,7 @@ public class AccountVaultService {
     List<AccountVaultRepository.Entry> entries = rows.stream()
         .map(row -> entry(row, actorId, actorId))
         .toList();
+    entries.forEach(this::ensureOptions);
     repository.createAll(entries);
     return entries.size();
   }
@@ -145,6 +170,27 @@ public class AccountVaultService {
         "styleId", entry.styleId(),
         "articleUrl", entry.url(),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
+  }
+
+  private void ensureOptions(AccountVaultRepository.Entry entry) {
+    repository.createOption("channel", entry.channelId());
+    repository.createOption("style_id", entry.styleId());
+  }
+
+  private static Map<String, Object> optionView(AccountVaultRepository.OptionEntry option) {
+    return ReportService.mapOf("id", option.id(), "type", option.type(), "value", option.value());
+  }
+
+  private static String optionType(String value) {
+    return switch (String.valueOf(value).trim()) {
+      case "channel" -> "channel";
+      case "style_id" -> "style_id";
+      default -> throw new IllegalArgumentException("选项类型无效");
+    };
+  }
+
+  private static String optionLabel(String type) {
+    return "channel".equals(type) ? "channel" : "style ID";
   }
 
   static List<Map<String, Object>> parseWorkbook(Workbook workbook) {

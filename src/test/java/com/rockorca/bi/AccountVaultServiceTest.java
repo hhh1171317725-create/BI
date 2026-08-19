@@ -3,7 +3,9 @@ package com.rockorca.bi;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
@@ -61,5 +63,30 @@ class AccountVaultServiceTest {
 
       assertNotNull(context.getBean(AccountVaultService.class));
     }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void groupsSavedChannelAndStyleOptions() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.listOptions()).thenReturn(List.of(
+        new AccountVaultRepository.OptionEntry(1, "channel", "channel-a"),
+        new AccountVaultRepository.OptionEntry(2, "style_id", "1751233588")));
+    AccountVaultService service = new AccountVaultService(repository);
+
+    Map<String, Object> result = service.options();
+    List<Map<String, Object>> channels = (List<Map<String, Object>>) result.get("channels");
+    List<Map<String, Object>> styleIds = (List<Map<String, Object>>) result.get("styleIds");
+
+    assertEquals("channel-a", channels.getFirst().get("value"));
+    assertEquals("1751233588", styleIds.getFirst().get("value"));
+  }
+
+  @Test
+  void rejectsUnknownOptionTypes() {
+    AccountVaultService service = new AccountVaultService(mock(AccountVaultRepository.class));
+
+    assertThrows(IllegalArgumentException.class,
+        () -> service.createOption(Map.of("type", "other", "value", "x")));
   }
 }

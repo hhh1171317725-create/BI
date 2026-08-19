@@ -66,6 +66,26 @@ public class AccountVaultApiController {
     return ReportService.mapOf("ok", true);
   }
 
+  @GetMapping("/options")
+  public Map<String, Object> options(HttpServletRequest request) {
+    admin(request);
+    return vault.options();
+  }
+
+  @PostMapping("/options")
+  public Map<String, Object> createOption(
+      @RequestBody Map<String, Object> payload, HttpServletRequest request) {
+    admin(request);
+    return ReportService.mapOf("ok", true, "option", vault.createOption(payload));
+  }
+
+  @DeleteMapping("/options/{id}")
+  public Map<String, Object> deleteOption(@PathVariable long id, HttpServletRequest request) {
+    admin(request);
+    vault.deleteOption(id);
+    return ReportService.mapOf("ok", true);
+  }
+
   @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> importWorkbook(
       @RequestPart("file") MultipartFile file, HttpServletRequest request) throws Exception {

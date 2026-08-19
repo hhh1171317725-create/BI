@@ -33,6 +33,8 @@ public class AccountVaultRepository {
 
   public record Page(List<Entry> entries, long total) {}
 
+  public record OptionEntry(long id, String type, String value) {}
+
   private static final String COLUMNS = "id, category, name, account_id, username, secret_encrypted,"
       + " url, keyword_text, channel_id, style_id, country, owner_name, notes, created_by, updated_by,"
       + " created_at, updated_at";
@@ -72,8 +74,90 @@ public class AccountVaultRepository {
             KEY idx_account_vault_updated_at (updated_at)
           ) ENGINE=InnoDB COMMENT='管理员账户与链接资料库'
           """);
+      statement.execute("""
+          CREATE TABLE IF NOT EXISTS account_vault_options (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            option_type VARCHAR(20) NOT NULL,
+            option_value VARCHAR(255) NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_account_vault_option (option_type, option_value)
+          ) ENGINE=InnoDB COMMENT='账户映射 channel 与 style ID 选项'
+          """);
       migrateAccountIdColumn(connection);
+      statement.execute("""
+          INSERT IGNORE INTO account_vault_options (option_type, option_value)
+          SELECT 'channel', TRIM(channel_id)
+            FROM account_vault_entries
+           WHERE category = 'ad_account' AND TRIM(channel_id) <> ''
+          """);
+      statement.execute("""
+          INSERT IGNORE INTO account_vault_options (option_type, option_value)
+          SELECT 'style_id', TRIM(style_id)
+            FROM account_vault_entries
+           WHERE category = 'ad_account' AND TRIM(style_id) <> ''
+          """);
       initialized = true;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public List<OptionEntry> listOptions() {
+    initialize();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "SELECT id, option_type, option_value FROM account_vault_options"
+                 + " ORDER BY option_type, option_value")) {
+      List<OptionEntry> options = new ArrayList<>();
+      try (ResultSet result = statement.executeQuery()) {
+        while (result.next()) {
+          options.add(new OptionEntry(
+              result.getLong("id"), result.getString("option_type"),
+              result.getString("option_value")));
+        }
+      }
+      return options;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public OptionEntry createOption(String type, String value) {
+    initialize();
+    try (Connection connection = reports.openConnection()) {
+      try (PreparedStatement statement = connection.prepareStatement(
+          "INSERT IGNORE INTO account_vault_options (option_type, option_value) VALUES (?, ?)")) {
+        statement.setString(1, type);
+        statement.setString(2, value);
+        statement.executeUpdate();
+      }
+      try (PreparedStatement statement = connection.prepareStatement(
+          "SELECT id, option_type, option_value FROM account_vault_options"
+              + " WHERE option_type = ? AND option_value = ?")) {
+        statement.setString(1, type);
+        statement.setString(2, value);
+        try (ResultSet result = statement.executeQuery()) {
+          if (!result.next()) throw new IllegalStateException("保存选项后未能读取数据");
+          return new OptionEntry(
+              result.getLong("id"), result.getString("option_type"),
+              result.getString("option_value"));
+        }
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public void deleteOption(long id) {
+    initialize();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "DELETE FROM account_vault_options WHERE id = ?")) {
+      statement.setLong(1, id);
+      if (statement.executeUpdate() != 1) throw new IllegalArgumentException("选项不存在");
     } catch (SQLException error) {
       throw databaseError(error);
     }

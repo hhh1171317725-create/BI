@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AccountVaultService {
   private static final List<String> EXPORT_HEADERS =
-      List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接");
+      List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接", "素材链接");
   private final AccountVaultRepository repository;
 
   public AccountVaultService(AccountVaultRepository repository) {
@@ -120,14 +120,14 @@ public class AccountVaultService {
         Row row = sheet.createRow(rowIndex++);
         List<String> values = List.of(
             entry.keyword(), entry.accountId(), entry.country(), entry.channelId(),
-            entry.styleId(), entry.url());
+            entry.styleId(), entry.url(), entry.materialUrl());
         for (int index = 0; index < values.size(); index++) {
           Cell cell = row.createCell(index);
           cell.setCellValue(values.get(index));
           if (index == 1) cell.setCellStyle(wrapped);
         }
       }
-      int[] widths = {28, 30, 18, 20, 20, 70};
+      int[] widths = {28, 30, 18, 20, 20, 70, 70};
       for (int index = 0; index < widths.length; index++) sheet.setColumnWidth(index, widths[index] * 256);
       sheet.createFreezePane(0, 1);
       sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(
@@ -154,8 +154,10 @@ public class AccountVaultService {
     String articleUrl = clean(text(payload.get("articleUrl")), 2000, "文章链接");
     validateUrl(articleUrl);
     if (articleUrl.isBlank()) throw new IllegalArgumentException("请填写文章链接");
+    String materialUrl = clean(text(payload.get("materialUrl")), 2000, "素材链接");
+    validateUrl(materialUrl);
     return new AccountVaultRepository.Entry(
-        0, "ad_account", keyword, accountIds, "", "", articleUrl, keyword,
+        0, "ad_account", keyword, accountIds, "", "", articleUrl, materialUrl, keyword,
         channel, styleId, country, "", "", createdBy, updatedBy, null, null);
   }
 
@@ -169,6 +171,7 @@ public class AccountVaultService {
         "channelId", entry.channelId(),
         "styleId", entry.styleId(),
         "articleUrl", entry.url(),
+        "materialUrl", entry.materialUrl(),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
   }
 
@@ -213,6 +216,7 @@ public class AccountVaultService {
         item.put("channelId", value(row, headers, "channel"));
         item.put("styleId", firstValue(row, headers, "style ID", "styleid", "styleId"));
         item.put("articleUrl", firstValue(row, headers, "文章链接", "url", "URL"));
+        item.put("materialUrl", firstValue(row, headers, "素材链接", "素材", "materialUrl"));
         rows.add(item);
       }
     }

@@ -34,6 +34,7 @@ class AccountVaultServiceTest {
       header.createCell(3).setCellValue("channel");
       header.createCell(4).setCellValue("style ID");
       header.createCell(5).setCellValue("国家");
+      header.createCell(6).setCellValue("素材链接");
       Row mapping = sheet.createRow(1);
       mapping.createCell(0).setCellValue("Borrow");
       mapping.createCell(1).setCellValue("10001\n10002");
@@ -41,6 +42,7 @@ class AccountVaultServiceTest {
       mapping.createCell(3).setCellValue("channel-a");
       mapping.createCell(4).setCellValue("style-1");
       mapping.createCell(5).setCellValue("美国");
+      mapping.createCell(6).setCellValue("https://example.com/materials");
 
       List<Map<String, Object>> rows = AccountVaultService.parseWorkbook(workbook);
 
@@ -51,6 +53,7 @@ class AccountVaultServiceTest {
       assertEquals("style-1", rows.getFirst().get("styleId"));
       assertEquals("美国", rows.getFirst().get("country"));
       assertEquals("https://example.com/article", rows.getFirst().get("articleUrl"));
+      assertEquals("https://example.com/materials", rows.getFirst().get("materialUrl"));
     }
   }
 

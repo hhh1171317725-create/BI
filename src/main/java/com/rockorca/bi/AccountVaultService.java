@@ -2,6 +2,8 @@ package com.rockorca.bi;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,7 +23,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class AccountVaultService {
   private static final List<String> EXPORT_HEADERS =
-      List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接", "素材链接", "文案");
+      List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接", "素材链接", "文案",
+          "推广系列数量", "日预算");
+  private static final int DEFAULT_CAMPAIGN_QUANTITY = 1;
+  private static final BigDecimal DEFAULT_DAILY_BUDGET = new BigDecimal("20.00");
   private final AccountVaultRepository repository;
 
   public AccountVaultService(AccountVaultRepository repository) {
@@ -133,14 +138,15 @@ public class AccountVaultService {
         Row row = sheet.createRow(rowIndex++);
         List<String> values = List.of(
             entry.keyword(), entry.accountId(), entry.country(), entry.channelId(),
-            entry.styleId(), entry.url(), entry.materialUrl(), entry.copyText());
+            entry.styleId(), entry.url(), entry.materialUrl(), entry.copyText(),
+            String.valueOf(entry.campaignQuantity()), decimalText(entry.dailyBudget()));
         for (int index = 0; index < values.size(); index++) {
           Cell cell = row.createCell(index);
           cell.setCellValue(values.get(index));
           if (index == 1) cell.setCellStyle(wrapped);
         }
       }
-      int[] widths = {28, 30, 18, 20, 20, 70, 70, 60};
+      int[] widths = {28, 30, 18, 20, 20, 70, 70, 60, 16, 14};
       for (int index = 0; index < widths.length; index++) sheet.setColumnWidth(index, widths[index] * 256);
       sheet.createFreezePane(0, 1);
       sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(
@@ -170,9 +176,14 @@ public class AccountVaultService {
     String materialUrl = clean(text(payload.get("materialUrl")), 2000, "素材链接");
     validateUrl(materialUrl);
     String copyText = clean(text(payload.get("copyText")), 20_000, "文案");
+    int campaignQuantity = positiveInteger(
+        payload.get("campaignQuantity"), DEFAULT_CAMPAIGN_QUANTITY, 100, "推广系列数量");
+    BigDecimal dailyBudget = positiveDecimal(
+        payload.get("dailyBudget"), DEFAULT_DAILY_BUDGET, new BigDecimal("1000000"), "日预算");
     return new AccountVaultRepository.Entry(
         0, "ad_account", keyword, accountIds, "", "", articleUrl, materialUrl, copyText, keyword,
-        channel, styleId, country, "", "", createdBy, updatedBy, null, null);
+        channel, styleId, country, campaignQuantity, dailyBudget,
+        "", "", createdBy, updatedBy, null, null);
   }
 
   private static Map<String, Object> view(AccountVaultRepository.Entry entry) {
@@ -187,6 +198,8 @@ public class AccountVaultService {
         "articleUrl", entry.url(),
         "materialUrl", entry.materialUrl(),
         "copyText", entry.copyText(),
+        "campaignQuantity", entry.campaignQuantity(),
+        "dailyBudget", decimalText(entry.dailyBudget()),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
   }
 
@@ -283,6 +296,8 @@ public class AccountVaultService {
         item.put("articleUrl", firstValue(row, headers, "文章链接", "url", "URL"));
         item.put("materialUrl", firstValue(row, headers, "素材链接", "素材", "materialUrl"));
         item.put("copyText", firstValue(row, headers, "文案", "广告文案", "copyText"));
+        item.put("campaignQuantity", firstValue(row, headers, "推广系列数量", "系列数量"));
+        item.put("dailyBudget", firstValue(row, headers, "日预算", "预算"));
         rows.add(item);
       }
     }
@@ -336,6 +351,44 @@ public class AccountVaultService {
       throw new IllegalArgumentException(label + "长度或格式无效");
     }
     return result;
+  }
+
+  private static int positiveInteger(Object value, int defaultValue, int max, String label) {
+    String raw = text(value).trim();
+    if (raw.isBlank()) return defaultValue;
+    try {
+      int result = Integer.parseInt(raw);
+      if (result < 1 || result > max) throw new NumberFormatException();
+      return result;
+    } catch (NumberFormatException ignored) {
+      throw new IllegalArgumentException(label + "必须是 1 至 " + max + " 的整数");
+    }
+  }
+
+  private static BigDecimal positiveDecimal(
+      Object value, BigDecimal defaultValue, BigDecimal max, String label) {
+    String raw = text(value).trim();
+    if (raw.isBlank()) return defaultValue;
+    try {
+      BigDecimal result = new BigDecimal(raw);
+      if (result.compareTo(new BigDecimal("0.01")) < 0 || result.compareTo(max) > 0) {
+        throw new NumberFormatException();
+      }
+      if (result.stripTrailingZeros().scale() > 2) {
+        throw new IllegalArgumentException(label + "最多保留两位小数");
+      }
+      return result.setScale(2, RoundingMode.UNNECESSARY);
+    } catch (IllegalArgumentException error) {
+      if (error instanceof NumberFormatException) {
+        throw new IllegalArgumentException(label + "必须是 0.01 至 " + max.toPlainString() + " 的数字");
+      }
+      throw error;
+    }
+  }
+
+  private static String decimalText(BigDecimal value) {
+    BigDecimal normalized = value == null ? DEFAULT_DAILY_BUDGET : value;
+    return normalized.stripTrailingZeros().toPlainString();
   }
 
   static void validateUrl(String value) {

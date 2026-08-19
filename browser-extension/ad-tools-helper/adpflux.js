@@ -8,6 +8,7 @@
   const launchKeyword = launchParams.get("bi_keyword") || "";
   const autoFillRequested = launchParams.get("bi_autofill") === "1";
   const adpfluxDefaults = {
+    campaignQuantity: "1",
     dailyBudget: "20"
   };
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,6 +20,17 @@
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     return `${month}${day}-${normalize(keyword)}`;
+  }
+
+  function campaignQuantity(entry) {
+    const value = Number(entry?.campaignQuantity);
+    return Number.isInteger(value) && value > 0 ? String(value) : adpfluxDefaults.campaignQuantity;
+  }
+
+  function dailyBudget(entry) {
+    const raw = String(entry?.dailyBudget ?? "").trim();
+    const value = Number(raw);
+    return raw && Number.isFinite(value) && value > 0 ? raw : adpfluxDefaults.dailyBudget;
   }
 
   function send(message) {
@@ -415,7 +427,7 @@
       material.disabled = true;
       return;
     }
-    meta.textContent = `${entry.accountCount || splitValues(entry.accountIds).length} 个账户 · ${splitValues(entry.country).length} 个国家\nchannel ${entry.channelId || "未填"} · style ${entry.styleId || "未填"}\n日预算 ${adpfluxDefaults.dailyBudget} USD · 数据连接和优化事件手动选择`;
+    meta.textContent = `${entry.accountCount || splitValues(entry.accountIds).length} 个账户 · ${splitValues(entry.country).length} 个国家\nchannel ${entry.channelId || "未填"} · style ${entry.styleId || "未填"}\n系列 ${campaignQuantity(entry)} · 日预算 ${dailyBudget(entry)} USD · 数据连接和优化事件手动选择`;
     material.disabled = !entry.materialUrl;
   }
 
@@ -453,8 +465,8 @@
     setStatus("正在填写，请不要操作页面...");
     await run("广告账户", () => chooseAntManyById("advertiser_id", splitValues(entry.accountIds)));
     await run("推广系列名称", async () => fillPlaceholder("推广系列名称", datedCampaignName(entry.keyword)));
-    await run("推广系列数量", async () => fillPlaceholder("请输入推广系列个数", "1"));
-    await run("日预算", async () => fillInputById("budget", adpfluxDefaults.dailyBudget, "预算"));
+    await run("推广系列数量", async () => fillPlaceholder("请输入推广系列个数", campaignQuantity(entry)));
+    await run("日预算", async () => fillInputById("budget", dailyBudget(entry), "预算"));
     await run("地域", () => chooseAntTreeManyById("location_ids", splitValues(entry.country)));
     await run("目标页面", async () => fillPlaceholder("请输入以https://或者http://开头的完整地址", entry.articleUrl));
     await run("广告文案", async () => fillPlaceholder("请为您的广告输入文案", entry.copyText));

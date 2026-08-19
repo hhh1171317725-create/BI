@@ -1,5 +1,6 @@
 package com.rockorca.bi;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -26,6 +27,8 @@ public class AccountVaultRepository {
       String channelId,
       String styleId,
       String country,
+      int campaignQuantity,
+      BigDecimal dailyBudget,
       String owner,
       String notes,
       long createdBy,
@@ -38,8 +41,8 @@ public class AccountVaultRepository {
   public record OptionEntry(long id, String type, String value) {}
 
   private static final String COLUMNS = "id, category, name, account_id, username, secret_encrypted,"
-      + " url, material_url, copy_text, keyword_text, channel_id, style_id, country, owner_name, notes, created_by, updated_by,"
-      + " created_at, updated_at";
+      + " url, material_url, copy_text, keyword_text, channel_id, style_id, country,"
+      + " campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by, created_at, updated_at";
   private final ReportRepository reports;
   private volatile boolean initialized;
 
@@ -65,6 +68,8 @@ public class AccountVaultRepository {
             channel_id VARCHAR(255) NOT NULL DEFAULT '',
             style_id VARCHAR(255) NOT NULL DEFAULT '',
             country VARCHAR(255) NOT NULL DEFAULT '',
+            campaign_quantity INT UNSIGNED NOT NULL DEFAULT 1,
+            daily_budget DECIMAL(12,2) NOT NULL DEFAULT 20.00,
             owner_name VARCHAR(255) NOT NULL DEFAULT '',
             notes TEXT NOT NULL,
             created_by BIGINT UNSIGNED NOT NULL,
@@ -93,6 +98,7 @@ public class AccountVaultRepository {
       migrateAccountIdColumn(connection);
       migrateMaterialUrlColumn(connection);
       migrateCopyTextColumn(connection);
+      migrateAdCreationColumns(connection);
       statement.execute("""
           INSERT IGNORE INTO account_vault_options (option_type, option_value)
           SELECT 'channel', TRIM(channel_id)
@@ -259,6 +265,36 @@ public class AccountVaultRepository {
     }
   }
 
+  private static void migrateAdCreationColumns(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      if (!columnExists(connection, "campaign_quantity")) {
+        statement.execute("ALTER TABLE account_vault_entries"
+            + " ADD COLUMN campaign_quantity INT UNSIGNED NOT NULL DEFAULT 1 AFTER country");
+      }
+      if (!columnExists(connection, "daily_budget")) {
+        statement.execute("ALTER TABLE account_vault_entries"
+            + " ADD COLUMN daily_budget DECIMAL(12,2) NOT NULL DEFAULT 20.00"
+            + " AFTER campaign_quantity");
+      }
+    }
+  }
+
+  private static boolean columnExists(Connection connection, String columnName) throws SQLException {
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT 1
+          FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_entries'
+           AND COLUMN_NAME = ?
+         LIMIT 1
+        """)) {
+      query.setString(1, columnName);
+      try (ResultSet result = query.executeQuery()) {
+        return result.next();
+      }
+    }
+  }
+
   public Page list(String query, String category, int page, int pageSize) {
     initialize();
     StringBuilder where = new StringBuilder(" WHERE 1=1");
@@ -338,8 +374,8 @@ public class AccountVaultRepository {
     String sql = """
         INSERT INTO account_vault_entries
           (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
-           channel_id, style_id, country, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           channel_id, style_id, country, campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -360,8 +396,8 @@ public class AccountVaultRepository {
     String sql = """
         INSERT INTO account_vault_entries
           (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
-           channel_id, style_id, country, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           channel_id, style_id, country, campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection()) {
       connection.setAutoCommit(false);
@@ -389,7 +425,7 @@ public class AccountVaultRepository {
         UPDATE account_vault_entries
            SET category = ?, name = ?, account_id = ?, username = ?, secret_encrypted = ?,
                url = ?, material_url = ?, copy_text = ?, keyword_text = ?, channel_id = ?, style_id = ?, country = ?,
-               owner_name = ?, notes = ?, updated_by = ?
+               campaign_quantity = ?, daily_budget = ?, owner_name = ?, notes = ?, updated_by = ?
          WHERE id = ?
         """;
     try (Connection connection = reports.openConnection();
@@ -406,10 +442,12 @@ public class AccountVaultRepository {
       statement.setString(10, entry.channelId());
       statement.setString(11, entry.styleId());
       statement.setString(12, entry.country());
-      statement.setString(13, entry.owner());
-      statement.setString(14, entry.notes());
-      statement.setLong(15, entry.updatedBy());
-      statement.setLong(16, id);
+      statement.setInt(13, entry.campaignQuantity());
+      statement.setBigDecimal(14, entry.dailyBudget());
+      statement.setString(15, entry.owner());
+      statement.setString(16, entry.notes());
+      statement.setLong(17, entry.updatedBy());
+      statement.setLong(18, id);
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("账户资料不存在");
       return find(id);
     } catch (SQLException error) {
@@ -448,10 +486,12 @@ public class AccountVaultRepository {
     statement.setString(10, entry.channelId());
     statement.setString(11, entry.styleId());
     statement.setString(12, entry.country());
-    statement.setString(13, entry.owner());
-    statement.setString(14, entry.notes());
-    statement.setLong(15, entry.createdBy());
-    statement.setLong(16, entry.updatedBy());
+    statement.setInt(13, entry.campaignQuantity());
+    statement.setBigDecimal(14, entry.dailyBudget());
+    statement.setString(15, entry.owner());
+    statement.setString(16, entry.notes());
+    statement.setLong(17, entry.createdBy());
+    statement.setLong(18, entry.updatedBy());
   }
 
   private static Entry map(ResultSet result) throws SQLException {
@@ -461,8 +501,10 @@ public class AccountVaultRepository {
         result.getString("secret_encrypted"), result.getString("url"),
         result.getString("material_url"), result.getString("copy_text"),
         result.getString("keyword_text"), result.getString("channel_id"),
-        result.getString("style_id"), result.getString("country"), result.getString("owner_name"),
-        result.getString("notes"), result.getLong("created_by"), result.getLong("updated_by"),
+        result.getString("style_id"), result.getString("country"),
+        result.getInt("campaign_quantity"), result.getBigDecimal("daily_budget"),
+        result.getString("owner_name"), result.getString("notes"),
+        result.getLong("created_by"), result.getLong("updated_by"),
         result.getTimestamp("created_at").toLocalDateTime(),
         result.getTimestamp("updated_at").toLocalDateTime());
   }

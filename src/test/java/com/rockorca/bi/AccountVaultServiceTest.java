@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.apache.poi.ss.usermodel.Row;
@@ -38,6 +39,8 @@ class AccountVaultServiceTest {
       header.createCell(5).setCellValue("国家");
       header.createCell(6).setCellValue("素材链接");
       header.createCell(7).setCellValue("文案");
+      header.createCell(8).setCellValue("推广系列数量");
+      header.createCell(9).setCellValue("日预算");
       Row mapping = sheet.createRow(1);
       mapping.createCell(0).setCellValue("Borrow");
       mapping.createCell(1).setCellValue("10001\n10002");
@@ -47,6 +50,8 @@ class AccountVaultServiceTest {
       mapping.createCell(5).setCellValue("美国,英国");
       mapping.createCell(6).setCellValue("https://example.com/materials");
       mapping.createCell(7).setCellValue("这是完整广告文案");
+      mapping.createCell(8).setCellValue(3);
+      mapping.createCell(9).setCellValue(35.5);
 
       List<Map<String, Object>> rows = AccountVaultService.parseWorkbook(workbook);
 
@@ -59,6 +64,8 @@ class AccountVaultServiceTest {
       assertEquals("https://example.com/article", rows.getFirst().get("articleUrl"));
       assertEquals("https://example.com/materials", rows.getFirst().get("materialUrl"));
       assertEquals("这是完整广告文案", rows.getFirst().get("copyText"));
+      assertEquals("3", rows.getFirst().get("campaignQuantity"));
+      assertEquals("35.5", rows.getFirst().get("dailyBudget"));
     }
   }
 
@@ -120,6 +127,29 @@ class AccountVaultServiceTest {
         "copyText", "广告文案"), 1);
 
     assertEquals("美国,英国", result.get("country"));
+    assertEquals(1, result.get("campaignQuantity"));
+    assertEquals("20", result.get("dailyBudget"));
+  }
+
+  @Test
+  void keepsPerKeywordAdCreationSettings() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.listUsageEntries()).thenReturn(List.of());
+    when(repository.create(any())).thenAnswer(call -> call.getArgument(0));
+    AccountVaultService service = new AccountVaultService(repository);
+
+    Map<String, Object> result = service.create(Map.of(
+        "keyword", "Travel",
+        "accountIds", "10001",
+        "country", "意大利",
+        "channelId", "channel-b",
+        "styleId", "style-2",
+        "articleUrl", "https://example.com/article",
+        "campaignQuantity", "3",
+        "dailyBudget", "35.50"), 1);
+
+    assertEquals(3, result.get("campaignQuantity"));
+    assertEquals("35.5", result.get("dailyBudget"));
   }
 
   @Test
@@ -147,6 +177,7 @@ class AccountVaultServiceTest {
       long id, String keyword, String accountIds, String channel) {
     return new AccountVaultRepository.Entry(
         id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "", "",
-        keyword, channel, "style-1", "美国", "", "", 1, 1, null, null);
+        keyword, channel, "style-1", "美国", 1, new BigDecimal("20.00"),
+        "", "", 1, 1, null, null);
   }
 }

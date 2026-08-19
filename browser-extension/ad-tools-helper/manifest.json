@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "投放工具助手",
+  "version": "1.5.0",
+  "description": "支持京东商品主图下载和 Adpflux 关键词配置自动填充。",
+  "permissions": ["activeTab", "downloads", "scripting", "tabs"],
+  "host_permissions": [
+    "https://item.jd.com/*",
+    "https://*.360buyimg.com/*",
+    "https://huanghaha.fun/*",
+    "https://www.huanghaha.fun/*",
+    "https://www.adpflux.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://item.jd.com/*.html*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://huanghaha.fun/*", "https://www.huanghaha.fun/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.adpflux.com/ad-manage/batch-create*"],
+      "css": ["adpflux.css"],
+      "js": ["adpflux.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "投放工具助手",
+    "default_popup": "popup.html"
+  }
+}

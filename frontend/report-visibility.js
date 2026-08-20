@@ -5,8 +5,9 @@
     jdLowActivity: '/jd-low-activity',
     adpflux: '/adpflux'
   };
-  const currentReport = Object.entries(reportPaths)
-      .find(([, path]) => location.pathname === path)?.[0];
+  const currentReport = location.pathname === '/account-vault'
+      ? 'adpflux'
+      : Object.entries(reportPaths).find(([, path]) => location.pathname === path)?.[0];
   const style = document.createElement('style');
   style.textContent = '.report-visibility-hidden{display:none!important}'
       + 'html.report-visibility-checking body{visibility:hidden}';
@@ -27,10 +28,7 @@
     }
 
     const navigation = document.querySelector('.header-actions, nav.nav');
-    const supplementalLinks = [
-      {path: '/adpflux', label: 'TikTok账户看板'},
-      {path: '/account-vault', label: '账户对应关系'}
-    ];
+    const supplementalLinks = [{path: '/adpflux', label: 'TikTok账户'}];
     for (const item of supplementalLinks) {
       if (!navigation || location.pathname === item.path
           || navigation.querySelector(`a[href="${item.path}"]`)) continue;

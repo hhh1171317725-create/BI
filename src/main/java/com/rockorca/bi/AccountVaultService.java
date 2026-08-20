@@ -36,7 +36,9 @@ public class AccountVaultService {
   public Map<String, Object> list(String queryValue, int pageValue, int pageSizeValue) {
     String query = clean(queryValue, 200, "搜索词");
     int page = Math.max(1, pageValue);
-    int pageSize = Math.max(10, Math.min(100, pageSizeValue));
+    // 账户对应关系页面会一次读取匹配结果后，结合实时账户指标在浏览器中做全局排序。
+    // 上限与 Excel 导出量级保持一致，避免只对当前数据库分页进行排序。
+    int pageSize = Math.max(10, Math.min(10_000, pageSizeValue));
     AccountVaultRepository.Page result = repository.list(query, "ad_account", page, pageSize);
     return ReportService.mapOf(
         "entries", result.entries().stream().map(AccountVaultService::view).toList(),

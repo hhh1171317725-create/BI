@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 
@@ -19,6 +20,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class AccountVaultServiceTest {
+  @Test
+  void allowsThePageToLoadAllRowsForGlobalBrowserSorting() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.list("", "ad_account", 1, 10_000))
+        .thenReturn(new AccountVaultRepository.Page(List.of(), 0));
+
+    new AccountVaultService(repository).list("", 1, 10_000);
+
+    verify(repository).list("", "ad_account", 1, 10_000);
+  }
+
   @Test
   void acceptsArticleUrlsWithAdvertisingMacros() {
     assertDoesNotThrow(() -> AccountVaultService.validateUrl(

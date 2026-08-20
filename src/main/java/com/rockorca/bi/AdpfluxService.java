@@ -88,12 +88,12 @@ public class AdpfluxService {
     return upstream.credentialStatus();
   }
 
-  @Scheduled(cron = "0 20 9 * * *", zone = "Asia/Shanghai")
+  @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Shanghai")
   public void scheduledSync() {
     if (!Boolean.TRUE.equals(upstream.credentialStatus().get("configured"))) return;
     try {
       runExclusive(() -> {
-        String date = LocalDate.now(ReportService.BEIJING).minusDays(1).toString();
+        String date = LocalDate.now(ReportService.BEIJING).toString();
         AdpfluxUpstreamService.Credentials credentials = upstream.resolvedCredentials("", "");
         List<Map<String, Object>> rows =
             upstream.fetchRows(date, date, credentials.token(), credentials.companyId());
@@ -262,8 +262,8 @@ public class AdpfluxService {
 
   private static String nextScheduledRefreshAt() {
     ZonedDateTime now = ZonedDateTime.now(ReportService.BEIJING);
-    ZonedDateTime next = now.toLocalDate().atTime(9, 20).atZone(ReportService.BEIJING);
-    if (!next.isAfter(now)) next = next.plusDays(1);
+    ZonedDateTime next = now.withSecond(0).withNano(0);
+    next = next.plusMinutes(10 - next.getMinute() % 10);
     return DateTimeFormatter.ISO_INSTANT.format(next.toInstant());
   }
 

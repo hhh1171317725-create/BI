@@ -24,10 +24,10 @@ class RuntimeConfigTest {
     ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
 
     assertEquals(
-        Map.of("dhh", true, "jd", true, "jdLowActivity", true),
+        Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true),
         config.reportVisibility());
     assertEquals(
-        Map.of("dhh", true, "jd", false, "jdLowActivity", true),
+        Map.of("dhh", true, "jd", false, "jdLowActivity", true, "adpflux", true),
         config.saveReportVisibility(true, false, true));
 
     Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
@@ -36,6 +36,22 @@ class RuntimeConfigTest {
     assertEquals("true", saved.get("REPORT_DHH_VISIBLE"));
     assertEquals("false", saved.get("REPORT_JD_VISIBLE"));
     assertEquals("true", saved.get("REPORT_JD_LOW_ACTIVITY_VISIBLE"));
+    assertEquals("true", saved.get("REPORT_ADPFLUX_VISIBLE"));
+  }
+
+  @Test
+  void adpfluxCredentialsAreEncodedAndAvailableWithoutRestart() throws Exception {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    config.saveAdpfluxCredentials("front-token-value-123456", "12345678901234567890");
+
+    Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
+        Files.readString(temporaryDirectory.resolve("adpflux.env"), StandardCharsets.UTF_8));
+    assertEquals("12345678901234567890", saved.get("ADPFLUX_COMPANY_EX_ID"));
+    assertEquals(
+        "front-token-value-123456",
+        config.decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64"));
   }
 
   @Test

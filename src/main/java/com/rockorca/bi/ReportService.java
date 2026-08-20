@@ -175,6 +175,11 @@ public class ReportService {
     return config.saveReportVisibility(dhh, jd, jdLowActivity);
   }
 
+  public Map<String, Object> saveReportVisibility(
+      boolean dhh, boolean jd, boolean jdLowActivity, boolean adpflux) {
+    return config.saveReportVisibility(dhh, jd, jdLowActivity, adpflux);
+  }
+
   public Map<String, Object> saveReportCredentials(String tokenValue, String userIdValue) {
     String token = text(tokenValue);
     String userId = text(userIdValue);

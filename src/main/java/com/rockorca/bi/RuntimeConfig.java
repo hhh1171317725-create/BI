@@ -37,6 +37,7 @@ public class RuntimeConfig {
     loadOptionalFile("deeplink.env");
     loadOptionalFile("ssh.env");
     loadOptionalFile("jd-low-activity.env");
+    loadOptionalFile("adpflux.env");
     loadOptionalFile("report-visibility.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
@@ -105,18 +106,28 @@ public class RuntimeConfig {
     return Map.of(
         "dhh", enabled("REPORT_DHH_VISIBLE"),
         "jd", enabled("REPORT_JD_VISIBLE"),
-        "jdLowActivity", enabled("REPORT_JD_LOW_ACTIVITY_VISIBLE"));
+        "jdLowActivity", enabled("REPORT_JD_LOW_ACTIVITY_VISIBLE"),
+        "adpflux", enabled("REPORT_ADPFLUX_VISIBLE"));
   }
 
   public synchronized Map<String, Object> saveReportVisibility(
       boolean dhh,
       boolean jd,
       boolean jdLowActivity) {
+    return saveReportVisibility(dhh, jd, jdLowActivity, enabled("REPORT_ADPFLUX_VISIBLE"));
+  }
+
+  public synchronized Map<String, Object> saveReportVisibility(
+      boolean dhh,
+      boolean jd,
+      boolean jdLowActivity,
+      boolean adpflux) {
     Path path = runtimeDir.resolve("report-visibility.env");
     Map<String, String> saved = new LinkedHashMap<>();
     saved.put("REPORT_DHH_VISIBLE", String.valueOf(dhh));
     saved.put("REPORT_JD_VISIBLE", String.valueOf(jd));
     saved.put("REPORT_JD_LOW_ACTIVITY_VISIBLE", String.valueOf(jdLowActivity));
+    saved.put("REPORT_ADPFLUX_VISIBLE", String.valueOf(adpflux));
     try {
       Files.createDirectories(runtimeDir);
       saveEnvironmentFile(path, "# Managed by the report visibility settings page.", saved);
@@ -176,6 +187,36 @@ public class RuntimeConfig {
       saved.forEach(values::put);
     } catch (IOException error) {
       throw new IllegalStateException("保存京东低活接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  public synchronized void saveAdpfluxCredentials(
+      String tokenValue,
+      String companyIdValue) {
+    String token = clean(tokenValue);
+    String companyId = clean(companyIdValue);
+    if (token.isBlank()) token = decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64");
+    if (companyId.isBlank()) companyId = get("ADPFLUX_COMPANY_EX_ID", "");
+    if (token.length() < 20 || token.length() > 4_000
+        || token.chars().anyMatch(Character::isWhitespace)) {
+      throw new IllegalArgumentException("请填写有效的 AuthorizationFront");
+    }
+    if (!companyId.matches("^[0-9]{8,30}$")) {
+      throw new IllegalArgumentException("CompanyExID 应为 8 至 30 位数字");
+    }
+
+    Path path = runtimeDir.resolve("adpflux.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("ADPFLUX_AUTHORIZATION_FRONT_B64", encodeSecret(token));
+      saved.put("ADPFLUX_COMPANY_EX_ID", companyId);
+      saveEnvironmentFile(path, "# Managed by the ADPFlux account dashboard.", saved);
+      saved.forEach(values::put);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存 ADPFlux 接口配置失败：" + error.getMessage(), error);
     }
   }
 

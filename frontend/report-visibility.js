@@ -2,7 +2,8 @@
   const reportPaths = {
     dhh: '/',
     jd: '/jd',
-    jdLowActivity: '/jd-low-activity'
+    jdLowActivity: '/jd-low-activity',
+    adpflux: '/adpflux'
   };
   const currentReport = Object.entries(reportPaths)
       .find(([, path]) => location.pathname === path)?.[0];
@@ -13,7 +14,7 @@
   if (currentReport) document.documentElement.classList.add('report-visibility-checking');
 
   async function applyVisibility() {
-    let visibility = {dhh: true, jd: true, jdLowActivity: true};
+    let visibility = {dhh: true, jd: true, jdLowActivity: true, adpflux: true};
     try {
       const response = await fetch('/api/report-visibility', {cache: 'no-store'});
       if (response.status === 401) {
@@ -25,23 +26,27 @@
       // Keep every report visible if the preference endpoint is temporarily unavailable.
     }
 
+    const navigation = document.querySelector('.header-actions, nav.nav');
+    const supplementalLinks = [
+      {path: '/adpflux', label: 'TikTok账户看板'},
+      {path: '/account-vault', label: '账户对应关系'}
+    ];
+    for (const item of supplementalLinks) {
+      if (!navigation || location.pathname === item.path
+          || navigation.querySelector(`a[href="${item.path}"]`)) continue;
+      const link = document.createElement('a');
+      link.href = item.path;
+      link.textContent = item.label;
+      if (navigation.classList.contains('header-actions')) link.className = 'report-link';
+      const toolsLink = navigation.querySelector('a[href="/tools"]');
+      const settingsLink = navigation.querySelector('a[href="/account"]');
+      navigation.insertBefore(link, toolsLink || settingsLink || navigation.querySelector('button'));
+    }
+
     for (const [key, path] of Object.entries(reportPaths)) {
       document.querySelectorAll(`a[href="${path}"]`).forEach(link => {
         link.classList.toggle('report-visibility-hidden', visibility[key] === false);
       });
-    }
-
-    if (location.pathname !== '/account-vault') {
-      const navigation = document.querySelector('.header-actions, nav.nav');
-      if (navigation && !navigation.querySelector('a[href="/account-vault"]')) {
-        const link = document.createElement('a');
-        link.href = '/account-vault';
-        link.textContent = '账户对应关系';
-        if (navigation.classList.contains('header-actions')) link.className = 'report-link';
-        const toolsLink = navigation.querySelector('a[href="/tools"]');
-        const settingsLink = navigation.querySelector('a[href="/account"]');
-        navigation.insertBefore(link, toolsLink || settingsLink || navigation.querySelector('button'));
-      }
     }
 
     if (currentReport && visibility[currentReport] === false) {

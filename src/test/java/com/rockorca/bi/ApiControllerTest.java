@@ -32,6 +32,7 @@ class ApiControllerTest {
   private SessionService sessions;
   private ReportService reports;
   private JdLowActivityService lowActivityReports;
+  private AdpfluxService adpfluxReports;
   private PetService pets;
   private UserService users;
   private UserRepository.UserAccount user;
@@ -42,6 +43,7 @@ class ApiControllerTest {
     sessions = mock(SessionService.class);
     reports = mock(ReportService.class);
     lowActivityReports = mock(JdLowActivityService.class);
+    adpfluxReports = mock(AdpfluxService.class);
     pets = mock(PetService.class);
     users = mock(UserService.class);
     LocalDateTime now = LocalDateTime.of(2026, 7, 30, 12, 0);
@@ -56,6 +58,7 @@ class ApiControllerTest {
             new AccountApiController(sessions, users),
             new ReportApiController(reports, sessions, users),
             new JdLowActivityApiController(lowActivityReports, sessions, users),
+            new AdpfluxApiController(adpfluxReports, sessions, users),
             new PetApiController(pets, sessions, users))
         .setControllerAdvice(new ApiExceptionHandler())
         .build();
@@ -127,9 +130,9 @@ class ApiControllerTest {
     when(reports.savedReportCredentials())
         .thenReturn(Map.of("token", "report-token", "userId", "20"));
     when(reports.reportVisibility())
-        .thenReturn(Map.of("dhh", true, "jd", true, "jdLowActivity", true));
-    when(reports.saveReportVisibility(true, false, true))
-        .thenReturn(Map.of("dhh", true, "jd", false, "jdLowActivity", true));
+        .thenReturn(Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true));
+    when(reports.saveReportVisibility(true, false, true, true))
+        .thenReturn(Map.of("dhh", true, "jd", false, "jdLowActivity", true, "adpflux", true));
     when(reports.saveReportCredentials("new-report-token", "21"))
         .thenReturn(Map.of("configured", true, "userId", "21"));
     when(reports.loadDhh("report-token", "20", "2026-07-01", "2026-07-25"))
@@ -180,7 +183,7 @@ class ApiControllerTest {
 
     verify(reports).loadDhh("report-token", "20", "2026-07-01", "2026-07-25");
     verify(reports).saveReportCredentials("new-report-token", "21");
-    verify(reports).saveReportVisibility(true, false, true);
+    verify(reports).saveReportVisibility(true, false, true, true);
     verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411");
   }
 
@@ -265,6 +268,57 @@ class ApiControllerTest {
   }
 
   @Test
+  void adpfluxApisDelegateAndProtectCredentials() throws Exception {
+    when(adpfluxReports.current()).thenReturn(Map.of("source", "current"));
+    when(adpfluxReports.analyze("2026-08-01", "2026-08-20", "云联", "enabled", true))
+        .thenReturn(Map.of("source", "analyze"));
+    when(adpfluxReports.credentialStatus())
+        .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
+    when(adpfluxReports.saveCredentials("front-token", "12345678901234567890"))
+        .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
+    when(adpfluxReports.sync(
+        "2026-08-20", "2026-08-20", "front-token", "12345678901234567890"))
+        .thenReturn(Map.of("source", "sync"));
+
+    mvc.perform(get("/api/adpflux/current"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("current"));
+    mvc.perform(post("/api/adpflux/analyze")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-08-01","end":"2026-08-20","query":"云联",
+                 "status":"enabled","spendingOnly":true}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("analyze"));
+    mvc.perform(get("/api/adpflux/settings"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.configured").value(true))
+        .andExpect(jsonPath("$.companyId").value("12345678901234567890"));
+    mvc.perform(post("/api/adpflux/settings")
+            .contentType("application/json")
+            .content("""
+                {"token":"front-token","companyId":"12345678901234567890"}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.configured").value(true));
+    mvc.perform(post("/api/adpflux/sync")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-08-20","end":"2026-08-20",
+                 "token":"front-token","companyId":"12345678901234567890"}
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.source").value("sync"));
+
+    verify(adpfluxReports).analyze("2026-08-01", "2026-08-20", "云联", "enabled", true);
+    verify(adpfluxReports).saveCredentials("front-token", "12345678901234567890");
+    verify(adpfluxReports).sync(
+        "2026-08-20", "2026-08-20", "front-token", "12345678901234567890");
+  }
+
+  @Test
   void ordinaryUsersCannotTriggerFullReportRefresh() throws Exception {
     UserRepository.UserAccount ordinaryUser = new UserRepository.UserAccount(
         2L, "viewer", "hash", "user", true, 1,
@@ -277,6 +331,22 @@ class ApiControllerTest {
     mvc.perform(post("/api/load")
             .contentType("application/json")
             .content("{\"token\":\"hidden-token\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(get("/api/adpflux/settings"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(post("/api/adpflux/settings")
+            .contentType("application/json")
+            .content("{\"token\":\"hidden-token\",\"companyId\":\"12345678901234567890\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
+    mvc.perform(post("/api/adpflux/sync")
+            .contentType("application/json")
+            .content("""
+                {"start":"2026-08-20","end":"2026-08-20",
+                 "token":"hidden-token","companyId":"12345678901234567890"}
+                """))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("仅管理员可以执行此操作"));
     mvc.perform(post("/api/jd/load")
@@ -318,11 +388,16 @@ class ApiControllerTest {
     verify(reports, never()).loadJd(anyString(), anyString(), anyBoolean());
     verify(reports, never()).savedReportCredentials();
     verify(reports, never()).saveReportCredentials(anyString(), anyString());
-    verify(reports, never()).saveReportVisibility(anyBoolean(), anyBoolean(), anyBoolean());
+    verify(reports, never())
+        .saveReportVisibility(anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     verify(lowActivityReports, never())
         .sync(anyString(), anyString(), anyString(), anyString());
     verify(lowActivityReports, never()).credentialStatus();
     verify(lowActivityReports, never()).saveCredentials(anyString(), anyString());
+    verify(adpfluxReports, never())
+        .sync(anyString(), anyString(), anyString(), anyString());
+    verify(adpfluxReports, never()).credentialStatus();
+    verify(adpfluxReports, never()).saveCredentials(anyString(), anyString());
   }
 
   @Test

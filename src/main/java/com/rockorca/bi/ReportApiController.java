@@ -69,7 +69,8 @@ public class ReportApiController {
         .body(reports.saveReportVisibility(
             !Boolean.FALSE.equals(payload.get("dhh")),
             !Boolean.FALSE.equals(payload.get("jd")),
-            !Boolean.FALSE.equals(payload.get("jdLowActivity"))));
+            !Boolean.FALSE.equals(payload.get("jdLowActivity")),
+            !Boolean.FALSE.equals(payload.get("adpflux"))));
   }
 
   @PostMapping("/load")

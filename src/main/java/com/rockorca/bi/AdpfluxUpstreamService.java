@@ -1,11 +1,9 @@
 package com.rockorca.bi;
 
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -20,16 +18,10 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class AdpfluxUpstreamService {
-  static final String REPORT_URL =
-      "https://business.tiktok.com/api/v3/bm/statistics/op/analytic/data";
+  static final String BOARD_URL =
+      "https://arbi-api.hubxad.com/tm-web/api/v1/advertiser/data/board";
   static final int PAGE_SIZE = 100;
   private static final int MAX_PAGES = 100;
-  private static final List<String> METRICS = List.of(
-      "stat_cost", "cpc", "cpm", "show_cnt", "click_cnt", "ctr",
-      "time_attr_convert_cnt", "time_attr_conversion_cost", "time_attr_conversion_rate",
-      "convert_cnt", "conversion_cost", "conversion_rate", "show_uv", "account_type",
-      "skan_convert_cnt", "skan_conversion_cost", "skan_conversion_rate", "company_name",
-      "adv_contacter", "currency", "currency_precision", "is_diff_currency");
 
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
@@ -37,58 +29,62 @@ public class AdpfluxUpstreamService {
 
   @Autowired
   public AdpfluxUpstreamService(RuntimeConfig config, ObjectMapper objectMapper) {
-    this(config, objectMapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NEVER).build());
+    this(
+        config,
+        objectMapper,
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build());
   }
 
-  AdpfluxUpstreamService(RuntimeConfig config, ObjectMapper objectMapper, HttpClient client) {
+  AdpfluxUpstreamService(
+      RuntimeConfig config,
+      ObjectMapper objectMapper,
+      HttpClient client) {
     this.config = config;
     this.objectMapper = objectMapper;
     this.client = client;
   }
 
   public Map<String, Object> credentialStatus() {
-    Credentials credentials = resolvedCredentials("", "", "", "", "", "");
+    Credentials credentials = resolvedCredentials("", "");
     return ReportService.mapOf(
         "configured", credentials.configured(),
-        "cookieSaved", !config.decodedSecret("ADPFLUX_TIKTOK_COOKIE_B64").isBlank(),
-        "csrfSaved", !config.decodedSecret("ADPFLUX_CSRF_TOKEN_B64").isBlank(),
-        "orgId", credentials.orgId(), "orgName", credentials.orgName(),
-        "currency", credentials.currency(), "timezone", credentials.timezone());
+        "tokenSaved", !config.decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64").isBlank(),
+        "companyIdSaved", !config.get("ADPFLUX_COMPANY_EX_ID", "").isBlank(),
+        "companyId", credentials.companyId());
   }
 
-  public Credentials resolvedCredentials(
-      String cookieValue, String csrfValue, String orgIdValue, String orgNameValue,
-      String currencyValue, String timezoneValue) {
-    String cookie = ReportService.text(cookieValue);
-    String csrf = ReportService.text(csrfValue);
-    String orgId = ReportService.text(orgIdValue);
-    String orgName = ReportService.text(orgNameValue);
-    String currency = ReportService.text(currencyValue).toUpperCase();
-    String timezone = ReportService.text(timezoneValue);
-    if (cookie.isBlank()) cookie = config.decodedSecret("ADPFLUX_TIKTOK_COOKIE_B64");
-    if (csrf.isBlank()) csrf = config.decodedSecret("ADPFLUX_CSRF_TOKEN_B64");
-    if (orgId.isBlank()) orgId = config.get("ADPFLUX_TIKTOK_ORG_ID", "");
-    if (orgName.isBlank()) orgName = config.get("ADPFLUX_TIKTOK_ORG_NAME", "");
-    if (currency.isBlank()) currency = config.get("ADPFLUX_TIKTOK_CURRENCY", "USD").toUpperCase();
-    if (timezone.isBlank()) timezone = config.get("ADPFLUX_TIKTOK_TIMEZONE", "America/New_York");
-    return new Credentials(cookie, csrf, orgId, orgName, currency, timezone);
+  public Credentials resolvedCredentials(String tokenValue, String companyIdValue) {
+    String token = ReportService.text(tokenValue);
+    String companyId = ReportService.text(companyIdValue);
+    if (token.isBlank()) token = config.decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64");
+    if (companyId.isBlank()) companyId = config.get("ADPFLUX_COMPANY_EX_ID", "");
+    return new Credentials(token, companyId);
   }
 
   public List<Map<String, Object>> fetchRows(
-      String startValue, String endValue, Credentials credentials) {
+      String startValue,
+      String endValue,
+      String tokenValue,
+      String companyIdValue) {
     LocalDate start = parseDate(startValue, "开始日期");
     LocalDate end = parseDate(endValue, "结束日期");
     if (start.isAfter(end)) throw new IllegalArgumentException("开始日期不能晚于结束日期");
     if (ChronoUnit.DAYS.between(start, end) > 92) {
       throw new IllegalArgumentException("单次同步日期范围不能超过 93 天");
     }
+    Credentials credentials = resolvedCredentials(tokenValue, companyIdValue);
     credentials.validate();
+
     List<Map<String, Object>> rows = new ArrayList<>();
     for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
       rows.addAll(fetchDay(date, credentials));
     }
-    if (rows.isEmpty()) throw new IllegalStateException("所选日期范围内没有账户数据，已取消覆盖数据库");
+    if (rows.isEmpty()) {
+      throw new IllegalStateException("所选日期范围内没有账户数据，已取消覆盖数据库");
+    }
     return rows;
   }
 
@@ -111,95 +107,91 @@ public class AdpfluxUpstreamService {
   }
 
   private Page requestPage(LocalDate date, int page, Credentials credentials) {
-    Map<String, Object> common = new LinkedHashMap<>();
-    common.put("st", date.toString()); common.put("et", date.toString());
-    common.put("page", page); common.put("page_size", PAGE_SIZE); common.put("metrics", METRICS);
-    common.put("dimensions", List.of("advertiser_id", "advertiser_name", "adv_timezone"));
-    common.put("sort_stat", "stat_cost"); common.put("sort_order", 1);
-    Map<String, Object> center = ReportService.mapOf(
-        "org_id", credentials.orgId(), "org_name", credentials.orgName(),
-        "currency", credentials.currency(), "timezone", credentials.timezone());
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("extra", ReportService.mapOf(
-        "scene", "overview_table_data_reporting", "patch_control_param", "1"));
-    payload.put("common_req", common);
-    payload.put("adv_filter", Map.of("multilevel_bc", center));
-    payload.put("operation", 1); payload.put("is_chart", 0);
-    String url = REPORT_URL + "?org_id="
-        + URLEncoder.encode(credentials.orgId(), StandardCharsets.UTF_8)
-        + "&attr_source=&source_biz_id=&attr_type=web";
+    payload.put("start_date", date.toString());
+    payload.put("end_date", date.toString());
+    payload.put("page", page);
+    payload.put("page_size", PAGE_SIZE);
+    payload.put("order_by", "total_spend");
+    payload.put("order_type", "desc");
+    payload.put("sealed_only", false);
     try {
-      HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(45))
-          .header("Accept", "application/json, text/plain, */*")
+      HttpRequest request = HttpRequest.newBuilder(URI.create(BOARD_URL))
+          .timeout(Duration.ofSeconds(45))
+          .header("Accept", "*/*")
           .header("Accept-Language", "zh-CN,zh;q=0.9")
+          .header("AuthorizationFront", credentials.token())
+          .header("CompanyExID", credentials.companyId())
           .header("Content-Type", "application/json")
-          .header("Cookie", credentials.cookie()).header("X-CSRFToken", credentials.csrfToken())
-          .header("Origin", "https://business.tiktok.com")
-          .header("Referer", "https://business.tiktok.com/").header("User-Agent", "Mozilla/5.0")
-          .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload))).build();
-      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+          .header("Origin", "https://www.adpflux.com")
+          .header("Referer", "https://www.adpflux.com/")
+          .header("User-Agent", "Mozilla/5.0")
+          .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+          .build();
+      HttpResponse<String> response =
+          client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() < 200 || response.statusCode() >= 300) {
         throw new IllegalStateException(
-            "TikTok Business 返回 HTTP " + response.statusCode() + "：" + shorten(response.body()));
+            "上游接口返回 HTTP " + response.statusCode() + "：" + shorten(response.body()));
       }
-      Map<String, Object> root = objectMapper.readValue(response.body(), new TypeReference<>() {});
+      Map<String, Object> root =
+          objectMapper.readValue(response.body(), new TypeReference<>() {});
       if ((int) ReportService.number(root.get("code")) != 0) {
-        throw new IllegalStateException("TikTok Business 请求失败：" + ReportService.text(root.get("msg")));
+        throw new IllegalStateException(
+            "上游接口请求失败：" + ReportService.text(root.get("message")));
       }
       Map<String, Object> data = objectMap(root.get("data"));
-      Map<String, Object> pagination = objectMap(data.get("pagination"));
-      int total = (int) ReportService.number(pagination.get("total_count"));
-      int pages = Math.max(1, (int) ReportService.number(pagination.get("page_count")));
+      Map<String, Object> pageInfo = objectMap(data.get("page_info"));
+      int total = Math.max(
+          (int) ReportService.number(data.get("count")),
+          (int) ReportService.number(pageInfo.get("total_number")));
+      int totalPages = Math.max(1, (int) ReportService.number(pageInfo.get("total_page")));
       List<Map<String, Object>> rows = new ArrayList<>();
-      for (Object value : objectList(data.get("table"))) {
+      for (Object value : objectList(data.get("list"))) {
         Map<String, Object> mapped = mapRow(date, objectMap(value));
         if (mapped != null) rows.add(mapped);
       }
-      return new Page(total, pages, rows);
+      return new Page(total, totalPages, rows);
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
-      throw new IllegalStateException("TikTok Business 请求被中断", error);
+      throw new IllegalStateException("ADPFlux 接口请求被中断", error);
     } catch (Exception error) {
       if (error instanceof IllegalStateException state) throw state;
-      throw new IllegalStateException("TikTok Business 请求失败：" + error.getMessage(), error);
+      throw new IllegalStateException("ADPFlux 接口请求失败：" + error.getMessage(), error);
     }
   }
 
   Map<String, Object> mapRow(LocalDate date, Map<String, Object> source) {
-    String id = ReportService.text(source.get("advertiser_id"));
-    if (id.isBlank()) return null;
+    String advertiserId = ReportService.text(source.get("advertiser_id"));
+    if (advertiserId.isBlank()) return null;
     Map<String, Object> row = new LinkedHashMap<>();
-    row.put("date", date.toString()); row.put("advertiserId", id);
+    row.put("date", date.toString());
+    row.put("advertiserId", advertiserId);
     row.put("advertiserName", ReportService.text(source.get("advertiser_name")));
-    row.put("totalSpend", number(source, "stat_cost"));
-    row.put("impressions", number(source, "show_cnt")); row.put("uniqueReach", number(source, "show_uv"));
-    row.put("clicks", number(source, "click_cnt")); row.put("conversions", number(source, "convert_cnt"));
-    row.put("cpc", number(source, "cpc")); row.put("cpm", number(source, "cpm"));
-    row.put("ctr", number(source, "ctr")); row.put("cpa", number(source, "conversion_cost"));
-    row.put("cvr", number(source, "conversion_rate"));
-    row.put("timeAttributedConversions", number(source, "time_attr_convert_cnt"));
-    row.put("timeAttributedCpa", number(source, "time_attr_conversion_cost"));
-    row.put("timeAttributedCvr", number(source, "time_attr_conversion_rate"));
-    row.put("skanConversions", number(source, "skan_convert_cnt"));
-    row.put("skanCpa", number(source, "skan_conversion_cost")); row.put("skanCvr", number(source, "skan_conversion_rate"));
+    row.put("balance", ReportService.number(source.get("balance")));
+    row.put("billedCost", ReportService.number(source.get("billed_cost")));
+    row.put("cashSpend", ReportService.number(source.get("cash_spend")));
+    row.put("voucherSpend", ReportService.number(source.get("voucher_spend")));
+    row.put("totalSpend", ReportService.number(source.get("total_spend")));
+    row.put("clicks", ReportService.number(source.get("clicks")));
+    row.put("conversions", ReportService.number(source.get("conversions")));
+    row.put("cpa", ReportService.number(source.get("cpa")));
+    row.put("cvr", ReportService.number(source.get("cvr")));
     row.put("currency", ReportService.text(source.get("currency")));
-    row.put("timezone", ReportService.text(source.get("adv_timezone")));
-    row.put("companyName", ReportService.text(source.get("company_name")));
-    row.put("accountType", ReportService.text(source.get("account_type")));
-    row.put("contact", ReportService.text(source.get("adv_contacter")));
-    row.put("status", 1); row.put("statusRaw", "ACTIVE"); row.put("balance", 0);
-    row.put("billedCost", 0); row.put("cashSpend", 0); row.put("voucherSpend", 0);
-    row.put("closingTime", ""); row.put("raw", source);
+    row.put("status", (int) ReportService.number(source.get("status")));
+    row.put("statusRaw", ReportService.text(source.get("status_raw")));
+    row.put("timezone", ReportService.text(source.get("timezone")));
+    row.put("closingTime", ReportService.text(source.get("closing_time")));
+    row.put("raw", source);
     return row;
   }
 
-  private static double number(Map<String, Object> source, String key) {
-    return ReportService.number(source.get(key));
-  }
-
   private static LocalDate parseDate(String value, String label) {
-    try { return LocalDate.parse(ReportService.text(value)); }
-    catch (Exception error) { throw new IllegalArgumentException(label + "格式错误", error); }
+    try {
+      return LocalDate.parse(ReportService.text(value));
+    } catch (Exception error) {
+      throw new IllegalArgumentException(label + "格式错误", error);
+    }
   }
 
   @SuppressWarnings("unchecked")
@@ -216,19 +208,20 @@ public class AdpfluxUpstreamService {
     return text.substring(0, Math.min(500, text.length()));
   }
 
-  record Credentials(String cookie, String csrfToken, String orgId, String orgName,
-                     String currency, String timezone) {
+  record Credentials(String token, String companyId) {
     boolean configured() {
-      return cookie != null && cookie.length() >= 50 && cookie.length() <= 20_000
-          && cookie.indexOf('\0') < 0 && cookie.indexOf('\r') < 0 && cookie.indexOf('\n') < 0
-          && csrfToken != null && csrfToken.matches("^[A-Za-z0-9_-]{8,200}$")
-          && orgId != null && orgId.matches("^[0-9]{8,30}$")
-          && orgName != null && orgName.length() <= 200
-          && currency != null && currency.matches("^[A-Z]{3}$")
-          && timezone != null && timezone.matches("^[A-Za-z0-9_+./:-]{1,80}$");
+      return token != null
+          && token.length() >= 20
+          && token.length() <= 4_000
+          && token.chars().noneMatch(Character::isWhitespace)
+          && companyId != null
+          && companyId.matches("^[0-9]{8,30}$");
     }
+
     void validate() {
-      if (!configured()) throw new IllegalArgumentException("请填写有效的 TikTok Cookie、CSRF Token 和组织信息");
+      if (!configured()) {
+        throw new IllegalArgumentException("请填写有效的 AuthorizationFront 和 CompanyExID");
+      }
     }
   }
 

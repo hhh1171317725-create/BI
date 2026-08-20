@@ -62,18 +62,15 @@ public class AdpfluxService {
   public Map<String, Object> sync(
       String start,
       String end,
-      String cookie,
-      String csrfToken,
-      String orgId,
-      String orgName,
-      String currency,
-      String timezone) {
+      String token,
+      String companyId) {
     return runExclusive(() -> {
       AdpfluxUpstreamService.Credentials credentials =
-          upstream.resolvedCredentials(cookie, csrfToken, orgId, orgName, currency, timezone);
+          upstream.resolvedCredentials(token, companyId);
       credentials.validate();
-      List<Map<String, Object>> rows = upstream.fetchRows(start, end, credentials);
-      saveCredentials(credentials);
+      List<Map<String, Object>> rows =
+          upstream.fetchRows(start, end, credentials.token(), credentials.companyId());
+      config.saveAdpfluxCredentials(credentials.token(), credentials.companyId());
       repository.replaceRange(rows, start, end, "manual");
       return analyze(start, end, "", "all", false);
     });
@@ -83,20 +80,12 @@ public class AdpfluxService {
     return upstream.credentialStatus();
   }
 
-  public Map<String, Object> saveCredentials(
-      String cookie, String csrfToken, String orgId, String orgName,
-      String currency, String timezone) {
+  public Map<String, Object> saveCredentials(String token, String companyId) {
     AdpfluxUpstreamService.Credentials credentials =
-        upstream.resolvedCredentials(cookie, csrfToken, orgId, orgName, currency, timezone);
+        upstream.resolvedCredentials(token, companyId);
     credentials.validate();
-    saveCredentials(credentials);
+    config.saveAdpfluxCredentials(credentials.token(), credentials.companyId());
     return upstream.credentialStatus();
-  }
-
-  private void saveCredentials(AdpfluxUpstreamService.Credentials credentials) {
-    config.saveAdpfluxCredentials(
-        credentials.cookie(), credentials.csrfToken(), credentials.orgId(), credentials.orgName(),
-        credentials.currency(), credentials.timezone());
   }
 
   @Scheduled(cron = "0 20 9 * * *", zone = "Asia/Shanghai")
@@ -105,15 +94,15 @@ public class AdpfluxService {
     try {
       runExclusive(() -> {
         String date = LocalDate.now(ReportService.BEIJING).minusDays(1).toString();
-        AdpfluxUpstreamService.Credentials credentials =
-            upstream.resolvedCredentials("", "", "", "", "", "");
-        List<Map<String, Object>> rows = upstream.fetchRows(date, date, credentials);
+        AdpfluxUpstreamService.Credentials credentials = upstream.resolvedCredentials("", "");
+        List<Map<String, Object>> rows =
+            upstream.fetchRows(date, date, credentials.token(), credentials.companyId());
         repository.replaceRange(rows, date, date, "scheduled");
         return null;
       });
-      System.out.println("TikTok账户看板定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));
+      System.out.println("ADPFlux账户看板定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));
     } catch (Exception error) {
-      System.err.println("TikTok账户看板定时更新失败：" + error.getMessage());
+      System.err.println("ADPFlux账户看板定时更新失败：" + error.getMessage());
     }
   }
 
@@ -126,8 +115,6 @@ public class AdpfluxService {
     List<Map<String, Object>> byAccount = aggregateAccounts(rows);
     List<Map<String, Object>> byDate = aggregateDates(rows);
     double totalSpend = sum(rows, "totalSpend");
-    double totalImpressions = sum(rows, "impressions");
-    double totalReach = sum(rows, "uniqueReach");
     double totalClicks = sum(rows, "clicks");
     double totalConversions = sum(rows, "conversions");
     double totalBalance = latestBalance(rows);
@@ -140,13 +127,8 @@ public class AdpfluxService {
         "spendingAccounts", spendingAccounts,
         "totalSpend", money(totalSpend),
         "totalBalance", money(totalBalance),
-        "impressions", Math.round(totalImpressions),
-        "uniqueReach", Math.round(totalReach),
         "clicks", Math.round(totalClicks),
         "conversions", Math.round(totalConversions),
-        "cpc", cost(totalSpend, totalClicks),
-        "cpm", totalImpressions == 0 ? 0 : money(totalSpend / totalImpressions * 1000),
-        "ctr", percent(totalClicks, totalImpressions),
         "cpa", cost(totalSpend, totalConversions),
         "cvr", percent(totalConversions, totalClicks),
         "billedCost", money(sum(rows, "billedCost")),
@@ -176,8 +158,6 @@ public class AdpfluxService {
       String id = ReportService.text(row.get("advertiserId"));
       Bucket bucket = buckets.computeIfAbsent(id, ignored -> new Bucket(id));
       bucket.totalSpend += ReportService.number(row.get("totalSpend"));
-      bucket.impressions += ReportService.number(row.get("impressions"));
-      bucket.uniqueReach += ReportService.number(row.get("uniqueReach"));
       bucket.billedCost += ReportService.number(row.get("billedCost"));
       bucket.cashSpend += ReportService.number(row.get("cashSpend"));
       bucket.voucherSpend += ReportService.number(row.get("voucherSpend"));
@@ -198,15 +178,13 @@ public class AdpfluxService {
     Map<String, Set<String>> accounts = new LinkedHashMap<>();
     for (Map<String, Object> row : rows) {
       String date = ReportService.text(row.get("date"));
-      double[] bucket = values.computeIfAbsent(date, ignored -> new double[8]);
+      double[] bucket = values.computeIfAbsent(date, ignored -> new double[6]);
       bucket[0] += ReportService.number(row.get("totalSpend"));
       bucket[1] += ReportService.number(row.get("clicks"));
       bucket[2] += ReportService.number(row.get("conversions"));
-      bucket[3] += ReportService.number(row.get("impressions"));
-      bucket[4] += ReportService.number(row.get("uniqueReach"));
-      bucket[5] += ReportService.number(row.get("timeAttributedConversions"));
-      bucket[6] += ReportService.number(row.get("skanConversions"));
-      bucket[7] += ReportService.number(row.get("billedCost"));
+      bucket[3] += ReportService.number(row.get("billedCost"));
+      bucket[4] += ReportService.number(row.get("cashSpend"));
+      bucket[5] += ReportService.number(row.get("voucherSpend"));
       accounts.computeIfAbsent(date, ignored -> new LinkedHashSet<>())
           .add(ReportService.text(row.get("advertiserId")));
     }
@@ -217,20 +195,13 @@ public class AdpfluxService {
           "date", entry.getKey(),
           "accounts", accounts.getOrDefault(entry.getKey(), Set.of()).size(),
           "totalSpend", money(bucket[0]),
-          "impressions", Math.round(bucket[3]),
-          "uniqueReach", Math.round(bucket[4]),
           "clicks", Math.round(bucket[1]),
           "conversions", Math.round(bucket[2]),
-          "cpc", cost(bucket[0], bucket[1]),
-          "cpm", bucket[3] == 0 ? 0 : money(bucket[0] / bucket[3] * 1000),
-          "ctr", percent(bucket[1], bucket[3]),
           "cpa", cost(bucket[0], bucket[2]),
           "cvr", percent(bucket[2], bucket[1]),
-          "timeAttributedConversions", Math.round(bucket[5]),
-          "skanConversions", Math.round(bucket[6]),
-          "billedCost", money(bucket[7]),
-          "cashSpend", 0,
-          "voucherSpend", 0));
+          "billedCost", money(bucket[3]),
+          "cashSpend", money(bucket[4]),
+          "voucherSpend", money(bucket[5])));
     }
     result.sort(Comparator.comparing(
         (Map<String, Object> row) -> ReportService.text(row.get("date"))).reversed());
@@ -249,10 +220,6 @@ public class AdpfluxService {
     detail.put("voucherSpend", money(ReportService.number(row.get("voucherSpend"))));
     detail.put("cpa", cost(spend, conversions));
     detail.put("cvr", percent(conversions, clicks));
-    detail.put("cpc", cost(spend, clicks));
-    double impressions = ReportService.number(row.get("impressions"));
-    detail.put("cpm", impressions == 0 ? 0 : money(spend / impressions * 1000));
-    detail.put("ctr", percent(clicks, impressions));
     return detail;
   }
 
@@ -317,8 +284,6 @@ public class AdpfluxService {
     private String latestDate = "";
     private String currency = "";
     private String timezone = "";
-    private String companyName = "";
-    private String accountType = "";
     private String statusRaw = "";
     private int status;
     private double balance;
@@ -328,8 +293,6 @@ public class AdpfluxService {
     private double voucherSpend;
     private double clicks;
     private double conversions;
-    private double impressions;
-    private double uniqueReach;
 
     private Bucket(String advertiserId) {
       this.advertiserId = advertiserId;
@@ -340,8 +303,6 @@ public class AdpfluxService {
       advertiserName = ReportService.text(row.get("advertiserName"));
       currency = ReportService.text(row.get("currency"));
       timezone = ReportService.text(row.get("timezone"));
-      companyName = ReportService.text(row.get("companyName"));
-      accountType = ReportService.text(row.get("accountType"));
       statusRaw = ReportService.text(row.get("statusRaw"));
       status = (int) ReportService.number(row.get("status"));
       balance = ReportService.number(row.get("balance"));
@@ -357,19 +318,12 @@ public class AdpfluxService {
           "billedCost", money(billedCost),
           "cashSpend", money(cashSpend),
           "voucherSpend", money(voucherSpend),
-          "impressions", Math.round(impressions),
-          "uniqueReach", Math.round(uniqueReach),
           "clicks", Math.round(clicks),
           "conversions", Math.round(conversions),
-          "cpc", cost(totalSpend, clicks),
-          "cpm", impressions == 0 ? 0 : money(totalSpend / impressions * 1000),
-          "ctr", percent(clicks, impressions),
           "cpa", cost(totalSpend, conversions),
           "cvr", percent(conversions, clicks),
           "currency", currency,
           "timezone", timezone,
-          "companyName", companyName,
-          "accountType", accountType,
           "status", status,
           "statusRaw", statusRaw);
     }

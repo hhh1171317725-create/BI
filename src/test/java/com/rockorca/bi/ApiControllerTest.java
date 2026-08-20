@@ -273,14 +273,11 @@ class ApiControllerTest {
     when(adpfluxReports.analyze("2026-08-01", "2026-08-20", "云联", "enabled", true))
         .thenReturn(Map.of("source", "analyze"));
     when(adpfluxReports.credentialStatus())
-        .thenReturn(Map.of("configured", true, "orgId", "7667460016981688336"));
-    when(adpfluxReports.saveCredentials(
-        "test-cookie", "csrf-token", "7667460016981688336", "Test BC",
-        "USD", "America/New_York"))
-        .thenReturn(Map.of("configured", true, "orgId", "7667460016981688336"));
+        .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
+    when(adpfluxReports.saveCredentials("front-token", "12345678901234567890"))
+        .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
     when(adpfluxReports.sync(
-        "2026-08-20", "2026-08-20", "test-cookie", "csrf-token",
-        "7667460016981688336", "Test BC", "USD", "America/New_York"))
+        "2026-08-20", "2026-08-20", "front-token", "12345678901234567890"))
         .thenReturn(Map.of("source", "sync"));
 
     mvc.perform(get("/api/adpflux/current"))
@@ -298,13 +295,11 @@ class ApiControllerTest {
         .andExpect(status().isOk())
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.configured").value(true))
-        .andExpect(jsonPath("$.orgId").value("7667460016981688336"));
+        .andExpect(jsonPath("$.companyId").value("12345678901234567890"));
     mvc.perform(post("/api/adpflux/settings")
             .contentType("application/json")
             .content("""
-                {"cookie":"test-cookie","csrfToken":"csrf-token",
-                 "orgId":"7667460016981688336","orgName":"Test BC",
-                 "currency":"USD","timezone":"America/New_York"}
+                {"token":"front-token","companyId":"12345678901234567890"}
                 """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.configured").value(true));
@@ -312,20 +307,15 @@ class ApiControllerTest {
             .contentType("application/json")
             .content("""
                 {"start":"2026-08-20","end":"2026-08-20",
-                 "cookie":"test-cookie","csrfToken":"csrf-token",
-                 "orgId":"7667460016981688336","orgName":"Test BC",
-                 "currency":"USD","timezone":"America/New_York"}
+                 "token":"front-token","companyId":"12345678901234567890"}
                 """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("sync"));
 
     verify(adpfluxReports).analyze("2026-08-01", "2026-08-20", "云联", "enabled", true);
-    verify(adpfluxReports).saveCredentials(
-        "test-cookie", "csrf-token", "7667460016981688336", "Test BC",
-        "USD", "America/New_York");
+    verify(adpfluxReports).saveCredentials("front-token", "12345678901234567890");
     verify(adpfluxReports).sync(
-        "2026-08-20", "2026-08-20", "test-cookie", "csrf-token",
-        "7667460016981688336", "Test BC", "USD", "America/New_York");
+        "2026-08-20", "2026-08-20", "front-token", "12345678901234567890");
   }
 
   @Test
@@ -404,12 +394,10 @@ class ApiControllerTest {
         .sync(anyString(), anyString(), anyString(), anyString());
     verify(lowActivityReports, never()).credentialStatus();
     verify(lowActivityReports, never()).saveCredentials(anyString(), anyString());
-    verify(adpfluxReports, never()).sync(
-        anyString(), anyString(), anyString(), anyString(),
-        anyString(), anyString(), anyString(), anyString());
+    verify(adpfluxReports, never())
+        .sync(anyString(), anyString(), anyString(), anyString());
     verify(adpfluxReports, never()).credentialStatus();
-    verify(adpfluxReports, never()).saveCredentials(
-        anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
+    verify(adpfluxReports, never()).saveCredentials(anyString(), anyString());
   }
 
   @Test

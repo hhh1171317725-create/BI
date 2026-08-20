@@ -110,3 +110,22 @@
 | `synced_at` | 最近同步时间 |
 
 页面利润口径：`commission - spend`。ROI 口径：`commission ÷ spend`。
+
+## `clickflare_campaign_revenue_daily`
+
+ClickFlare 收益活动的每日数据库快照。后台每 10 分钟拉取北京时间当天的完整分页，全部成功后才在事务中替换当天快照；同步失败时保留上一版数据。
+
+| 字段 | 含义 |
+|---|---|
+| `business_date` | 收益业务日期，北京时间 |
+| `campaign_id` / `campaign_name` | 收益活动 ID / 名称 |
+| `conversions` | 转化数 |
+| `revenue` | 收益金额 |
+| `spend` | 上游回传消耗 |
+| `roi` | 上游回传 ROI |
+| `currency` | 币种 |
+| `synced_at` | 最近同步写入时间 |
+
+## `clickflare_revenue_sync_runs`
+
+记录每次成功完成的 ClickFlare 收益同步，包括业务日期、写入活动数、触发方式和完成时间。

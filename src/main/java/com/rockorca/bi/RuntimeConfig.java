@@ -220,6 +220,25 @@ public class RuntimeConfig {
     }
   }
 
+  public synchronized void saveAdpfluxCampaignApiKeyId(String apiKeyIdValue) {
+    String apiKeyId = clean(apiKeyIdValue);
+    if (!apiKeyId.matches("^[0-9]{1,10}$")) {
+      throw new IllegalArgumentException("api_key_id 应为数字");
+    }
+    Path path = runtimeDir.resolve("adpflux.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("ADPFLUX_CF_API_KEY_ID", apiKeyId);
+      saveEnvironmentFile(path, "# Managed by the ADPFlux account dashboard.", saved);
+      saved.forEach(values::put);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存 ADPFlux 收益接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
   public synchronized void saveAiCredentials(
       String providerValue,
       String apiKeyValue,

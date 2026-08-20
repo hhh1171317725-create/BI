@@ -124,11 +124,14 @@ class AccountVaultServiceTest {
         "styleId", "style-1",
         "articleUrl", "https://example.com/article",
         "materialUrl", "https://example.com/materials",
-        "copyText", "广告文案"), 1);
+        "copyText", "广告文案",
+        "revenueSourceIds", List.of("6a7a88e5f5abf00012fc10d4", "6a8304dc2678090012b7b3ff")), 1);
 
     assertEquals("美国,英国", result.get("country"));
     assertEquals(1, result.get("campaignQuantity"));
     assertEquals("20", result.get("dailyBudget"));
+    assertEquals("6a7a88e5f5abf00012fc10d4\n6a8304dc2678090012b7b3ff",
+        result.get("revenueSourceIds"));
   }
 
   @Test
@@ -176,7 +179,7 @@ class AccountVaultServiceTest {
   private static AccountVaultRepository.Entry storedEntry(
       long id, String keyword, String accountIds, String channel) {
     return new AccountVaultRepository.Entry(
-        id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "", "",
+        id, "ad_account", keyword, accountIds, "", "", "https://example.com/article", "", "", "",
         keyword, channel, "style-1", "美国", 1, new BigDecimal("20.00"),
         "", "", 1, 1, null, null);
   }

@@ -23,6 +23,7 @@ public class AccountVaultRepository {
       String url,
       String materialUrl,
       String copyText,
+      String revenueSourceIds,
       String keyword,
       String channelId,
       String styleId,
@@ -41,7 +42,7 @@ public class AccountVaultRepository {
   public record OptionEntry(long id, String type, String value) {}
 
   private static final String COLUMNS = "id, category, name, account_id, username, secret_encrypted,"
-      + " url, material_url, copy_text, keyword_text, channel_id, style_id, country,"
+      + " url, material_url, copy_text, revenue_source_ids, keyword_text, channel_id, style_id, country,"
       + " campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by, created_at, updated_at";
   private final ReportRepository reports;
   private volatile boolean initialized;
@@ -64,6 +65,7 @@ public class AccountVaultRepository {
             url VARCHAR(2000) NOT NULL DEFAULT '',
             material_url VARCHAR(2000) NOT NULL DEFAULT '',
             copy_text TEXT NOT NULL,
+            revenue_source_ids TEXT NOT NULL,
             keyword_text VARCHAR(1000) NOT NULL DEFAULT '',
             channel_id VARCHAR(255) NOT NULL DEFAULT '',
             style_id VARCHAR(255) NOT NULL DEFAULT '',
@@ -98,6 +100,7 @@ public class AccountVaultRepository {
       migrateAccountIdColumn(connection);
       migrateMaterialUrlColumn(connection);
       migrateCopyTextColumn(connection);
+      migrateRevenueSourceIdsColumn(connection);
       migrateAdCreationColumns(connection);
       statement.execute("""
           INSERT IGNORE INTO account_vault_options (option_type, option_value)
@@ -279,6 +282,18 @@ public class AccountVaultRepository {
     }
   }
 
+  private static void migrateRevenueSourceIdsColumn(Connection connection) throws SQLException {
+    if (columnExists(connection, "revenue_source_ids")) return;
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "ALTER TABLE account_vault_entries ADD COLUMN revenue_source_ids TEXT NULL AFTER copy_text");
+      statement.execute(
+          "UPDATE account_vault_entries SET revenue_source_ids = '' WHERE revenue_source_ids IS NULL");
+      statement.execute(
+          "ALTER TABLE account_vault_entries MODIFY revenue_source_ids TEXT NOT NULL");
+    }
+  }
+
   private static boolean columnExists(Connection connection, String columnName) throws SQLException {
     try (PreparedStatement query = connection.prepareStatement("""
         SELECT 1
@@ -305,11 +320,11 @@ public class AccountVaultRepository {
     }
     if (!query.isBlank()) {
       where.append(" AND (name LIKE ? OR account_id LIKE ? OR username LIKE ? OR url LIKE ?"
-          + " OR material_url LIKE ? OR copy_text LIKE ?"
+          + " OR material_url LIKE ? OR copy_text LIKE ? OR revenue_source_ids LIKE ?"
           + " OR keyword_text LIKE ? OR channel_id LIKE ? OR style_id LIKE ? OR country LIKE ?"
           + " OR owner_name LIKE ? OR notes LIKE ?)");
       String pattern = "%" + query + "%";
-      for (int index = 0; index < 12; index++) parameters.add(pattern);
+      for (int index = 0; index < 13; index++) parameters.add(pattern);
     }
     try (Connection connection = reports.openConnection()) {
       long total;
@@ -373,9 +388,9 @@ public class AccountVaultRepository {
     initialize();
     String sql = """
         INSERT INTO account_vault_entries
-          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
+          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, revenue_source_ids, keyword_text,
            channel_id, style_id, country, campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -395,9 +410,9 @@ public class AccountVaultRepository {
     if (entries.isEmpty()) return;
     String sql = """
         INSERT INTO account_vault_entries
-          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, keyword_text,
+          (category, name, account_id, username, secret_encrypted, url, material_url, copy_text, revenue_source_ids, keyword_text,
            channel_id, style_id, country, campaign_quantity, daily_budget, owner_name, notes, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = reports.openConnection()) {
       connection.setAutoCommit(false);
@@ -424,7 +439,7 @@ public class AccountVaultRepository {
     String sql = """
         UPDATE account_vault_entries
            SET category = ?, name = ?, account_id = ?, username = ?, secret_encrypted = ?,
-               url = ?, material_url = ?, copy_text = ?, keyword_text = ?, channel_id = ?, style_id = ?, country = ?,
+               url = ?, material_url = ?, copy_text = ?, revenue_source_ids = ?, keyword_text = ?, channel_id = ?, style_id = ?, country = ?,
                campaign_quantity = ?, daily_budget = ?, owner_name = ?, notes = ?, updated_by = ?
          WHERE id = ?
         """;
@@ -438,16 +453,17 @@ public class AccountVaultRepository {
       statement.setString(6, entry.url());
       statement.setString(7, entry.materialUrl());
       statement.setString(8, entry.copyText());
-      statement.setString(9, entry.keyword());
-      statement.setString(10, entry.channelId());
-      statement.setString(11, entry.styleId());
-      statement.setString(12, entry.country());
-      statement.setInt(13, entry.campaignQuantity());
-      statement.setBigDecimal(14, entry.dailyBudget());
-      statement.setString(15, entry.owner());
-      statement.setString(16, entry.notes());
-      statement.setLong(17, entry.updatedBy());
-      statement.setLong(18, id);
+      statement.setString(9, entry.revenueSourceIds());
+      statement.setString(10, entry.keyword());
+      statement.setString(11, entry.channelId());
+      statement.setString(12, entry.styleId());
+      statement.setString(13, entry.country());
+      statement.setInt(14, entry.campaignQuantity());
+      statement.setBigDecimal(15, entry.dailyBudget());
+      statement.setString(16, entry.owner());
+      statement.setString(17, entry.notes());
+      statement.setLong(18, entry.updatedBy());
+      statement.setLong(19, id);
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("账户资料不存在");
       return find(id);
     } catch (SQLException error) {
@@ -482,16 +498,17 @@ public class AccountVaultRepository {
     statement.setString(6, entry.url());
     statement.setString(7, entry.materialUrl());
     statement.setString(8, entry.copyText());
-    statement.setString(9, entry.keyword());
-    statement.setString(10, entry.channelId());
-    statement.setString(11, entry.styleId());
-    statement.setString(12, entry.country());
-    statement.setInt(13, entry.campaignQuantity());
-    statement.setBigDecimal(14, entry.dailyBudget());
-    statement.setString(15, entry.owner());
-    statement.setString(16, entry.notes());
-    statement.setLong(17, entry.createdBy());
-    statement.setLong(18, entry.updatedBy());
+    statement.setString(9, entry.revenueSourceIds());
+    statement.setString(10, entry.keyword());
+    statement.setString(11, entry.channelId());
+    statement.setString(12, entry.styleId());
+    statement.setString(13, entry.country());
+    statement.setInt(14, entry.campaignQuantity());
+    statement.setBigDecimal(15, entry.dailyBudget());
+    statement.setString(16, entry.owner());
+    statement.setString(17, entry.notes());
+    statement.setLong(18, entry.createdBy());
+    statement.setLong(19, entry.updatedBy());
   }
 
   private static Entry map(ResultSet result) throws SQLException {
@@ -500,6 +517,7 @@ public class AccountVaultRepository {
         result.getString("account_id"), result.getString("username"),
         result.getString("secret_encrypted"), result.getString("url"),
         result.getString("material_url"), result.getString("copy_text"),
+        result.getString("revenue_source_ids"),
         result.getString("keyword_text"), result.getString("channel_id"),
         result.getString("style_id"), result.getString("country"),
         result.getInt("campaign_quantity"), result.getBigDecimal("daily_budget"),

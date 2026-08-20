@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 public class AccountVaultService {
   private static final List<String> EXPORT_HEADERS =
       List.of("关键词", "账户ID", "投放国家", "channel", "style ID", "文章链接", "素材链接", "文案",
-          "推广系列数量", "日预算");
+          "收益活动ID", "推广系列数量", "日预算");
   private static final int DEFAULT_CAMPAIGN_QUANTITY = 1;
   private static final BigDecimal DEFAULT_DAILY_BUDGET = new BigDecimal("20.00");
   private final AccountVaultRepository repository;
@@ -139,6 +139,7 @@ public class AccountVaultService {
         List<String> values = List.of(
             entry.keyword(), entry.accountId(), entry.country(), entry.channelId(),
             entry.styleId(), entry.url(), entry.materialUrl(), entry.copyText(),
+            entry.revenueSourceIds(),
             String.valueOf(entry.campaignQuantity()), decimalText(entry.dailyBudget()));
         for (int index = 0; index < values.size(); index++) {
           Cell cell = row.createCell(index);
@@ -146,7 +147,7 @@ public class AccountVaultService {
           if (index == 1) cell.setCellStyle(wrapped);
         }
       }
-      int[] widths = {28, 30, 18, 20, 20, 70, 70, 60, 16, 14};
+      int[] widths = {28, 30, 18, 20, 20, 70, 70, 60, 40, 16, 14};
       for (int index = 0; index < widths.length; index++) sheet.setColumnWidth(index, widths[index] * 256);
       sheet.createFreezePane(0, 1);
       sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(
@@ -176,12 +177,14 @@ public class AccountVaultService {
     String materialUrl = clean(text(payload.get("materialUrl")), 2000, "素材链接");
     validateUrl(materialUrl);
     String copyText = clean(text(payload.get("copyText")), 20_000, "文案");
+    String revenueSourceIds = normalizeSourceIds(payload.get("revenueSourceIds"));
     int campaignQuantity = positiveInteger(
         payload.get("campaignQuantity"), DEFAULT_CAMPAIGN_QUANTITY, 100, "推广系列数量");
     BigDecimal dailyBudget = positiveDecimal(
         payload.get("dailyBudget"), DEFAULT_DAILY_BUDGET, new BigDecimal("1000000"), "日预算");
     return new AccountVaultRepository.Entry(
-        0, "ad_account", keyword, accountIds, "", "", articleUrl, materialUrl, copyText, keyword,
+        0, "ad_account", keyword, accountIds, "", "", articleUrl, materialUrl, copyText,
+        revenueSourceIds, keyword,
         channel, styleId, country, campaignQuantity, dailyBudget,
         "", "", createdBy, updatedBy, null, null);
   }
@@ -198,6 +201,7 @@ public class AccountVaultService {
         "articleUrl", entry.url(),
         "materialUrl", entry.materialUrl(),
         "copyText", entry.copyText(),
+        "revenueSourceIds", entry.revenueSourceIds(),
         "campaignQuantity", entry.campaignQuantity(),
         "dailyBudget", decimalText(entry.dailyBudget()),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
@@ -296,6 +300,7 @@ public class AccountVaultService {
         item.put("articleUrl", firstValue(row, headers, "文章链接", "url", "URL"));
         item.put("materialUrl", firstValue(row, headers, "素材链接", "素材", "materialUrl"));
         item.put("copyText", firstValue(row, headers, "文案", "广告文案", "copyText"));
+        item.put("revenueSourceIds", firstValue(row, headers, "收益活动ID", "收益活动", "sourceId"));
         item.put("campaignQuantity", firstValue(row, headers, "推广系列数量", "系列数量"));
         item.put("dailyBudget", firstValue(row, headers, "日预算", "预算"));
         rows.add(item);
@@ -335,6 +340,30 @@ public class AccountVaultService {
     List<String> accounts = accountLines(value);
     if (accounts.size() > 500) throw new IllegalArgumentException("单条映射最多保存 500 个账户");
     return clean(String.join("\n", accounts), 20_000, "账户 ID");
+  }
+
+  private static String normalizeSourceIds(Object value) {
+    String raw;
+    if (value instanceof Iterable<?> values) {
+      List<String> parts = new ArrayList<>();
+      for (Object item : values) parts.add(text(item));
+      raw = String.join("\n", parts);
+    } else {
+      raw = text(value);
+    }
+    List<String> ids = raw.lines()
+        .flatMap(line -> java.util.Arrays.stream(line.split("[,，;；]+")))
+        .map(String::trim)
+        .filter(id -> !id.isBlank())
+        .distinct()
+        .toList();
+    if (ids.size() > 100) throw new IllegalArgumentException("单个关键词最多绑定 100 个收益活动");
+    for (String id : ids) {
+      if (!id.matches("^[A-Za-z0-9_-]{4,100}$")) {
+        throw new IllegalArgumentException("收益活动 ID 格式无效");
+      }
+    }
+    return String.join("\n", ids);
   }
 
   private static List<String> accountLines(String value) {

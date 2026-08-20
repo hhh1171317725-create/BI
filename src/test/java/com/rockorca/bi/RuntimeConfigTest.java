@@ -40,18 +40,21 @@ class RuntimeConfigTest {
   }
 
   @Test
-  void adpfluxCredentialsAreEncodedAndAvailableWithoutRestart() throws Exception {
+  void tikTokCredentialsAreEncodedAndAvailableWithoutRestart() throws Exception {
     RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
     ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
 
-    config.saveAdpfluxCredentials("front-token-value-123456", "12345678901234567890");
+    String cookie = "sessionid_ads=test-session; csrftoken=test-token; uid_tt_ads=test-user";
+    config.saveAdpfluxCredentials(
+        cookie, "csrf-token-123456", "7667460016981688336", "Test Business",
+        "USD", "America/New_York");
 
     Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(
         Files.readString(temporaryDirectory.resolve("adpflux.env"), StandardCharsets.UTF_8));
-    assertEquals("12345678901234567890", saved.get("ADPFLUX_COMPANY_EX_ID"));
-    assertEquals(
-        "front-token-value-123456",
-        config.decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64"));
+    assertEquals("7667460016981688336", saved.get("ADPFLUX_TIKTOK_ORG_ID"));
+    assertEquals("Test Business", saved.get("ADPFLUX_TIKTOK_ORG_NAME"));
+    assertEquals(cookie, config.decodedSecret("ADPFLUX_TIKTOK_COOKIE_B64"));
+    assertEquals("csrf-token-123456", config.decodedSecret("ADPFLUX_CSRF_TOKEN_B64"));
   }
 
   @Test

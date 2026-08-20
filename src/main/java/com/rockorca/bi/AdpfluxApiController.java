@@ -57,8 +57,12 @@ public class AdpfluxApiController {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(reports.saveCredentials(
-            ReportService.text(payload.get("token")),
-            ReportService.text(payload.get("companyId"))));
+            ReportService.text(payload.get("cookie")),
+            ReportService.text(payload.get("csrfToken")),
+            ReportService.text(payload.get("orgId")),
+            ReportService.text(payload.get("orgName")),
+            ReportService.text(payload.get("currency")),
+            ReportService.text(payload.get("timezone"))));
   }
 
   @PostMapping("/sync")
@@ -69,7 +73,11 @@ public class AdpfluxApiController {
     return reports.sync(
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")),
-        ReportService.text(payload.get("token")),
-        ReportService.text(payload.get("companyId")));
+        ReportService.text(payload.get("cookie")),
+        ReportService.text(payload.get("csrfToken")),
+        ReportService.text(payload.get("orgId")),
+        ReportService.text(payload.get("orgName")),
+        ReportService.text(payload.get("currency")),
+        ReportService.text(payload.get("timezone")));
   }
 }

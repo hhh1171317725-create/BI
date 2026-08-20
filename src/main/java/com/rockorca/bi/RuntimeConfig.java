@@ -191,19 +191,27 @@ public class RuntimeConfig {
   }
 
   public synchronized void saveAdpfluxCredentials(
-      String tokenValue,
-      String companyIdValue) {
-    String token = clean(tokenValue);
-    String companyId = clean(companyIdValue);
-    if (token.isBlank()) token = decodedSecret("ADPFLUX_AUTHORIZATION_FRONT_B64");
-    if (companyId.isBlank()) companyId = get("ADPFLUX_COMPANY_EX_ID", "");
-    if (token.length() < 20 || token.length() > 4_000
-        || token.chars().anyMatch(Character::isWhitespace)) {
-      throw new IllegalArgumentException("请填写有效的 AuthorizationFront");
-    }
-    if (!companyId.matches("^[0-9]{8,30}$")) {
-      throw new IllegalArgumentException("CompanyExID 应为 8 至 30 位数字");
-    }
+      String cookieValue,
+      String csrfValue,
+      String orgIdValue,
+      String orgNameValue,
+      String currencyValue,
+      String timezoneValue) {
+    String cookie = clean(cookieValue);
+    String csrf = clean(csrfValue);
+    String orgId = clean(orgIdValue);
+    String orgName = clean(orgNameValue);
+    String currency = clean(currencyValue).toUpperCase();
+    String timezone = clean(timezoneValue);
+    if (cookie.isBlank()) cookie = decodedSecret("ADPFLUX_TIKTOK_COOKIE_B64");
+    if (csrf.isBlank()) csrf = decodedSecret("ADPFLUX_CSRF_TOKEN_B64");
+    if (orgId.isBlank()) orgId = get("ADPFLUX_TIKTOK_ORG_ID", "");
+    if (orgName.isBlank()) orgName = get("ADPFLUX_TIKTOK_ORG_NAME", "");
+    if (currency.isBlank()) currency = get("ADPFLUX_TIKTOK_CURRENCY", "USD").toUpperCase();
+    if (timezone.isBlank()) timezone = get("ADPFLUX_TIKTOK_TIMEZONE", "America/New_York");
+    AdpfluxUpstreamService.Credentials credentials = new AdpfluxUpstreamService.Credentials(
+        cookie, csrf, orgId, orgName, currency, timezone);
+    credentials.validate();
 
     Path path = runtimeDir.resolve("adpflux.env");
     try {
@@ -211,9 +219,15 @@ public class RuntimeConfig {
       Map<String, String> saved = Files.isRegularFile(path)
           ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
           : new LinkedHashMap<>();
-      saved.put("ADPFLUX_AUTHORIZATION_FRONT_B64", encodeSecret(token));
-      saved.put("ADPFLUX_COMPANY_EX_ID", companyId);
-      saveEnvironmentFile(path, "# Managed by the ADPFlux account dashboard.", saved);
+      saved.remove("ADPFLUX_AUTHORIZATION_FRONT_B64");
+      saved.remove("ADPFLUX_COMPANY_EX_ID");
+      saved.put("ADPFLUX_TIKTOK_COOKIE_B64", encodeSecret(cookie));
+      saved.put("ADPFLUX_CSRF_TOKEN_B64", encodeSecret(csrf));
+      saved.put("ADPFLUX_TIKTOK_ORG_ID", orgId);
+      saved.put("ADPFLUX_TIKTOK_ORG_NAME", orgName);
+      saved.put("ADPFLUX_TIKTOK_CURRENCY", currency);
+      saved.put("ADPFLUX_TIKTOK_TIMEZONE", timezone);
+      saveEnvironmentFile(path, "# Managed by the TikTok Business account dashboard.", saved);
       saved.forEach(values::put);
     } catch (IOException error) {
       throw new IllegalStateException("保存 ADPFlux 接口配置失败：" + error.getMessage(), error);

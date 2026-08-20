@@ -39,9 +39,23 @@ public class AdpfluxRepository {
             `total_spend` DECIMAL(18, 4) NOT NULL DEFAULT 0,
             `clicks` BIGINT NOT NULL DEFAULT 0,
             `conversions` BIGINT NOT NULL DEFAULT 0,
+            `impressions` BIGINT NOT NULL DEFAULT 0,
+            `unique_reach` BIGINT NOT NULL DEFAULT 0,
+            `cpc` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `cpm` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `ctr` DECIMAL(18, 4) NOT NULL DEFAULT 0,
             `cpa` DECIMAL(18, 4) NOT NULL DEFAULT 0,
             `cvr` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `time_attr_conversions` BIGINT NOT NULL DEFAULT 0,
+            `time_attr_cpa` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `time_attr_cvr` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `skan_conversions` BIGINT NOT NULL DEFAULT 0,
+            `skan_cpa` DECIMAL(18, 4) NOT NULL DEFAULT 0,
+            `skan_cvr` DECIMAL(18, 4) NOT NULL DEFAULT 0,
             `currency` VARCHAR(20) NOT NULL DEFAULT '',
+            `company_name` VARCHAR(500) NOT NULL DEFAULT '',
+            `account_type` VARCHAR(50) NOT NULL DEFAULT '',
+            `contact` VARCHAR(500) NOT NULL DEFAULT '',
             `status` INT NOT NULL DEFAULT 0,
             `status_raw` VARCHAR(100) NOT NULL DEFAULT '',
             `timezone` VARCHAR(50) NOT NULL DEFAULT '',
@@ -66,8 +80,45 @@ public class AdpfluxRepository {
             KEY `idx_adpflux_sync_finished` (`finished_at`)
           ) ENGINE=InnoDB COMMENT='ADPFlux账户看板同步记录'
           """);
+      ensureTikTokColumns(connection);
     } catch (SQLException error) {
       throw databaseError(error);
+    }
+  }
+
+  private static void ensureTikTokColumns(Connection connection) throws SQLException {
+    ensureColumn(connection, "impressions", "BIGINT NOT NULL DEFAULT 0");
+    ensureColumn(connection, "unique_reach", "BIGINT NOT NULL DEFAULT 0");
+    ensureColumn(connection, "cpc", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "cpm", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "ctr", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "time_attr_conversions", "BIGINT NOT NULL DEFAULT 0");
+    ensureColumn(connection, "time_attr_cpa", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "time_attr_cvr", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "skan_conversions", "BIGINT NOT NULL DEFAULT 0");
+    ensureColumn(connection, "skan_cpa", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "skan_cvr", "DECIMAL(18,4) NOT NULL DEFAULT 0");
+    ensureColumn(connection, "company_name", "VARCHAR(500) NOT NULL DEFAULT ''");
+    ensureColumn(connection, "account_type", "VARCHAR(50) NOT NULL DEFAULT ''");
+    ensureColumn(connection, "contact", "VARCHAR(500) NOT NULL DEFAULT ''");
+  }
+
+  private static void ensureColumn(Connection connection, String column, String definition)
+      throws SQLException {
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'adpflux_advertiser_daily'
+           AND COLUMN_NAME = ?
+        """)) {
+      query.setString(1, column);
+      try (ResultSet result = query.executeQuery()) {
+        if (result.next() && result.getInt(1) > 0) return;
+      }
+    }
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "ALTER TABLE adpflux_advertiser_daily ADD COLUMN `" + column + "` " + definition);
     }
   }
 
@@ -81,9 +132,14 @@ public class AdpfluxRepository {
     String insertSql = """
         INSERT INTO adpflux_advertiser_daily (
           business_date, advertiser_id, advertiser_name, balance, billed_cost,
-          cash_spend, voucher_spend, total_spend, clicks, conversions, cpa, cvr,
-          currency, status, status_raw, timezone, closing_time, raw_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          cash_spend, voucher_spend, total_spend, clicks, conversions,
+          impressions, unique_reach, cpc, cpm, ctr, cpa, cvr,
+          time_attr_conversions, time_attr_cpa, time_attr_cvr,
+          skan_conversions, skan_cpa, skan_cvr,
+          currency, company_name, account_type, contact,
+          status, status_raw, timezone, closing_time, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     try (Connection connection = dataSource.getConnection()) {
       boolean autoCommit = connection.getAutoCommit();
@@ -109,14 +165,28 @@ public class AdpfluxRepository {
             insert.setDouble(8, ReportService.number(row.get("totalSpend")));
             insert.setLong(9, Math.round(ReportService.number(row.get("clicks"))));
             insert.setLong(10, Math.round(ReportService.number(row.get("conversions"))));
-            insert.setDouble(11, ReportService.number(row.get("cpa")));
-            insert.setDouble(12, ReportService.number(row.get("cvr")));
-            insert.setString(13, ReportService.text(row.get("currency")));
-            insert.setInt(14, (int) ReportService.number(row.get("status")));
-            insert.setString(15, ReportService.text(row.get("statusRaw")));
-            insert.setString(16, ReportService.text(row.get("timezone")));
-            insert.setString(17, ReportService.text(row.get("closingTime")));
-            insert.setString(18, objectMapper.writeValueAsString(row.get("raw")));
+            insert.setLong(11, Math.round(ReportService.number(row.get("impressions"))));
+            insert.setLong(12, Math.round(ReportService.number(row.get("uniqueReach"))));
+            insert.setDouble(13, ReportService.number(row.get("cpc")));
+            insert.setDouble(14, ReportService.number(row.get("cpm")));
+            insert.setDouble(15, ReportService.number(row.get("ctr")));
+            insert.setDouble(16, ReportService.number(row.get("cpa")));
+            insert.setDouble(17, ReportService.number(row.get("cvr")));
+            insert.setLong(18, Math.round(ReportService.number(row.get("timeAttributedConversions"))));
+            insert.setDouble(19, ReportService.number(row.get("timeAttributedCpa")));
+            insert.setDouble(20, ReportService.number(row.get("timeAttributedCvr")));
+            insert.setLong(21, Math.round(ReportService.number(row.get("skanConversions"))));
+            insert.setDouble(22, ReportService.number(row.get("skanCpa")));
+            insert.setDouble(23, ReportService.number(row.get("skanCvr")));
+            insert.setString(24, ReportService.text(row.get("currency")));
+            insert.setString(25, ReportService.text(row.get("companyName")));
+            insert.setString(26, ReportService.text(row.get("accountType")));
+            insert.setString(27, ReportService.text(row.get("contact")));
+            insert.setInt(28, (int) ReportService.number(row.get("status")));
+            insert.setString(29, ReportService.text(row.get("statusRaw")));
+            insert.setString(30, ReportService.text(row.get("timezone")));
+            insert.setString(31, ReportService.text(row.get("closingTime")));
+            insert.setString(32, objectMapper.writeValueAsString(row.get("raw")));
             insert.addBatch();
           }
           insert.executeBatch();
@@ -154,8 +224,12 @@ public class AdpfluxRepository {
     StringBuilder sql = new StringBuilder("""
         SELECT DATE_FORMAT(business_date, '%Y-%m-%d') AS business_date,
                advertiser_id, advertiser_name, balance, billed_cost, cash_spend,
-               voucher_spend, total_spend, clicks, conversions, cpa, cvr,
-               currency, status, status_raw, timezone, closing_time
+               voucher_spend, total_spend, clicks, conversions,
+               impressions, unique_reach, cpc, cpm, ctr, cpa, cvr,
+               time_attr_conversions, time_attr_cpa, time_attr_cvr,
+               skan_conversions, skan_cpa, skan_cvr,
+               currency, company_name, account_type, contact,
+               status, status_raw, timezone, closing_time
           FROM adpflux_advertiser_daily
          WHERE business_date BETWEEN ? AND ?
         """);
@@ -164,7 +238,8 @@ public class AdpfluxRepository {
     parameters.add(Date.valueOf(LocalDate.parse(endValue)));
     String query = ReportService.text(queryValue);
     if (!query.isBlank()) {
-      sql.append(" AND (advertiser_id LIKE ? OR advertiser_name LIKE ?)");
+      sql.append(" AND (advertiser_id LIKE ? OR advertiser_name LIKE ? OR company_name LIKE ?)");
+      parameters.add("%" + query + "%");
       parameters.add("%" + query + "%");
       parameters.add("%" + query + "%");
     }
@@ -196,9 +271,23 @@ public class AdpfluxRepository {
               "totalSpend", result.getDouble("total_spend"),
               "clicks", result.getLong("clicks"),
               "conversions", result.getLong("conversions"),
+              "impressions", result.getLong("impressions"),
+              "uniqueReach", result.getLong("unique_reach"),
+              "cpc", result.getDouble("cpc"),
+              "cpm", result.getDouble("cpm"),
+              "ctr", result.getDouble("ctr"),
               "cpa", result.getDouble("cpa"),
               "cvr", result.getDouble("cvr"),
+              "timeAttributedConversions", result.getLong("time_attr_conversions"),
+              "timeAttributedCpa", result.getDouble("time_attr_cpa"),
+              "timeAttributedCvr", result.getDouble("time_attr_cvr"),
+              "skanConversions", result.getLong("skan_conversions"),
+              "skanCpa", result.getDouble("skan_cpa"),
+              "skanCvr", result.getDouble("skan_cvr"),
               "currency", result.getString("currency"),
+              "companyName", result.getString("company_name"),
+              "accountType", result.getString("account_type"),
+              "contact", result.getString("contact"),
               "status", result.getInt("status"),
               "statusRaw", result.getString("status_raw"),
               "timezone", result.getString("timezone"),

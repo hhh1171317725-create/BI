@@ -34,27 +34,31 @@ class AdpfluxServiceTest {
   }
 
   @Test
-  void upstreamMappingKeepsBoardValuesWithoutUnitConversion() {
+  void upstreamMappingKeepsTikTokValuesWithoutUnitConversion() {
     AdpfluxUpstreamService upstream = new AdpfluxUpstreamService(null, null, null);
     Map<String, Object> mapped = upstream.mapRow(
         LocalDate.of(2026, 8, 20),
         ReportService.mapOf(
             "advertiser_id", "7672681729764720661",
             "advertiser_name", "厦门云联-5",
-            "balance", 9.6,
-            "total_spend", 5.76,
-            "clicks", 36,
-            "conversions", 1,
-            "cpa", 5.76,
-            "cvr", 2.78,
-            "status", 1,
-            "status_raw", "STATUS_ENABLE",
-            "timezone", "UTC+00:00"));
+            "stat_cost", "5.76",
+            "show_cnt", "2384",
+            "click_cnt", "36",
+            "convert_cnt", "1",
+            "cpc", "0.16",
+            "cpm", "2.42",
+            "ctr", "1.51",
+            "conversion_cost", "5.76",
+            "conversion_rate", "2.78",
+            "company_name", "JA TECHNOLOGY (HK) LIMITED",
+            "adv_timezone", "Etc/GMT"));
 
     assertEquals("2026-08-20", mapped.get("date"));
     assertEquals(5.76, mapped.get("totalSpend"));
     assertEquals(36d, mapped.get("clicks"));
-    assertEquals("UTC+00:00", mapped.get("timezone"));
+    assertEquals(2384d, mapped.get("impressions"));
+    assertEquals(0.16, mapped.get("cpc"));
+    assertEquals("Etc/GMT", mapped.get("timezone"));
   }
 
   private static Map<String, Object> row(

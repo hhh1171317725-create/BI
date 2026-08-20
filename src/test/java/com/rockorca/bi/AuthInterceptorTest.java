@@ -24,8 +24,10 @@ class AuthInterceptorTest {
   }
 
   @Test
-  void loginApisAreAllowedWithoutSession() throws Exception {
-    for (String path : new String[] {"/api/login", "/api/logout"}) {
+  void publicApisAreAllowedWithoutSession() throws Exception {
+    for (String path : new String[] {
+        "/api/login", "/api/logout", "/api/terminal/settings", "/api/terminal/test"
+    }) {
       assertTrue(interceptor.preHandle(
           new MockHttpServletRequest("POST", path), new MockHttpServletResponse(), new Object()));
     }

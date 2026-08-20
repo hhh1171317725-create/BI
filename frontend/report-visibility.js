@@ -31,6 +31,19 @@
       });
     }
 
+    if (location.pathname !== '/account-vault') {
+      const navigation = document.querySelector('.header-actions, nav.nav');
+      if (navigation && !navigation.querySelector('a[href="/account-vault"]')) {
+        const link = document.createElement('a');
+        link.href = '/account-vault';
+        link.textContent = '账户对应关系';
+        if (navigation.classList.contains('header-actions')) link.className = 'report-link';
+        const toolsLink = navigation.querySelector('a[href="/tools"]');
+        const settingsLink = navigation.querySelector('a[href="/account"]');
+        navigation.insertBefore(link, toolsLink || settingsLink || navigation.querySelector('button'));
+      }
+    }
+
     if (currentReport && visibility[currentReport] === false) {
       const destination = Object.entries(reportPaths)
           .find(([key]) => visibility[key] !== false)?.[1] || '/tools';

@@ -5,6 +5,8 @@
 - `dhh_daily_rows`：大航海日报底表；
 - `jd_daily_rows`：京东日报底表；
 - `jd_low_activity_plan_rows`：京东低活任务明细底表，保留上游原始字段并支持独立计划维度；
+- `clickflare_campaign_revenue_daily`：ClickFlare 活动每日收益快照；
+- `clickflare_revenue_sync_runs`：ClickFlare 收益同步记录；
 - `report_sync_runs`：手动及定时同步记录；
 - `report_users`：系统登录用户、角色及会话版本；
 - `jd_daily_metrics`：京东有效订单、佣金和利润计算视图。
@@ -33,6 +35,12 @@ mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < databas
 
 ```bash
 mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/add_jd_low_activity.sql
+```
+
+升级已有系统时，收益快照表也可提前手动创建；应用启动时会自动执行同样的建表检查：
+
+```bash
+mysql -h 数据库地址 -P 3306 -u 数据库用户 -p 数据库名称 < database/add_clickflare_revenue.sql
 ```
 
 应用启动时也会自动检查并创建低活明细表；生产环境仍建议先执行迁移脚本，以便提前确认数据库用户具备建表和修改字段权限。

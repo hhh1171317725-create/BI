@@ -5,11 +5,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -18,18 +20,23 @@ import tools.jackson.databind.ObjectMapper;
 public class ClickflareRevenueService {
   static final String REPORT_URL =
       "https://arbi-api.hubxad.com/tm-web/api/v1/cf-campaign/list";
-  private static final Duration CACHE_TTL = Duration.ofMinutes(10);
+  private static final long REFRESH_MINUTES = 10;
   private static final int PAGE_SIZE = 100;
   private static final int MAX_PAGES = 100;
 
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
+  private final ClickflareRevenueRepository repository;
   private final HttpClient client;
-  private volatile Cache cache = new Cache("", Instant.EPOCH, List.of());
+  private final AtomicBoolean syncRunning = new AtomicBoolean(false);
 
-  public ClickflareRevenueService(RuntimeConfig config, ObjectMapper objectMapper) {
+  public ClickflareRevenueService(
+      RuntimeConfig config,
+      ObjectMapper objectMapper,
+      ClickflareRevenueRepository repository) {
     this.config = config;
     this.objectMapper = objectMapper;
+    this.repository = repository;
     this.client = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(15))
         .followRedirects(HttpClient.Redirect.NEVER)
@@ -53,29 +60,66 @@ public class ClickflareRevenueService {
       config.saveAdpfluxCredentials(token, companyId);
     }
     config.saveAdpfluxCampaignApiKeyId(apiKeyId);
-    cache = new Cache("", Instant.EPOCH, List.of());
     return credentialStatus();
   }
 
-  public synchronized Map<String, Object> revenue(String dateValue, boolean refresh) {
-    LocalDate date;
+  /** Reads MySQL only. Passing refresh=true performs a complete upstream sync first. */
+  public Map<String, Object> revenue(String dateValue, boolean refresh) {
+    LocalDate date = parseDate(dateValue);
+    if (refresh) sync(date, "manual");
+    return databaseResponse(date);
+  }
+
+  /** Runs shortly after startup and then ten minutes after each completed attempt. */
+  @Scheduled(initialDelay = 5_000, fixedDelay = 600_000)
+  public void scheduledSync() {
+    Credentials credentials = credentials();
+    if (!credentials.configured() || !syncRunning.compareAndSet(false, true)) return;
+    LocalDate date = LocalDate.now(ReportService.BEIJING);
     try {
-      date = LocalDate.parse(ReportService.text(dateValue));
+      sync(date, "scheduled", credentials);
+      System.out.println("ClickFlare收益定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));
+    } catch (Exception error) {
+      System.err.println("ClickFlare收益定时更新失败：" + error.getMessage());
+    } finally {
+      syncRunning.set(false);
+    }
+  }
+
+  private void sync(LocalDate date, String triggerType) {
+    if (!syncRunning.compareAndSet(false, true)) {
+      throw new IllegalStateException("ClickFlare 收益同步正在进行，请稍后再试");
+    }
+    try {
+      sync(date, triggerType, credentials());
+    } finally {
+      syncRunning.set(false);
+    }
+  }
+
+  private void sync(LocalDate date, String triggerType, Credentials credentials) {
+    credentials.validate();
+    List<Map<String, Object>> rows = request(date, credentials);
+    repository.replaceDate(date.toString(), rows, triggerType);
+  }
+
+  private Map<String, Object> databaseResponse(LocalDate date) {
+    List<Map<String, Object>> rows = repository.readDate(date.toString());
+    return ReportService.mapOf(
+        "date", date.toString(),
+        "cachedAt", repository.latestSyncTime(date.toString()),
+        "cacheMinutes", REFRESH_MINUTES,
+        "source", "mysql",
+        "syncing", syncRunning.get(),
+        "rows", rows);
+  }
+
+  private static LocalDate parseDate(String value) {
+    try {
+      return LocalDate.parse(ReportService.text(value));
     } catch (Exception error) {
       throw new IllegalArgumentException("收益日期格式错误", error);
     }
-    Credentials credentials = credentials();
-    credentials.validate();
-    String cacheKey = date + "|" + credentials.companyId() + "|" + credentials.apiKeyId();
-    Cache current = cache;
-    if (!refresh && current.key().equals(cacheKey)
-        && current.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) {
-      return response(date, current.rows(), current.fetchedAt());
-    }
-    List<Map<String, Object>> rows = request(date, credentials);
-    Instant fetchedAt = Instant.now();
-    cache = new Cache(cacheKey, fetchedAt, rows);
-    return response(date, rows, fetchedAt);
   }
 
   private Credentials credentials() {
@@ -162,15 +206,6 @@ public class ClickflareRevenueService {
     }
   }
 
-  private static Map<String, Object> response(
-      LocalDate date, List<Map<String, Object>> rows, Instant fetchedAt) {
-    return ReportService.mapOf(
-        "date", date.toString(),
-        "cachedAt", fetchedAt.toString(),
-        "cacheMinutes", CACHE_TTL.toMinutes(),
-        "rows", rows);
-  }
-
   private static String shorten(String value) {
     String text = ReportService.text(value).replaceAll("\\s+", " ");
     return text.length() <= 300 ? text : text.substring(0, 300) + "...";
@@ -193,5 +228,4 @@ public class ClickflareRevenueService {
   }
 
   private record Page(int total, List<Map<String, Object>> rows) {}
-  private record Cache(String key, Instant fetchedAt, List<Map<String, Object>> rows) {}
 }

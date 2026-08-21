@@ -9,7 +9,9 @@
   const autoFillRequested = launchParams.get("bi_autofill") === "1";
   const adpfluxDefaults = {
     campaignQuantity: "1",
-    dailyBudget: "20"
+    dailyBudget: "20",
+    dataConnection: "next-game-0803",
+    optimizationEvent: "点击按钮"
   };
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -328,6 +330,15 @@
     await sleep(350);
   }
 
+  async function chooseAntOptionByLabel(label, value) {
+    const item = await waitFor(() => formItem(label), 15000, 150);
+    if (!item) throw new Error(`未找到“${label}”字段`);
+    const input = item.querySelector("input[role='combobox'], input[type='search'], input[autocomplete='off'], input");
+    if (!input) throw new Error(`“${label}”下拉框尚未加载`);
+    if (input.id) return chooseAntOptionById(input.id, value, label);
+    return chooseOption(label, value);
+  }
+
   function antTreeSelected(select, value) {
     const target = normalize(value).replace(/\s+/g, "");
     const selectedTag = [...select.querySelectorAll(".ant-select-selection-item")]
@@ -438,7 +449,7 @@
       material.disabled = true;
       return;
     }
-    meta.textContent = `${entry.accountCount || splitValues(entry.accountIds).length} 个账户 · ${splitValues(entry.country).length} 个国家\nchannel ${entry.channelId || "未填"} · style ${entry.styleId || "未填"}\n系列 ${campaignQuantity(entry)} · 日预算 ${dailyBudget(entry)} USD · 数据连接和优化事件手动选择`;
+    meta.textContent = `${entry.accountCount || splitValues(entry.accountIds).length} 个账户 · ${splitValues(entry.country).length} 个国家\nchannel ${entry.channelId || "未填"} · style ${entry.styleId || "未填"}\n系列 ${campaignQuantity(entry)} · 日预算 ${dailyBudget(entry)} USD\n${adpfluxDefaults.dataConnection} · ${adpfluxDefaults.optimizationEvent}`;
     material.disabled = !entry.materialUrl;
   }
 
@@ -476,6 +487,8 @@
     };
     setStatus("正在填写，请不要操作页面...");
     await run("广告账户", () => chooseAntManyById("advertiser_id", splitValues(entry.accountIds)));
+    await run("数据连接", () => chooseAntOptionByLabel("数据连接", adpfluxDefaults.dataConnection));
+    await run("优化事件", () => chooseAntOptionByLabel("优化事件", adpfluxDefaults.optimizationEvent));
     await run("推广系列名称", async () => fillPlaceholder("推广系列名称", datedCampaignName(entry.keyword)));
     await run("推广系列数量", async () => fillPlaceholder("请输入推广系列个数", campaignQuantity(entry)));
     await run("日预算", async () => fillInputById("budget", dailyBudget(entry), "预算"));
@@ -486,7 +499,7 @@
       setStatus(`已填写：${completed.join("、") || "无"}\n待处理：${failed.join("；")}`, "bad");
       return;
     }
-    setStatus(`已填写：${completed.join("、")}。请手动选择数据连接和优化事件，并检查素材及 TikTok 账号后再提交。`, "ok");
+    setStatus(`已填写：${completed.join("、")}。请检查素材及 TikTok 账号后再提交。`, "ok");
     setTimeout(() => {
       if (fillRun !== state.fillRun) return;
       const panel = document.querySelector("#adpflux-keyword-helper .afh-panel");

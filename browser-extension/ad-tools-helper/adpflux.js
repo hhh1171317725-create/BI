@@ -226,24 +226,52 @@
       .filter((node) => !node.closest("#adpflux-keyword-helper") && visible(node))
       .find((node) => normalize(node.textContent) === "网站转化量"), 15000, 150);
     if (!label) throw new Error("未找到“网站转化量”广告类型");
-    let target = label.closest("button, [role='button'], [class*='card'], [class*='type-item']") || label;
-    while (target.parentElement && target.getBoundingClientRect().width < 180) target = target.parentElement;
-    clickLikeUser(target);
-    let form = await waitFor(() => document.getElementById("advertiser_id"), 5000, 150);
-    if (!form) {
+    const candidates = [];
+    let candidate = label;
+    while (candidate && candidate !== document.body && candidates.length < 9) {
+      if (!candidates.includes(candidate) && visible(candidate)) candidates.push(candidate);
+      candidate = candidate.parentElement;
+    }
+
+    let form = null;
+    const seenHandlers = new Set();
+    for (const target of candidates) {
+      target.scrollIntoView({ block: "center", inline: "center" });
+      clickLikeUser(target);
+      target.focus?.({ preventScroll: true });
+      pressKey(target, "Enter");
+      pressKey(target, " ");
+
+      for (const key of Object.keys(target)) {
+        if (key.startsWith("__reactProps$")) {
+          const handler = target[key]?.onClick;
+          if (typeof handler === "function" && !seenHandlers.has(handler)) {
+            seenHandlers.add(handler);
+            try { handler({ type: "click", target, currentTarget: target, preventDefault() {}, stopPropagation() {} }); } catch {}
+          }
+        }
+        if (key === "_vei") {
+          for (const [name, invoker] of Object.entries(target[key] || {})) {
+            if (!name.toLowerCase().includes("click") || typeof invoker !== "function" || seenHandlers.has(invoker)) continue;
+            seenHandlers.add(invoker);
+            try { invoker(new MouseEvent("click", { bubbles: true, cancelable: true })); } catch {}
+          }
+        }
+      }
+
       const fiberKey = Object.keys(target).find((key) => key.startsWith("__reactFiber$"));
       let fiber = fiberKey ? target[fiberKey] : null;
-      const seen = new Set();
-      while (fiber && !form) {
+      while (fiber) {
         for (const props of [fiber.memoizedProps, fiber.pendingProps]) {
-          if (typeof props?.onClick !== "function" || seen.has(props.onClick)) continue;
-          seen.add(props.onClick);
+          if (typeof props?.onClick !== "function" || seenHandlers.has(props.onClick)) continue;
+          seenHandlers.add(props.onClick);
           try { props.onClick({ type: "click", target, currentTarget: target, preventDefault() {}, stopPropagation() {} }); } catch {}
-          form = await waitFor(() => document.getElementById("advertiser_id"), 1200, 120);
-          if (form) break;
         }
         fiber = fiber.return;
       }
+
+      form = await waitFor(() => document.getElementById("advertiser_id"), 1800, 120);
+      if (form) break;
     }
     if (!form) throw new Error("已点击“网站转化量”，但创建表单没有打开");
     await sleep(500);

@@ -277,7 +277,7 @@
     if (failures.length) throw new Error(failures.join("；"));
   }
 
-  async function chooseAntOptionById(inputId, value, label) {
+  async function chooseAntOptionById(inputId, value, label, optionValue = "") {
     const input = document.getElementById(inputId);
     const select = input?.closest(".ant-select");
     const selector = select?.querySelector(".ant-select-selector");
@@ -288,7 +288,7 @@
 
     let pageResult = null;
     try {
-      pageResult = await send({ type: "selectAdpfluxOption", inputId, value });
+      pageResult = await send({ type: "selectAdpfluxOption", inputId, value, optionValue });
       if (pageResult?.error) throw new Error(pageResult.error);
       if (pageResult?.selected || isSelected()) return;
     } catch {}
@@ -335,7 +335,10 @@
     if (!item) throw new Error(`未找到“${label}”字段`);
     const input = item.querySelector("input[role='combobox'], input[type='search'], input[autocomplete='off'], input");
     if (!input) throw new Error(`“${label}”下拉框尚未加载`);
-    if (input.id) return chooseAntOptionById(input.id, value, label);
+    const pixel = label === "数据连接"
+      ? (state.accountInitialization?.pixelRequest?.pixelOptions || []).find((option) => normalize(option.label).includes(normalize(value)))
+      : null;
+    if (input.id) return chooseAntOptionById(input.id, value, label, pixel?.value || "");
     return chooseOption(label, value);
   }
 

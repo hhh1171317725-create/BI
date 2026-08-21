@@ -138,7 +138,11 @@ async function closeAdpfluxAccountDropdown(tabId, values) {
           code: payload?.code,
           message: String(payload?.message || payload?.msg || ""),
           pixelCount: pixels.length,
-          pixelNames: pixels.slice(0, 8).map((pixel) => String(pixel?.pixel_name || pixel?.name || pixel?.pixel_id || ""))
+          pixelNames: pixels.slice(0, 8).map((pixel) => String(pixel?.pixel_name || pixel?.name || pixel?.pixel_id || "")),
+          pixelOptions: pixels.slice(0, 20).map((pixel) => ({
+            value: String(pixel?.pixel_id || pixel?.id || pixel?.value || ""),
+            label: String(pixel?.pixel_name || pixel?.name || pixel?.label || pixel?.pixel_id || "")
+          })).filter((pixel) => pixel.value)
         });
       };
 
@@ -400,12 +404,12 @@ async function selectAdpfluxTreeOption(tabId, value) {
   return result || { found: false, selected: false, method: "no-result" };
 }
 
-async function selectAdpfluxOption(tabId, inputId, value) {
+async function selectAdpfluxOption(tabId, inputId, value, forcedValue = "") {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
-    args: [String(inputId || ""), String(value || "")],
-    func: async (fieldId, wanted) => {
+    args: [String(inputId || ""), String(value || ""), String(forcedValue || "")],
+    func: async (fieldId, wanted, suppliedValue) => {
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const normalize = (text) => String(text || "").replace(/\s+/g, "").trim().toLowerCase();
       const visible = (element) => {
@@ -423,6 +427,38 @@ async function selectAdpfluxOption(tabId, inputId, value) {
 
       if (normalize(select.textContent).includes(normalize(wanted))) {
         return { opened: input.getAttribute("aria-expanded") === "true", selected: true, optionCount: 0, method: "already-selected" };
+      }
+
+      const textOf = (value) => {
+        if (value == null) return "";
+        if (["string", "number"].includes(typeof value)) return String(value);
+        if (Array.isArray(value)) return value.map(textOf).join(" ");
+        return textOf(value.props?.children);
+      };
+      const flatten = (items) => (Array.isArray(items) ? items.flatMap((item) => [item, ...flatten(item?.options), ...flatten(item?.children)]) : []);
+      const fiberKey = Object.keys(input).find((key) => key.startsWith("__reactFiber$"));
+      let fiber = fiberKey ? input[fiberKey] : null;
+      const seen = new Set();
+      while (fiber) {
+        for (const props of [fiber.memoizedProps, fiber.pendingProps]) {
+          if (!props || typeof props !== "object" || typeof props.onChange !== "function" || seen.has(props.onChange)) continue;
+          const choices = flatten(props.options);
+          const candidate = choices.find((option) => normalize(`${option?.value ?? ""} ${option?.label ?? ""} ${textOf(option?.label)}`).includes(normalize(wanted)));
+          const selectProps = Array.isArray(props.options) || "showSearch" in props || "onDropdownVisibleChange" in props || "onOpenChange" in props;
+          if (!candidate && (!suppliedValue || !selectProps)) continue;
+          seen.add(props.onChange);
+          const selectedOption = candidate || { value: suppliedValue, label: wanted };
+          try {
+            props.onChange(selectedOption.value, selectedOption);
+          } catch {
+            continue;
+          }
+          await wait(600);
+          if (normalize(select.textContent).includes(normalize(wanted))) {
+            return { opened: false, selected: true, optionCount: choices.length, method: candidate ? "react-option" : "react-forced-option" };
+          }
+        }
+        fiber = fiber.return;
       }
 
       if (input.getAttribute("aria-expanded") !== "true") {
@@ -636,7 +672,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ error: "下拉选择请求来源无效" });
       return false;
     }
-    selectAdpfluxOption(_sender.tab.id, message.inputId, message.value)
+    selectAdpfluxOption(_sender.tab.id, message.inputId, message.value, message.optionValue)
       .then(sendResponse)
       .catch((error) => sendResponse({ error: error.message || "下拉选项选择失败" }));
     return true;

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "投放工具助手",
-  "version": "1.6.1",
-  "description": "支持京东商品主图下载和 Adpflux 关键词配置自动填充。",
+  "version": "1.7.0",
+  "description": "支持京东商品主图下载、Adpflux 广告创建和素材库账户自动选择。",
   "permissions": ["activeTab", "downloads", "scripting", "tabs"],
   "host_permissions": [
     "https://item.jd.com/*",
@@ -29,6 +29,11 @@
       "matches": ["https://www.adpflux.com/ad-manage/batch-create*"],
       "css": ["adpflux.css"],
       "js": ["adpflux.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.adpflux.com/material-library*"],
+      "js": ["material-library.js"],
       "run_at": "document_idle"
     }
   ],

@@ -219,6 +219,36 @@
     return null;
   }
 
+  async function openWebsiteConversionForm() {
+    if (document.getElementById("advertiser_id")) return;
+    setStatus("正在选择广告类型：网站转化量...");
+    const label = await waitFor(() => [...document.querySelectorAll("button, [role='button'], h1, h2, h3, h4, div, span")]
+      .filter((node) => !node.closest("#adpflux-keyword-helper") && visible(node))
+      .find((node) => normalize(node.textContent) === "网站转化量"), 15000, 150);
+    if (!label) throw new Error("未找到“网站转化量”广告类型");
+    let target = label.closest("button, [role='button'], [class*='card'], [class*='type-item']") || label;
+    while (target.parentElement && target.getBoundingClientRect().width < 180) target = target.parentElement;
+    clickLikeUser(target);
+    let form = await waitFor(() => document.getElementById("advertiser_id"), 5000, 150);
+    if (!form) {
+      const fiberKey = Object.keys(target).find((key) => key.startsWith("__reactFiber$"));
+      let fiber = fiberKey ? target[fiberKey] : null;
+      const seen = new Set();
+      while (fiber && !form) {
+        for (const props of [fiber.memoizedProps, fiber.pendingProps]) {
+          if (typeof props?.onClick !== "function" || seen.has(props.onClick)) continue;
+          seen.add(props.onClick);
+          try { props.onClick({ type: "click", target, currentTarget: target, preventDefault() {}, stopPropagation() {} }); } catch {}
+          form = await waitFor(() => document.getElementById("advertiser_id"), 1200, 120);
+          if (form) break;
+        }
+        fiber = fiber.return;
+      }
+    }
+    if (!form) throw new Error("已点击“网站转化量”，但创建表单没有打开");
+    await sleep(500);
+  }
+
   function antSelected(select, value) {
     const target = normalize(value).replace(/\s+/g, "");
     return [...select.querySelectorAll(".ant-select-selection-item")]
@@ -530,6 +560,11 @@
     }, 800);
   }
 
+  async function openAndFillForm() {
+    await openWebsiteConversionForm();
+    await fillForm();
+  }
+
   function mount() {
     const root = document.createElement("section");
     root.id = "adpflux-keyword-helper";
@@ -555,7 +590,7 @@
       state.selected = state.entries.find((entry) => String(entry.id) === event.target.value) || null;
       renderSelected();
     };
-    root.querySelector(".afh-fill").onclick = () => fillForm().catch((error) => setStatus(error.message, "bad"));
+    root.querySelector(".afh-fill").onclick = () => openAndFillForm().catch((error) => setStatus(error.message, "bad"));
     root.querySelector(".afh-material").onclick = () => {
       if (state.selected?.materialUrl) send({ type: "openAdpfluxMaterial", url: state.selected.materialUrl }).catch((error) => setStatus(error.message, "bad"));
     };
@@ -566,10 +601,8 @@
         if (!state.selected || (launchEntryId && String(state.selected.id) !== launchEntryId)) {
           throw new Error("没有找到网站中选择的关键词配置");
         }
-        setStatus("已打开创建任务，正在等待 Adpflux 表单...");
-        const formReady = await waitFor(() => document.getElementById("advertiser_id"), 15000, 200);
-        if (!formReady) throw new Error("Adpflux 创建表单尚未打开，请进入网站转化量表单后点击“填充当前表单”");
-        await fillForm();
+        setStatus("已打开创建任务，正在进入网站转化量表单...");
+        await openAndFillForm();
         const cleanUrl = new URL(location.href);
         ["bi_entry_id", "bi_keyword", "bi_autofill"].forEach((key) => cleanUrl.searchParams.delete(key));
         history.replaceState(null, "", cleanUrl);

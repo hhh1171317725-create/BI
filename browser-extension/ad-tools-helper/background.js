@@ -491,12 +491,16 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
       };
       const findInput = () => {
         const inputs = [...document.querySelectorAll("input")];
-        return inputs.find((input) => /账户|广告账户/.test(input.placeholder || ""))
-          || inputs.find((input) => {
-            const root = input.closest(".ant-select, .arco-select");
-            return root && visible(root) && /账户/.test(root.parentElement?.textContent || "");
-          })
-          || inputs.find((input) => visible(input.closest(".ant-select, .arco-select")));
+        const candidates = inputs.map((input) => ({ input, root: input.closest(".ant-select, .arco-select") }))
+          .filter(({ root }) => {
+            if (!root || !visible(root) || root.closest("aside, nav, [class*='sidebar'], [class*='sider']")) return false;
+            const rect = root.getBoundingClientRect();
+            return rect.left > Math.min(300, window.innerWidth * 0.18) && rect.top > 120 && rect.width > 320;
+          });
+        return candidates.find(({ input }) => /广告账户|选择账户/.test(input.placeholder || ""))?.input
+          || candidates.find(({ root }) => /广告账户/.test(root.parentElement?.textContent || ""))?.input
+          || candidates.sort((a, b) => b.root.getBoundingClientRect().width - a.root.getBoundingClientRect().width)[0]?.input
+          || null;
       };
       let input = null;
       for (let attempt = 0; attempt < 120 && !input; attempt += 1) {

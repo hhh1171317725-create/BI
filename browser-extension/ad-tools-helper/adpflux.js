@@ -339,6 +339,23 @@
     return chooseOption(label, value);
   }
 
+  async function chooseAntOptionWhenReady(label, value, attempts = 3) {
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await chooseAntOptionByLabel(label, value);
+      } catch (error) {
+        lastError = error;
+        pressKey(document.activeElement || document.body, "Escape");
+        if (attempt < attempts) {
+          setStatus(`${label}数据仍在加载，正在进行第 ${attempt + 1} 次尝试...`);
+          await sleep(2500);
+        }
+      }
+    }
+    throw lastError;
+  }
+
   function antTreeSelected(select, value) {
     const target = normalize(value).replace(/\s+/g, "");
     const selectedTag = [...select.querySelectorAll(".ant-select-selection-item")]
@@ -487,14 +504,17 @@
     };
     setStatus("正在填写，请不要操作页面...");
     await run("广告账户", () => chooseAntManyById("advertiser_id", splitValues(entry.accountIds)));
-    await run("数据连接", () => chooseAntOptionByLabel("数据连接", adpfluxDefaults.dataConnection));
-    await run("优化事件", () => chooseAntOptionByLabel("优化事件", adpfluxDefaults.optimizationEvent));
     await run("推广系列名称", async () => fillPlaceholder("推广系列名称", datedCampaignName(entry.keyword)));
     await run("推广系列数量", async () => fillPlaceholder("请输入推广系列个数", campaignQuantity(entry)));
     await run("日预算", async () => fillInputById("budget", dailyBudget(entry), "预算"));
     await run("地域", () => chooseAntTreeManyById("location_ids", splitValues(entry.country)));
     await run("目标页面", async () => fillPlaceholder("请输入以https://或者http://开头的完整地址", entry.articleUrl));
     await run("广告文案", async () => fillPlaceholder("请为您的广告输入文案", entry.copyText));
+    setStatus("正在等待账户的转化配置加载...");
+    await sleep(2500);
+    await run("数据连接", () => chooseAntOptionWhenReady("数据连接", adpfluxDefaults.dataConnection));
+    await sleep(1200);
+    await run("优化事件", () => chooseAntOptionWhenReady("优化事件", adpfluxDefaults.optimizationEvent));
     if (failed.length) {
       setStatus(`已填写：${completed.join("、") || "无"}\n待处理：${failed.join("；")}`, "bad");
       return;

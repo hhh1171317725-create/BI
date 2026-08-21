@@ -6,13 +6,15 @@
   const accountId = String(params.get("bi_account_id") || "").trim();
   if (params.get("bi_material_autofill") !== "1" || !accountId) return;
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const normalize = (value) => String(value || "").replace(/\s+/g, "").toLowerCase();
-  const visible = (element) => {
-    const rect = element?.getBoundingClientRect();
-    const style = element ? getComputedStyle(element) : null;
-    return Boolean(rect?.width && rect?.height && style?.display !== "none" && style?.visibility !== "hidden");
-  };
+  function send(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        const error = chrome.runtime.lastError?.message || response?.error;
+        if (error) reject(new Error(error));
+        else resolve(response || {});
+      });
+    });
+  }
 
   function showStatus(message, type = "loading") {
     let node = document.getElementById("bi-material-account-status");
@@ -32,62 +34,14 @@
     if (type !== "loading") setTimeout(() => node.remove(), 5000);
   }
 
-  function accountInput() {
-    const inputs = [...document.querySelectorAll("input[role='combobox'], input[autocomplete='off'], input")].filter(visible);
-    return inputs.find((input) => /账户|广告账户/.test(input.placeholder || ""))
-      || inputs.find((input) => input.closest(".ant-select, .arco-select") && /账户/.test(input.closest(".ant-select, .arco-select")?.parentElement?.textContent || ""))
-      || inputs.find((input) => input.closest(".ant-select, .arco-select"));
-  }
-
-  function selectRoot(input) {
-    return input?.closest(".ant-select, .arco-select") || input?.parentElement;
-  }
-
-  function selected(input) {
-    return normalize(selectRoot(input)?.textContent).includes(normalize(accountId));
-  }
-
-  function setInputValue(input, value) {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    input.dispatchEvent(new KeyboardEvent("keyup", { key: value.slice(-1), bubbles: true }));
-  }
-
-  function options() {
-    return [...document.querySelectorAll("[role='option'], .ant-select-item-option, .arco-select-option")].filter(visible);
-  }
-
   async function selectAccount() {
     showStatus(`正在选择素材账户 ${accountId}...`);
-    let input = null;
-    for (let attempt = 0; attempt < 100 && !input; attempt += 1) {
-      input = accountInput();
-      if (!input) await sleep(150);
+    const result = await send({ type: "selectAdpfluxMaterialAccount", value: accountId });
+    if (!result.selected) {
+      const available = (result.options || []).map((item) => String(item).trim()).filter(Boolean);
+      const detail = available.length ? `；当前可用：${available.slice(0, 5).join("、")}` : "";
+      throw new Error(`当前管理员账号下未找到素材账户 ${accountId}${detail}`);
     }
-    if (!input) throw new Error("素材库账户下拉框尚未加载");
-    if (selected(input)) return;
-
-    const root = selectRoot(input);
-    const trigger = root?.querySelector(".ant-select-selector, .arco-select-view, [role='combobox']") || root || input;
-    trigger.click();
-    await sleep(300);
-    input.focus();
-    setInputValue(input, "");
-    setInputValue(input, accountId);
-
-    let option = null;
-    for (let attempt = 0; attempt < 60 && !option; attempt += 1) {
-      option = options().find((item) => normalize(item.textContent).includes(normalize(accountId)));
-      if (!option) await sleep(120);
-    }
-    if (!option) throw new Error(`当前账号下未找到素材账户 ${accountId}`);
-
-    option.scrollIntoView({ block: "nearest" });
-    option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-    option.click();
-    for (let attempt = 0; attempt < 30 && !selected(input); attempt += 1) await sleep(100);
-    if (!selected(input)) throw new Error(`找到账户 ${accountId}，但页面未能选中`);
 
     const cleanUrl = new URL(location.href);
     ["bi_entry_id", "bi_keyword", "bi_account_id", "bi_material_autofill"].forEach((key) => cleanUrl.searchParams.delete(key));

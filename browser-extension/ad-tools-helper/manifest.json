@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "投放工具助手",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "支持京东商品主图下载、Adpflux 广告创建和素材库账户自动选择。",
   "permissions": ["activeTab", "downloads", "scripting", "tabs"],
   "host_permissions": [

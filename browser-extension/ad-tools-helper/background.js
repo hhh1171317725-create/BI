@@ -470,6 +470,99 @@ async function selectAdpfluxOption(tabId, inputId, value) {
   return result || { opened: false, selected: false, optionCount: 0, method: "no-result" };
 }
 
+async function selectAdpfluxMaterialAccount(tabId, value) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [String(value || "")],
+    func: async (wanted) => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const normalize = (text) => String(text || "").replace(/\s+/g, "").trim().toLowerCase();
+      const visible = (element) => {
+        const rect = element?.getBoundingClientRect();
+        const style = element ? getComputedStyle(element) : null;
+        return Boolean(rect?.width && rect?.height && style?.display !== "none" && style?.visibility !== "hidden");
+      };
+      const textOf = (value) => {
+        if (value == null) return "";
+        if (["string", "number"].includes(typeof value)) return String(value);
+        if (Array.isArray(value)) return value.map(textOf).join(" ");
+        return textOf(value.props?.children);
+      };
+      const findInput = () => {
+        const inputs = [...document.querySelectorAll("input")];
+        return inputs.find((input) => /账户|广告账户/.test(input.placeholder || ""))
+          || inputs.find((input) => {
+            const root = input.closest(".ant-select, .arco-select");
+            return root && visible(root) && /账户/.test(root.parentElement?.textContent || "");
+          })
+          || inputs.find((input) => visible(input.closest(".ant-select, .arco-select")));
+      };
+      const input = findInput();
+      const root = input?.closest(".ant-select, .arco-select") || input?.parentElement;
+      const selector = root?.querySelector(".ant-select-selector, .arco-select-view") || root;
+      if (!input || !root || !selector) return { selected: false, method: "input-not-found", options: [] };
+      const isSelected = () => normalize(root.textContent).includes(normalize(wanted));
+      if (isSelected()) return { selected: true, method: "already-selected", options: [] };
+
+      const optionText = (option) => `${option?.value ?? ""} ${option?.label ?? ""} ${textOf(option?.label)} ${option?.name ?? ""}`;
+      const flatten = (items) => (Array.isArray(items) ? items.flatMap((item) => [item, ...flatten(item?.options), ...flatten(item?.children)]) : []);
+      const available = [];
+      const seenHandlers = new Set();
+      const fiberKey = Object.keys(input).find((key) => key.startsWith("__reactFiber$"));
+      let fiber = fiberKey ? input[fiberKey] : null;
+      while (fiber) {
+        for (const props of [fiber.memoizedProps, fiber.pendingProps]) {
+          if (!props || typeof props !== "object") continue;
+          const choices = flatten(props.options);
+          for (const option of choices) {
+            const text = optionText(option).trim();
+            if (text && available.length < 12 && !available.includes(text)) available.push(text);
+          }
+          const candidate = choices.find((option) => normalize(optionText(option)).includes(normalize(wanted)));
+          if (!candidate || typeof props.onChange !== "function" || seenHandlers.has(props.onChange)) continue;
+          seenHandlers.add(props.onChange);
+          props.onChange(candidate.value, candidate);
+          await wait(500);
+          if (isSelected()) return { selected: true, method: "react-onchange", options: available };
+        }
+        fiber = fiber.return;
+      }
+
+      selector.click();
+      await wait(300);
+      input.focus();
+      const setValue = (next) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, next);
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: next }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keyup", { key: next.slice(-1), bubbles: true }));
+      };
+      setValue("");
+      setValue(wanted);
+
+      let nodes = [];
+      let option = null;
+      for (let attempt = 0; attempt < 60 && !option; attempt += 1) {
+        nodes = [...document.querySelectorAll("[role='option'], .ant-select-item-option, .arco-select-option")].filter(visible);
+        option = nodes.find((node) => normalize(node.textContent).includes(normalize(wanted)));
+        if (!option) await wait(100);
+      }
+      const domOptions = nodes.map((node) => String(node.textContent || "").trim()).filter(Boolean).slice(0, 12);
+      if (!option) return { selected: false, method: "option-not-found", options: domOptions.length ? domOptions : available };
+      option.scrollIntoView({ block: "nearest" });
+      option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      option.click();
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await wait(100);
+        if (isSelected()) return { selected: true, method: "main-world-click", options: domOptions };
+      }
+      return { selected: false, method: "click-rejected", options: domOptions };
+    }
+  });
+  return result || { selected: false, method: "no-result", options: [] };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "loadAdpfluxConfigs") {
     loadAdpfluxConfigs(message.query)
@@ -527,6 +620,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     selectAdpfluxOption(_sender.tab.id, message.inputId, message.value)
       .then(sendResponse)
       .catch((error) => sendResponse({ error: error.message || "下拉选项选择失败" }));
+    return true;
+  }
+  if (message?.type === "selectAdpfluxMaterialAccount") {
+    let trusted = false;
+    try {
+      trusted = new URL(_sender.url).hostname === "www.adpflux.com";
+    } catch {}
+    if (!trusted || !_sender.tab?.id) {
+      sendResponse({ error: "素材账户选择请求来源无效" });
+      return false;
+    }
+    selectAdpfluxMaterialAccount(_sender.tab.id, message.value)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message || "素材账户选择失败" }));
     return true;
   }
   if (message?.type === "downloadImages") {

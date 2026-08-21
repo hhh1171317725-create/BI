@@ -40,6 +40,8 @@
     if (!result.selected) {
       const available = (result.options || []).map((item) => String(item).trim()).filter(Boolean);
       const detail = available.length ? `；当前可用：${available.slice(0, 5).join("、")}` : "";
+      if (result.method === "input-not-found") throw new Error("素材库账户下拉框加载超时，请刷新页面后重试");
+      if (result.method === "click-rejected") throw new Error(`已找到素材账户 ${accountId}，但页面未接受选择，请重试`);
       throw new Error(`当前管理员账号下未找到素材账户 ${accountId}${detail}`);
     }
 

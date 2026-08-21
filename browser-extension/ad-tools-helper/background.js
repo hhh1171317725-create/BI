@@ -498,9 +498,13 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
           })
           || inputs.find((input) => visible(input.closest(".ant-select, .arco-select")));
       };
-      const input = findInput();
+      let input = null;
+      for (let attempt = 0; attempt < 120 && !input; attempt += 1) {
+        input = findInput();
+        if (!input) await wait(150);
+      }
       const root = input?.closest(".ant-select, .arco-select") || input?.parentElement;
-      const selector = root?.querySelector(".ant-select-selector, .arco-select-view") || root;
+      const selector = root?.querySelector(".ant-select-selector, .arco-select-view, [role='combobox']") || root;
       if (!input || !root || !selector) return { selected: false, method: "input-not-found", options: [] };
       const isSelected = () => normalize(root.textContent).includes(normalize(wanted));
       if (isSelected()) return { selected: true, method: "already-selected", options: [] };
@@ -529,8 +533,12 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
         fiber = fiber.return;
       }
 
-      selector.click();
-      await wait(300);
+      const MouseEventType = window.PointerEvent || window.MouseEvent;
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        const EventType = type.startsWith("pointer") ? MouseEventType : window.MouseEvent;
+        selector.dispatchEvent(new EventType(type, { bubbles: true, cancelable: true, composed: true, view: window }));
+      }
+      await wait(800);
       input.focus();
       const setValue = (next) => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, next);
@@ -543,10 +551,17 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
 
       let nodes = [];
       let option = null;
-      for (let attempt = 0; attempt < 60 && !option; attempt += 1) {
+      for (let attempt = 0; attempt < 150 && !option; attempt += 1) {
         nodes = [...document.querySelectorAll("[role='option'], .ant-select-item-option, .arco-select-option")].filter(visible);
         option = nodes.find((node) => normalize(node.textContent).includes(normalize(wanted)));
-        if (!option) await wait(100);
+        if (!option) {
+          if (attempt === 30 || attempt === 80) {
+            setValue("");
+            await wait(300);
+            setValue(wanted);
+          }
+          await wait(100);
+        }
       }
       const domOptions = nodes.map((node) => String(node.textContent || "").trim()).filter(Boolean).slice(0, 12);
       if (!option) return { selected: false, method: "option-not-found", options: domOptions.length ? domOptions : available };

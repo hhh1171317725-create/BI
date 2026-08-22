@@ -622,8 +622,9 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
 }
 
 async function searchAdpfluxRechargeAccount(tabId, value) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
+  const frameResults = await chrome.scripting.executeScript({
+    // Adpflux 的账户管理表单位于同源 iframe 内，需要同时在所有框架中定位。
+    target: { tabId, allFrames: true },
     world: "MAIN",
     args: [String(value || "")],
     func: async (accountId) => {
@@ -662,6 +663,11 @@ async function searchAdpfluxRechargeAccount(tabId, value) {
           return rect.right <= buttonRect.left && Math.abs(rect.top - buttonRect.top) < 50;
         }).sort((left, right) => left.root.getBoundingClientRect().left - right.root.getBoundingClientRect().left)[0]?.input || null;
       };
+
+      // 外层页只负责导航并包含 iframe，无需在这里等待表单。
+      if (document.querySelector("iframe") && !findInput()) {
+        return { searched: false, method: "outer-frame" };
+      }
 
       let input = null;
       for (let attempt = 0; attempt < 120 && !input; attempt += 1) {
@@ -730,7 +736,11 @@ async function searchAdpfluxRechargeAccount(tabId, value) {
       return { searched: true, method: option ? "option-and-query" : "input-and-query" };
     }
   });
-  return result || { searched: false, method: "no-result" };
+  const results = frameResults.map((item) => item.result).filter(Boolean);
+  return results.find((item) => item.searched)
+    || results.find((item) => item.method === "query-not-found")
+    || results.find((item) => item.method === "input-not-found")
+    || { searched: false, method: "no-result" };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

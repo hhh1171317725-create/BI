@@ -143,6 +143,43 @@ public class ClickflareRevenueRepository {
     }
   }
 
+  /** Aggregates saved daily campaign snapshots for a report date range. */
+  public List<Map<String, Object>> readRange(String startValue, String endValue) {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT campaign_id,
+                    MAX(campaign_name) AS campaign_name,
+                    SUM(conversions) AS conversions,
+                    SUM(revenue) AS revenue,
+                    SUM(spend) AS spend,
+                    CASE WHEN SUM(spend) = 0 THEN 0 ELSE SUM(revenue) / SUM(spend) END AS roi,
+                    MAX(currency) AS currency
+               FROM clickflare_campaign_revenue_daily
+              WHERE business_date BETWEEN ? AND ?
+              GROUP BY campaign_id
+              ORDER BY revenue DESC, campaign_name, campaign_id
+             """)) {
+      statement.setDate(1, Date.valueOf(LocalDate.parse(startValue)));
+      statement.setDate(2, Date.valueOf(LocalDate.parse(endValue)));
+      try (ResultSet result = statement.executeQuery()) {
+        while (result.next()) {
+          rows.add(ReportService.mapOf(
+              "campaignId", result.getString("campaign_id"),
+              "campaignName", result.getString("campaign_name"),
+              "conversions", result.getLong("conversions"),
+              "revenue", result.getDouble("revenue"),
+              "spend", result.getDouble("spend"),
+              "roi", result.getDouble("roi"),
+              "currency", result.getString("currency")));
+        }
+      }
+      return rows;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
   public String latestSyncTime(String dateValue) {
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement("""
@@ -151,6 +188,23 @@ public class ClickflareRevenueRepository {
               WHERE business_date = ?
              """)) {
       statement.setDate(1, Date.valueOf(LocalDate.parse(dateValue)));
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next() ? ReportService.text(result.getString(1)) : "";
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public String latestSyncTime(String startValue, String endValue) {
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s')
+               FROM clickflare_revenue_sync_runs
+              WHERE business_date BETWEEN ? AND ?
+             """)) {
+      statement.setDate(1, Date.valueOf(LocalDate.parse(startValue)));
+      statement.setDate(2, Date.valueOf(LocalDate.parse(endValue)));
       try (ResultSet result = statement.executeQuery()) {
         return result.next() ? ReportService.text(result.getString(1)) : "";
       }

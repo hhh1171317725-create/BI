@@ -7,6 +7,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +69,25 @@ public class ClickflareRevenueService {
     LocalDate date = parseDate(dateValue);
     if (refresh) sync(date, "manual");
     return databaseResponse(date);
+  }
+
+  /** Reads and aggregates an inclusive date range from MySQL without contacting the upstream API. */
+  public Map<String, Object> revenueRange(String startValue, String endValue) {
+    LocalDate start = parseDate(startValue);
+    LocalDate end = parseDate(endValue);
+    if (start.isAfter(end)) throw new IllegalArgumentException("收益开始日期不能晚于结束日期");
+    if (ChronoUnit.DAYS.between(start, end) > 366) {
+      throw new IllegalArgumentException("收益查询日期范围不能超过 367 天");
+    }
+    List<Map<String, Object>> rows = repository.readRange(start.toString(), end.toString());
+    return ReportService.mapOf(
+        "start", start.toString(),
+        "end", end.toString(),
+        "cachedAt", repository.latestSyncTime(start.toString(), end.toString()),
+        "cacheMinutes", REFRESH_MINUTES,
+        "source", "mysql",
+        "syncing", syncRunning.get(),
+        "rows", rows);
   }
 
   /**

@@ -45,9 +45,18 @@ public class ClickflareApiController {
   @GetMapping("/revenue")
   public ResponseEntity<Map<String, Object>> revenue(
       @RequestParam(defaultValue = "") String date,
+      @RequestParam(defaultValue = "") String start,
+      @RequestParam(defaultValue = "") String end,
       @RequestParam(defaultValue = "false") boolean refresh,
       HttpServletRequest request) {
     admin(request);
+    if (!start.isBlank() || !end.isBlank()) {
+      if (start.isBlank() || end.isBlank()) {
+        throw new IllegalArgumentException("收益范围查询需要同时填写开始日期和结束日期");
+      }
+      return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+          .body(revenue.revenueRange(start, end));
+    }
     String resolvedDate = date.isBlank() ? LocalDate.now(ReportService.BEIJING).toString() : date;
     return ResponseEntity.ok().cacheControl(CacheControl.noStore())
         .body(revenue.revenue(resolvedDate, refresh));

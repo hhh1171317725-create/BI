@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class AdpfluxServiceTest {
   @Test
   void analysisAggregatesAccountsDatesAndLatestBalances() {
-    AdpfluxService service = new AdpfluxService(null, null, null);
+    AdpfluxService service = new AdpfluxService(null, null, null, null);
     List<Map<String, Object>> rows = List.of(
         row("2026-08-19", "1001", "账户A", 10, 100, 2, 5),
         row("2026-08-20", "1001", "账户A", 5, 40, 1, 8),
@@ -31,6 +31,21 @@ class AdpfluxServiceTest {
     assertEquals(5d, summary.get("cpa"));
     assertEquals(2, accounts.size());
     assertEquals("2026-08-20", ((Map<?, ?>) dates.getFirst()).get("date"));
+  }
+
+  @Test
+  void currentBalanceOnlyOverridesEachAccountsLatestSelectedDate() {
+    List<Map<String, Object>> rows = List.of(
+        row("2026-08-19", "1001", "账户A", 10, 100, 2, 5),
+        row("2026-08-20", "1001", "账户A", 5, 40, 1, 8),
+        row("2026-08-20", "1002", "账户B", 0, 10, 0, 3));
+
+    List<Map<String, Object>> merged =
+        AdpfluxService.applyCurrentBalances(rows, Map.of("1001", 12.34, "1002", 6.78));
+
+    assertEquals(5d, merged.get(0).get("balance"));
+    assertEquals(12.34, merged.get(1).get("balance"));
+    assertEquals(6.78, merged.get(2).get("balance"));
   }
 
   @Test

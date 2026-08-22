@@ -21,15 +21,18 @@ import org.springframework.stereotype.Service;
 public class AdpfluxService {
   private final AdpfluxRepository repository;
   private final AdpfluxUpstreamService upstream;
+  private final AdpfluxBalanceService balances;
   private final RuntimeConfig config;
   private final AtomicBoolean syncRunning = new AtomicBoolean(false);
 
   public AdpfluxService(
       AdpfluxRepository repository,
       AdpfluxUpstreamService upstream,
+      AdpfluxBalanceService balances,
       RuntimeConfig config) {
     this.repository = repository;
     this.upstream = upstream;
+    this.balances = balances;
     this.config = config;
   }
 
@@ -56,7 +59,11 @@ public class AdpfluxService {
     };
     List<Map<String, Object>> rows = repository.readRows(
         start.toString(), end.toString(), query, normalizedStatus, spendingOnly);
-    return buildAnalysis(rows, start.toString(), end.toString(), repository.latestSyncTime());
+    rows = applyCurrentBalances(rows, repository.readCurrentBalances());
+    Map<String, Object> result = new LinkedHashMap<>(
+        buildAnalysis(rows, start.toString(), end.toString(), repository.latestSyncTime()));
+    result.put("balanceCachedAt", repository.latestBalanceSyncTime());
+    return result;
   }
 
   public Map<String, Object> sync(
@@ -77,15 +84,41 @@ public class AdpfluxService {
   }
 
   public Map<String, Object> credentialStatus() {
-    return upstream.credentialStatus();
+    Map<String, Object> result = new LinkedHashMap<>(upstream.credentialStatus());
+    result.putAll(balances.credentialStatus());
+    return result;
   }
 
   public Map<String, Object> saveCredentials(String token, String companyId) {
+    return saveCredentials(token, companyId, "", "", "", "", "");
+  }
+
+  public Map<String, Object> saveCredentials(
+      String token,
+      String companyId,
+      String balanceArbitrageToken,
+      String balanceArbitrageCompanyId,
+      String balanceAuthorizationFront,
+      String balanceCompanyExId,
+      String balanceUpAgentId) {
     AdpfluxUpstreamService.Credentials credentials =
         upstream.resolvedCredentials(token, companyId);
     credentials.validate();
     config.saveAdpfluxCredentials(credentials.token(), credentials.companyId());
-    return upstream.credentialStatus();
+    boolean hasBalanceInput = !ReportService.text(balanceArbitrageToken).isBlank()
+        || !ReportService.text(balanceArbitrageCompanyId).isBlank()
+        || !ReportService.text(balanceAuthorizationFront).isBlank()
+        || !ReportService.text(balanceCompanyExId).isBlank()
+        || !ReportService.text(balanceUpAgentId).isBlank();
+    if (hasBalanceInput) {
+      balances.saveCredentials(
+          balanceArbitrageToken,
+          balanceArbitrageCompanyId,
+          balanceAuthorizationFront,
+          balanceCompanyExId,
+          balanceUpAgentId);
+    }
+    return credentialStatus();
   }
 
   @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Shanghai")
@@ -150,6 +183,31 @@ public class AdpfluxService {
         "by_account", byAccount,
         "by_date", byDate,
         "by_account_date", rows.stream().map(AdpfluxService::detailRow).toList());
+  }
+
+  static List<Map<String, Object>> applyCurrentBalances(
+      List<Map<String, Object>> source,
+      Map<String, Double> balances) {
+    if (source == null || source.isEmpty() || balances == null || balances.isEmpty()) {
+      return source == null ? List.of() : source;
+    }
+    Map<String, String> latestDates = new LinkedHashMap<>();
+    for (Map<String, Object> row : source) {
+      String id = ReportService.text(row.get("advertiserId"));
+      String date = ReportService.text(row.get("date"));
+      latestDates.merge(id, date, (left, right) -> left.compareTo(right) >= 0 ? left : right);
+    }
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (Map<String, Object> row : source) {
+      Map<String, Object> copy = new LinkedHashMap<>(row);
+      String id = ReportService.text(row.get("advertiserId"));
+      if (ReportService.text(row.get("date")).equals(latestDates.get(id))
+          && balances.containsKey(id)) {
+        copy.put("balance", balances.get(id));
+      }
+      result.add(copy);
+    }
+    return result;
   }
 
   private static List<Map<String, Object>> aggregateAccounts(List<Map<String, Object>> rows) {

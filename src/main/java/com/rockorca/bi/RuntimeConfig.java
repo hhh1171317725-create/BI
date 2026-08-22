@@ -220,6 +220,59 @@ public class RuntimeConfig {
     }
   }
 
+  public synchronized void saveAdpfluxBalanceCredentials(
+      String arbitrageTokenValue,
+      String arbitrageCompanyIdValue,
+      String authorizationFrontValue,
+      String companyExIdValue,
+      String upAgentIdValue) {
+    String arbitrageToken = clean(arbitrageTokenValue);
+    String arbitrageCompanyId = clean(arbitrageCompanyIdValue);
+    String authorizationFront = clean(authorizationFrontValue);
+    String companyExId = clean(companyExIdValue);
+    String upAgentId = clean(upAgentIdValue);
+    if (arbitrageToken.isBlank()) {
+      arbitrageToken = decodedSecret("ADPFLUX_BALANCE_ARBITRAGE_TOKEN_B64");
+    }
+    if (arbitrageCompanyId.isBlank()) {
+      arbitrageCompanyId = get("ADPFLUX_BALANCE_ARBITRAGE_COMPANY_ID", "");
+    }
+    if (authorizationFront.isBlank()) {
+      authorizationFront = decodedSecret("ADPFLUX_BALANCE_AUTHORIZATION_FRONT_B64");
+    }
+    if (companyExId.isBlank()) {
+      companyExId = get("ADPFLUX_BALANCE_COMPANY_EX_ID", "");
+    }
+    if (upAgentId.isBlank()) {
+      upAgentId = get("ADPFLUX_BALANCE_UP_AGENT_ID", "");
+    }
+    if (!validToken(arbitrageToken) || !validToken(authorizationFront)) {
+      throw new IllegalArgumentException("请填写有效的余额接口 token");
+    }
+    if (!validNumericId(arbitrageCompanyId)
+        || !validNumericId(companyExId)
+        || !validNumericId(upAgentId)) {
+      throw new IllegalArgumentException("余额接口公司与代理 ID 应为 8 至 30 位数字");
+    }
+
+    Path path = runtimeDir.resolve("adpflux.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("ADPFLUX_BALANCE_ARBITRAGE_TOKEN_B64", encodeSecret(arbitrageToken));
+      saved.put("ADPFLUX_BALANCE_ARBITRAGE_COMPANY_ID", arbitrageCompanyId);
+      saved.put("ADPFLUX_BALANCE_AUTHORIZATION_FRONT_B64", encodeSecret(authorizationFront));
+      saved.put("ADPFLUX_BALANCE_COMPANY_EX_ID", companyExId);
+      saved.put("ADPFLUX_BALANCE_UP_AGENT_ID", upAgentId);
+      saveEnvironmentFile(path, "# Managed by the ADPFlux account dashboard.", saved);
+      saved.forEach(values::put);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存 ADPFlux 余额接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
   public synchronized void saveAdpfluxCampaignApiKeyId(String apiKeyIdValue) {
     String apiKeyId = clean(apiKeyIdValue);
     if (!apiKeyId.matches("^[0-9]{1,10}$")) {
@@ -389,6 +442,16 @@ public class RuntimeConfig {
 
   private static String clean(String value) {
     return String.valueOf(value == null ? "" : value).trim();
+  }
+
+  private static boolean validToken(String value) {
+    return value.length() >= 20
+        && value.length() <= 4_000
+        && value.chars().noneMatch(Character::isWhitespace);
+  }
+
+  private static boolean validNumericId(String value) {
+    return value.matches("^[0-9]{8,30}$");
   }
 
   private boolean enabled(String key) {

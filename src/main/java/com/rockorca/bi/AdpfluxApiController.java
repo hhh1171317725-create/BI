@@ -58,7 +58,12 @@ public class AdpfluxApiController {
         .cacheControl(CacheControl.noStore())
         .body(reports.saveCredentials(
             ReportService.text(payload.get("token")),
-            ReportService.text(payload.get("companyId"))));
+            ReportService.text(payload.get("companyId")),
+            ReportService.text(payload.get("balanceArbitrageToken")),
+            ReportService.text(payload.get("balanceArbitrageCompanyId")),
+            ReportService.text(payload.get("balanceAuthorizationFront")),
+            ReportService.text(payload.get("balanceCompanyExId")),
+            ReportService.text(payload.get("balanceUpAgentId"))));
   }
 
   @PostMapping("/sync")

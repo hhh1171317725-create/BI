@@ -274,7 +274,8 @@ class ApiControllerTest {
         .thenReturn(Map.of("source", "analyze"));
     when(adpfluxReports.credentialStatus())
         .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
-    when(adpfluxReports.saveCredentials("front-token", "12345678901234567890"))
+    when(adpfluxReports.saveCredentials(
+        "front-token", "12345678901234567890", "", "", "", "", ""))
         .thenReturn(Map.of("configured", true, "companyId", "12345678901234567890"));
     when(adpfluxReports.sync(
         "2026-08-20", "2026-08-20", "front-token", "12345678901234567890"))
@@ -313,7 +314,8 @@ class ApiControllerTest {
         .andExpect(jsonPath("$.source").value("sync"));
 
     verify(adpfluxReports).analyze("2026-08-01", "2026-08-20", "云联", "enabled", true);
-    verify(adpfluxReports).saveCredentials("front-token", "12345678901234567890");
+    verify(adpfluxReports).saveCredentials(
+        "front-token", "12345678901234567890", "", "", "", "", "");
     verify(adpfluxReports).sync(
         "2026-08-20", "2026-08-20", "front-token", "12345678901234567890");
   }

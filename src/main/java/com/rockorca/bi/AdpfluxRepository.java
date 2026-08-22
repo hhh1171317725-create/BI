@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -65,6 +66,18 @@ public class AdpfluxRepository {
             PRIMARY KEY (`id`),
             KEY `idx_adpflux_sync_finished` (`finished_at`)
           ) ENGINE=InnoDB COMMENT='ADPFlux账户看板同步记录'
+          """);
+      statement.executeUpdate("""
+          CREATE TABLE IF NOT EXISTS `adpflux_advertiser_balance_current` (
+            `advertiser_id` VARCHAR(100) NOT NULL COMMENT '广告账户ID',
+            `advertiser_name` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '广告账户名称',
+            `company_ex_id` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '开户主体ID',
+            `balance` DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '当前账户余额',
+            `synced_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+              ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '最近同步时间',
+            PRIMARY KEY (`advertiser_id`),
+            KEY `idx_adpflux_balance_synced` (`synced_at`)
+          ) ENGINE=InnoDB COMMENT='ADPFlux账户最新余额'
           """);
     } catch (SQLException error) {
       throw databaseError(error);
@@ -206,6 +219,70 @@ public class AdpfluxRepository {
         }
       }
       return rows;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  /** Replaces the complete current-balance snapshot atomically. */
+  public void replaceCurrentBalances(List<Map<String, Object>> rows) {
+    try (Connection connection = dataSource.getConnection()) {
+      boolean autoCommit = connection.getAutoCommit();
+      connection.setAutoCommit(false);
+      try {
+        try (Statement delete = connection.createStatement()) {
+          delete.executeUpdate("DELETE FROM adpflux_advertiser_balance_current");
+        }
+        try (PreparedStatement insert = connection.prepareStatement("""
+            INSERT INTO adpflux_advertiser_balance_current (
+              advertiser_id, advertiser_name, company_ex_id, balance
+            ) VALUES (?, ?, ?, ?)
+            """)) {
+          for (Map<String, Object> row : rows) {
+            insert.setString(1, ReportService.text(row.get("advertiserId")));
+            insert.setString(2, ReportService.text(row.get("advertiserName")));
+            insert.setString(3, ReportService.text(row.get("companyExId")));
+            insert.setDouble(4, ReportService.number(row.get("balance")));
+            insert.addBatch();
+          }
+          insert.executeBatch();
+        }
+        connection.commit();
+      } catch (Exception error) {
+        connection.rollback();
+        throw error;
+      } finally {
+        connection.setAutoCommit(autoCommit);
+      }
+    } catch (Exception error) {
+      if (error instanceof SQLException sqlError) throw databaseError(sqlError);
+      throw new IllegalStateException("保存 ADPFlux 账户余额失败：" + error.getMessage(), error);
+    }
+  }
+
+  public Map<String, Double> readCurrentBalances() {
+    Map<String, Double> balances = new LinkedHashMap<>();
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT advertiser_id, balance
+               FROM adpflux_advertiser_balance_current
+             """);
+         ResultSet result = statement.executeQuery()) {
+      while (result.next()) balances.put(result.getString("advertiser_id"), result.getDouble("balance"));
+      return balances;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public String latestBalanceSyncTime() {
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT DATE_FORMAT(MAX(synced_at), '%Y-%m-%dT%H:%i:%s')
+               FROM adpflux_advertiser_balance_current
+             """);
+         ResultSet result = statement.executeQuery()) {
+      return result.next() ? ReportService.text(result.getString(1)) : "";
     } catch (SQLException error) {
       throw databaseError(error);
     }

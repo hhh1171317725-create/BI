@@ -38,7 +38,6 @@ public class RuntimeConfig {
     loadOptionalFile("ssh.env");
     loadOptionalFile("jd-low-activity.env");
     loadOptionalFile("adpflux.env");
-    loadOptionalFile("afs-monitor.env");
     loadOptionalFile("report-visibility.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
@@ -443,24 +442,6 @@ public class RuntimeConfig {
 
   private static String clean(String value) {
     return String.valueOf(value == null ? "" : value).trim();
-  }
-
-  public synchronized void saveAfsMonitorCookie(String cookieValue) {
-    String cookie = clean(cookieValue);
-    if (!cookie.startsWith("afs_admin_session=") || cookie.length() < 30
-        || cookie.length() > 4_000 || cookie.indexOf('\r') >= 0 || cookie.indexOf('\n') >= 0) {
-      throw new IllegalArgumentException("请粘贴有效的 afs_admin_session Cookie");
-    }
-    Path path = runtimeDir.resolve("afs-monitor.env");
-    try {
-      Files.createDirectories(runtimeDir);
-      Map<String, String> saved = new LinkedHashMap<>();
-      saved.put("AFS_MONITOR_COOKIE_B64", encodeSecret(cookie));
-      saveEnvironmentFile(path, "# Managed by the AFS monitor settings page.", saved);
-      saved.forEach(values::put);
-    } catch (IOException error) {
-      throw new IllegalStateException("保存 AFS 监控配置失败：" + error.getMessage(), error);
-    }
   }
 
   private static boolean validToken(String value) {

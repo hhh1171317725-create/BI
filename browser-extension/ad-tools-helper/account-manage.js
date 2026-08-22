@@ -3,8 +3,14 @@
   window.__adpfluxRechargeHelperLoaded = true;
 
   const params = new URLSearchParams(location.search);
-  const accountId = String(params.get("bi_account_id") || "").trim();
-  if (params.get("bi_recharge_autofill") !== "1" || !accountId) return;
+  const accountIds = [...new Set(
+    String(params.get("bi_account_ids") || params.get("bi_account_id") || "")
+      .split(/[\s,，、]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )];
+  const accountId = accountIds.join(" ");
+  if (params.get("bi_recharge_autofill") !== "1" || !accountIds.length) return;
 
   function send(message) {
     return new Promise((resolve, reject) => {
@@ -43,7 +49,7 @@
       throw new Error(`充值账户 ${accountId} 自动查询失败，请手动查询`);
     }
     const cleanUrl = new URL(location.href);
-    ["bi_entry_id", "bi_keyword", "bi_account_id", "bi_recharge_autofill"].forEach((key) => cleanUrl.searchParams.delete(key));
+    ["bi_entry_id", "bi_keyword", "bi_account_id", "bi_account_ids", "bi_recharge_autofill"].forEach((key) => cleanUrl.searchParams.delete(key));
     history.replaceState(null, "", cleanUrl);
   }
 

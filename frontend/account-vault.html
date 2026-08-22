@@ -138,7 +138,7 @@
         const accountIds=[...new Set(String(entry.accountIds||'').split(/[\s,，、]+/).map(value=>value.trim()).filter(Boolean))];
         if(!accountIds.length){status(`“${entry.keyword}”没有可用的账户 ID`,'error');return}
         const accountQuery=accountIds.join(' '),target=new URL('https://www.adpflux.com/iframe/account-manage');
-        target.searchParams.set('bi_entry_id',String(entry.id));target.searchParams.set('bi_keyword',entry.keyword);target.searchParams.set('bi_account_id',accountQuery);target.searchParams.set('bi_recharge_autofill','1');window.open(target.toString(),'_blank','noopener');status(`正在打开账户管理并查询 ${accountIds.length} 个账户`,'ok');return
+        target.searchParams.set('bi_entry_id',String(entry.id));target.searchParams.set('bi_keyword',entry.keyword);target.searchParams.set('bi_account_ids',accountQuery);target.searchParams.set('bi_recharge_autofill','1');window.open(target.toString(),'_blank','noopener');status(`正在打开账户管理并查询 ${accountIds.length} 个账户`,'ok');return
       }
       if(['articleUrl','accountIds','copyText'].includes(copyType)){const values={articleUrl:entry.articleUrl,accountIds:entry.accountIds,copyText:entry.copyText},labels={articleUrl:'文章链接',accountIds:'全部账户 ID',copyText:'文案'},value=values[copyType],label=labels[copyType],suffix=copyType==='accountIds'?' ':'';if(!value){status(`${label}${suffix}未填写`,'error');return}try{await navigator.clipboard.writeText(value);status(`${label}${suffix}已复制`,'ok')}catch{status('复制失败，请检查浏览器剪贴板权限','error')}return}
       if(action.dataset.edit){openEditor(entry);return}

@@ -18,6 +18,12 @@
   }
 
   async function fillAndQuery(accountId) {
+    const accountIds = [...new Set(
+      String(accountId || "").split(/[\s,，、]+/).map((value) => value.trim()).filter(Boolean)
+    )];
+    const accountQuery = accountIds.join(" ");
+    if (!accountQuery) return { searched: false, method: "missing-account" };
+
     let input = null;
     for (let attempt = 0; attempt < 120 && !input; attempt += 1) {
       input = findAccountInput();
@@ -29,8 +35,8 @@
     input.focus();
     setter?.call(input, "");
     input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
-    setter?.call(input, accountId);
-    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: accountId }));
+    setter?.call(input, accountQuery);
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: accountQuery }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await wait(300);
 
@@ -43,7 +49,7 @@
     if (!queryButton) return { searched: false, method: "query-not-found" };
 
     queryButton.click();
-    return { searched: true, method: "embedded-frame" };
+    return { searched: true, method: "embedded-frame", accountCount: accountIds.length };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

@@ -11,18 +11,21 @@ public class StartupCheck implements ApplicationRunner {
   private final TodoService todos;
   private final AdpfluxRepository adpflux;
   private final ClickflareRevenueRepository clickflareRevenue;
+  private final AfsMonitorRepository afsMonitor;
 
   public StartupCheck(
       ReportRepository repository,
       UserService users,
       TodoService todos,
       AdpfluxRepository adpflux,
-      ClickflareRevenueRepository clickflareRevenue) {
+      ClickflareRevenueRepository clickflareRevenue,
+      AfsMonitorRepository afsMonitor) {
     this.repository = repository;
     this.users = users;
     this.todos = todos;
     this.adpflux = adpflux;
     this.clickflareRevenue = clickflareRevenue;
+    this.afsMonitor = afsMonitor;
   }
 
   @Override
@@ -57,6 +60,12 @@ public class StartupCheck implements ApplicationRunner {
       System.out.println("ClickFlare收益数据表检查完成");
     } catch (Exception error) {
       System.err.println("ClickFlare收益数据表初始化失败：" + error.getMessage());
+    }
+    try {
+      afsMonitor.initialize();
+      System.out.println("AFS监控数据表检查完成");
+    } catch (Exception error) {
+      System.err.println("AFS监控数据表初始化失败：" + error.getMessage());
     }
     System.out.println("下一次全量数据更新：" + ReportService.nextScheduledRefreshAt());
   }

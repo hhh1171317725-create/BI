@@ -622,6 +622,20 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
 }
 
 async function searchAdpfluxRechargeAccount(tabId, value) {
+  // sandbox 跨域 iframe 中常驻的内容脚本最稳定，先直接请它填写并查询。
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const frameResult = await chrome.tabs.sendMessage(tabId, {
+        type: "fillRechargeAccountFrame",
+        value: String(value || "")
+      });
+      if (frameResult?.searched || ["input-not-found", "query-not-found", "missing-account"].includes(frameResult?.method)) {
+        return frameResult;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
   const frameResults = await chrome.scripting.executeScript({
     // Adpflux 的账户管理表单位于同源 iframe 内，需要同时在所有框架中定位。
     target: { tabId, allFrames: true },

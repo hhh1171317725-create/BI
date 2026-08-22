@@ -531,9 +531,12 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
           .filter(({ root }) => {
             if (!root || !visible(root) || root.closest("aside, nav, [class*='sidebar'], [class*='sider']")) return false;
             const rect = root.getBoundingClientRect();
-            return rect.left > Math.min(300, window.innerWidth * 0.18) && rect.top > 120 && rect.width > 320;
+            // Adpflux 的侧栏宽度会随分辨率和版本变化，不能用固定 left 值判断主内容区。
+            // 素材库账户框本身有明确占位文字，再以位置和宽度排除隐藏的小型选择器即可。
+            return rect.top > 100 && rect.width > 240;
           });
-        return candidates.find(({ input }) => /广告账户|选择账户/.test(input.placeholder || ""))?.input
+        return candidates.find(({ input }) => /请选择广告账户/.test(input.placeholder || ""))?.input
+          || candidates.find(({ input }) => /广告账户|选择账户/.test(input.placeholder || ""))?.input
           || candidates.find(({ root }) => /广告账户/.test(root.parentElement?.textContent || ""))?.input
           || candidates.sort((a, b) => b.root.getBoundingClientRect().width - a.root.getBoundingClientRect().width)[0]?.input
           || null;

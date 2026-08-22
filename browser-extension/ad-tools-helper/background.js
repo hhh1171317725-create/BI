@@ -635,19 +635,32 @@ async function searchAdpfluxRechargeAccount(tabId, value) {
         return Boolean(rect?.width && rect?.height && style?.display !== "none" && style?.visibility !== "hidden");
       };
       const findInput = () => {
+        // 账户管理页左侧还有企业下拉框，只允许选中主内容区的普通账户 ID 搜索框。
         const candidates = [...document.querySelectorAll("input")].map((input) => ({
           input,
-          root: input.closest(".ant-select, .arco-select, .ant-input-affix-wrapper, .arco-input-wrapper") || input
+          root: input.closest(".ant-input-affix-wrapper, .arco-input-wrapper") || input
         })).filter(({ input, root }) => {
           if (!visible(root) || root.closest("aside, nav, [class*='sidebar'], [class*='sider']")) return false;
+          if (input.closest(".ant-select, .arco-select, [role='combobox']")) return false;
           const rect = root.getBoundingClientRect();
-          return rect.top > 80 && rect.top < 340 && rect.width > 160
+          return rect.top > 70 && rect.top < 360 && rect.width > 150
             && input.type !== "hidden" && input.type !== "password";
         });
-        return candidates.find(({ input }) => /账户id|账号id|广告账户|账户编号/i.test(input.placeholder || ""))?.input
-          || candidates.find(({ root }) => /账户id|账号id|广告账户/i.test(root.parentElement?.textContent || ""))?.input
-          || candidates.sort((left, right) => left.root.getBoundingClientRect().left - right.root.getBoundingClientRect().left)[0]?.input
-          || null;
+        const byPlaceholder = candidates.find(({ input }) => {
+          const placeholder = String(input.placeholder || "").replace(/\s+/g, "");
+          return /多个id.*(逗号|分隔)|(账户|账号)id/i.test(placeholder);
+        });
+        if (byPlaceholder) return byPlaceholder.input;
+
+        // 占位文字改版时，退化为查找与“查询”按钮同一水平行、位于其左侧的第一个普通输入框。
+        const queryButton = [...document.querySelectorAll("button")].find((button) =>
+          visible(button) && normalize(button.textContent) === "查询");
+        if (!queryButton) return null;
+        const buttonRect = queryButton.getBoundingClientRect();
+        return candidates.filter(({ root }) => {
+          const rect = root.getBoundingClientRect();
+          return rect.right <= buttonRect.left && Math.abs(rect.top - buttonRect.top) < 50;
+        }).sort((left, right) => left.root.getBoundingClientRect().left - right.root.getBoundingClientRect().left)[0]?.input || null;
       };
 
       let input = null;
@@ -657,7 +670,8 @@ async function searchAdpfluxRechargeAccount(tabId, value) {
       }
       if (!input) return { searched: false, method: "input-not-found" };
 
-      const root = input.closest(".ant-select, .arco-select") || input.parentElement || input;
+      const selectRoot = input.closest(".ant-select, .arco-select");
+      const root = selectRoot || input.parentElement || input;
       const selector = root.querySelector?.(".ant-select-selector, .arco-select-view, [role='combobox']") || root;
       const setValue = (next) => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, next);
@@ -674,18 +688,20 @@ async function searchAdpfluxRechargeAccount(tabId, value) {
 
       const target = normalize(accountId);
       let option = null;
-      for (let attempt = 0; attempt < 80 && !option; attempt += 1) {
-        const options = [...document.querySelectorAll(
-          "[role='option'], .ant-select-item-option, .arco-select-option"
-        )].filter(visible);
-        option = options.find((node) => normalize(node.textContent).includes(target));
-        if (!option) await wait(100);
+      if (selectRoot) {
+        for (let attempt = 0; attempt < 80 && !option; attempt += 1) {
+          const options = [...document.querySelectorAll(
+            "[role='option'], .ant-select-item-option, .arco-select-option"
+          )].filter(visible);
+          option = options.find((node) => normalize(node.textContent).includes(target));
+          if (!option) await wait(100);
+        }
       }
       if (option) {
         option.scrollIntoView({ block: "nearest" });
         option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
         option.click();
-      } else if (input.closest(".ant-select, .arco-select")) {
+      } else if (selectRoot) {
         input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
         input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true }));
       }

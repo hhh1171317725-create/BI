@@ -70,20 +70,36 @@ public class ClickflareRevenueService {
     return databaseResponse(date);
   }
 
-  /** Runs shortly after startup and then ten minutes after each completed attempt. */
+  /**
+   * Runs shortly after startup and then ten minutes after each completed attempt.
+   * Both today and yesterday are refreshed because ClickFlare can post delayed conversions and
+   * revenue after Beijing midnight; otherwise yesterday would remain at its last pre-midnight value.
+   */
   @Scheduled(initialDelay = 5_000, fixedDelay = 600_000)
   public void scheduledSync() {
     Credentials credentials = credentials();
     if (!credentials.configured() || !syncRunning.compareAndSet(false, true)) return;
-    LocalDate date = LocalDate.now(ReportService.BEIJING);
     try {
-      sync(date, "scheduled", credentials);
-      System.out.println("ClickFlare收益定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));
-    } catch (Exception error) {
-      System.err.println("ClickFlare收益定时更新失败：" + error.getMessage());
+      LocalDate today = LocalDate.now(ReportService.BEIJING);
+      for (LocalDate date : scheduledDates(today)) {
+        try {
+          sync(date, "scheduled", credentials);
+          System.out.println(
+              "ClickFlare收益定时更新成功：" + date + " "
+                  + ZonedDateTime.now(ReportService.BEIJING));
+        } catch (Exception error) {
+          // One date failing must not prevent the other date from being refreshed.
+          System.err.println(
+              "ClickFlare收益定时更新失败：" + date + " " + error.getMessage());
+        }
+      }
     } finally {
       syncRunning.set(false);
     }
+  }
+
+  static List<LocalDate> scheduledDates(LocalDate today) {
+    return List.of(today.minusDays(1), today);
   }
 
   private void sync(LocalDate date, String triggerType) {

@@ -7,12 +7,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class ClickflareRevenueServiceTest {
+  @Test
+  void scheduledSyncRefreshesYesterdayAndToday() {
+    LocalDate today = LocalDate.of(2026, 8, 22);
+
+    assertEquals(
+        List.of(LocalDate.of(2026, 8, 21), today),
+        ClickflareRevenueService.scheduledDates(today));
+  }
+
   @Test
   @SuppressWarnings("unchecked")
   void normalRevenueRequestReadsDatabaseWithoutCallingCredentialsOrUpstream() {

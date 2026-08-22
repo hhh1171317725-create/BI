@@ -621,6 +621,102 @@ async function selectAdpfluxMaterialAccount(tabId, value) {
   return result || { selected: false, method: "no-result", options: [] };
 }
 
+async function searchAdpfluxRechargeAccount(tabId, value) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [String(value || "")],
+    func: async (accountId) => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const normalize = (text) => String(text || "").replace(/\s+/g, "").trim().toLowerCase();
+      const visible = (element) => {
+        const rect = element?.getBoundingClientRect();
+        const style = element ? getComputedStyle(element) : null;
+        return Boolean(rect?.width && rect?.height && style?.display !== "none" && style?.visibility !== "hidden");
+      };
+      const findInput = () => {
+        const candidates = [...document.querySelectorAll("input")].map((input) => ({
+          input,
+          root: input.closest(".ant-select, .arco-select, .ant-input-affix-wrapper, .arco-input-wrapper") || input
+        })).filter(({ input, root }) => {
+          if (!visible(root) || root.closest("aside, nav, [class*='sidebar'], [class*='sider']")) return false;
+          const rect = root.getBoundingClientRect();
+          return rect.top > 80 && rect.top < 340 && rect.width > 160
+            && input.type !== "hidden" && input.type !== "password";
+        });
+        return candidates.find(({ input }) => /账户id|账号id|广告账户|账户编号/i.test(input.placeholder || ""))?.input
+          || candidates.find(({ root }) => /账户id|账号id|广告账户/i.test(root.parentElement?.textContent || ""))?.input
+          || candidates.sort((left, right) => left.root.getBoundingClientRect().left - right.root.getBoundingClientRect().left)[0]?.input
+          || null;
+      };
+
+      let input = null;
+      for (let attempt = 0; attempt < 120 && !input; attempt += 1) {
+        input = findInput();
+        if (!input) await wait(150);
+      }
+      if (!input) return { searched: false, method: "input-not-found" };
+
+      const root = input.closest(".ant-select, .arco-select") || input.parentElement || input;
+      const selector = root.querySelector?.(".ant-select-selector, .arco-select-view, [role='combobox']") || root;
+      const setValue = (next) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, next);
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: next }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keyup", { key: next.slice(-1), bubbles: true }));
+      };
+
+      selector.click?.();
+      input.focus();
+      setValue("");
+      setValue(accountId);
+      await wait(500);
+
+      const target = normalize(accountId);
+      let option = null;
+      for (let attempt = 0; attempt < 80 && !option; attempt += 1) {
+        const options = [...document.querySelectorAll(
+          "[role='option'], .ant-select-item-option, .arco-select-option"
+        )].filter(visible);
+        option = options.find((node) => normalize(node.textContent).includes(target));
+        if (!option) await wait(100);
+      }
+      if (option) {
+        option.scrollIntoView({ block: "nearest" });
+        option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+        option.click();
+      } else if (input.closest(".ant-select, .arco-select")) {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true }));
+      }
+      await wait(500);
+
+      let queryButton = null;
+      for (let attempt = 0; attempt < 60 && !queryButton; attempt += 1) {
+        queryButton = [...document.querySelectorAll("button")].find((button) =>
+          visible(button) && normalize(button.textContent) === "查询");
+        if (!queryButton) await wait(100);
+      }
+      if (!queryButton) return { searched: false, method: "query-not-found" };
+
+      const MouseEventType = window.PointerEvent || window.MouseEvent;
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        const EventType = type.startsWith("pointer") ? MouseEventType : window.MouseEvent;
+        queryButton.dispatchEvent(new EventType(type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          button: 0,
+          buttons: type.endsWith("down") ? 1 : 0,
+          view: window
+        }));
+      }
+      return { searched: true, method: option ? "option-and-query" : "input-and-query" };
+    }
+  });
+  return result || { searched: false, method: "no-result" };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "loadAdpfluxConfigs") {
     loadAdpfluxConfigs(message.query)
@@ -692,6 +788,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     selectAdpfluxMaterialAccount(_sender.tab.id, message.value)
       .then(sendResponse)
       .catch((error) => sendResponse({ error: error.message || "素材账户选择失败" }));
+    return true;
+  }
+  if (message?.type === "searchAdpfluxRechargeAccount") {
+    let trusted = false;
+    try {
+      trusted = new URL(_sender.url).hostname === "www.adpflux.com";
+    } catch {}
+    if (!trusted || !_sender.tab?.id) {
+      sendResponse({ error: "充值账户查询请求来源无效" });
+      return false;
+    }
+    searchAdpfluxRechargeAccount(_sender.tab.id, message.value)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message || "充值账户查询失败" }));
     return true;
   }
   if (message?.type === "downloadImages") {

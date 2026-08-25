@@ -103,7 +103,18 @@ public class AdpfluxUpstreamService {
       throw new IllegalStateException(
           date + " 上游分页数据不完整：应有 " + expected + " 行，实际读取 " + rows.size() + " 行");
     }
-    return rows;
+    return deduplicateRows(rows);
+  }
+
+  static List<Map<String, Object>> deduplicateRows(List<Map<String, Object>> rows) {
+    Map<String, Map<String, Object>> unique = new LinkedHashMap<>();
+    for (Map<String, Object> row : rows) {
+      String advertiserId = ReportService.text(row.get("advertiserId"));
+      if (advertiserId.isBlank()) continue;
+      String key = ReportService.text(row.get("date")) + ":" + advertiserId;
+      unique.put(key, row);
+    }
+    return new ArrayList<>(unique.values());
   }
 
   private Page requestPage(LocalDate date, int page, Credentials credentials) {

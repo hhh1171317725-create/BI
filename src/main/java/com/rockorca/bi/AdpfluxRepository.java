@@ -97,6 +97,23 @@ public class AdpfluxRepository {
           cash_spend, voucher_spend, total_spend, clicks, conversions, cpa, cvr,
           currency, status, status_raw, timezone, closing_time, raw_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          advertiser_name = VALUES(advertiser_name),
+          balance = VALUES(balance),
+          billed_cost = VALUES(billed_cost),
+          cash_spend = VALUES(cash_spend),
+          voucher_spend = VALUES(voucher_spend),
+          total_spend = VALUES(total_spend),
+          clicks = VALUES(clicks),
+          conversions = VALUES(conversions),
+          cpa = VALUES(cpa),
+          cvr = VALUES(cvr),
+          currency = VALUES(currency),
+          status = VALUES(status),
+          status_raw = VALUES(status_raw),
+          timezone = VALUES(timezone),
+          closing_time = VALUES(closing_time),
+          raw_json = VALUES(raw_json)
         """;
     try (Connection connection = dataSource.getConnection()) {
       boolean autoCommit = connection.getAutoCommit();

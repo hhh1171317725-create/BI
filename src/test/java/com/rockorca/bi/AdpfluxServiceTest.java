@@ -72,6 +72,20 @@ class AdpfluxServiceTest {
     assertEquals("UTC+00:00", mapped.get("timezone"));
   }
 
+  @Test
+  void upstreamRowsKeepOnlyTheLatestDuplicateAccountForEachDate() {
+    Map<String, Object> first = row("2026-08-25", "1001", "账户A", 1, 10, 1, 5);
+    Map<String, Object> latest = row("2026-08-25", "1001", "账户A", 2, 20, 2, 6);
+    Map<String, Object> other = row("2026-08-25", "1002", "账户B", 3, 30, 3, 7);
+
+    List<Map<String, Object>> rows =
+        AdpfluxUpstreamService.deduplicateRows(List.of(first, latest, other));
+
+    assertEquals(2, rows.size());
+    assertEquals(2d, rows.get(0).get("totalSpend"));
+    assertEquals("1002", rows.get(1).get("advertiserId"));
+  }
+
   private static Map<String, Object> row(
       String date,
       String id,

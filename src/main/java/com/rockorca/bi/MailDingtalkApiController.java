@@ -48,6 +48,12 @@ public class MailDingtalkApiController {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(mail.forwardNow());
   }
 
+  @PostMapping("/test-latest")
+  public ResponseEntity<Map<String, Object>> testLatest(HttpServletRequest request) {
+    admin(request);
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(mail.testLatest());
+  }
+
   private void admin(HttpServletRequest request) {
     users.requireAdmin(sessions.currentUser(request));
   }

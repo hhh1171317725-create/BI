@@ -10,6 +10,7 @@ import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.search.FlagTerm;
+import jakarta.mail.search.FromStringTerm;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -46,7 +47,8 @@ public class MailDingtalkService {
   private static final String TIKTOK_NOTIFICATION_SENDER = "no-reply@notifications.tiktok.com";
   private static final int MAX_MESSAGES_PER_RUN = 20;
   private static final int MAX_HISTORY = 2_000;
-  private static final int MAX_BODY_CHARS = 3_200;
+  private static final int MAX_SOURCE_CHARS = 50_000;
+  private static final int MAX_MESSAGE_BODY_CHARS = 3_200;
   private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile("(?i)Ad account ID\\s*:\\s*(\\d+)");
   private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile(
       "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID)\\b)");
@@ -98,6 +100,26 @@ public class MailDingtalkService {
     } catch (RuntimeException error) {
       lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
       lastResult = "失败：" + error.getMessage();
+      throw error;
+    } finally {
+      running = false;
+    }
+  }
+
+  public synchronized Map<String, Object> testLatest() {
+    if (running) throw new IllegalStateException("邮件转发正在执行，请稍后再试");
+    running = true;
+    try {
+      Credentials credentials = credentials();
+      credentials.validate();
+      MailSummary summary = latestTikTokMail(credentials);
+      sendTextToDingtalk("【测试发送，不影响正式转发】\n" + formatDingtalkMessage(summary), credentials);
+      lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+      lastResult = "最新一封 TikTok 邮件测试发送成功";
+      return ReportService.mapOf("message", lastResult, "subject", summary.subject());
+    } catch (RuntimeException error) {
+      lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+      lastResult = "测试失败：" + error.getMessage();
       throw error;
     } finally {
       running = false;
@@ -164,6 +186,41 @@ public class MailDingtalkService {
     return new ForwardResult(newlyForwarded.size(), skipped, items);
   }
 
+  private MailSummary latestTikTokMail(Credentials credentials) {
+    Properties properties = mailProperties();
+    try (Store store = Session.getInstance(properties).getStore("imaps")) {
+      store.connect("imap.qq.com", credentials.email(), credentials.authorizationCode());
+      Folder inbox = store.getFolder("INBOX");
+      inbox.open(Folder.READ_ONLY);
+      try {
+        List<Message> messages = new ArrayList<>(List.of(
+            inbox.search(new FromStringTerm(TIKTOK_NOTIFICATION_SENDER))));
+        messages.removeIf(message -> !fromTargetSender(message));
+        messages.sort(Comparator.comparing(MailDingtalkService::sentDateSafe).reversed());
+        if (messages.isEmpty()) {
+          throw new IllegalStateException("收件箱中没有找到 TikTok 通知邮件");
+        }
+        return summarize(messages.get(0));
+      } finally {
+        inbox.close(false);
+      }
+    } catch (Exception error) {
+      if (error instanceof IllegalStateException state) throw state;
+      throw new IllegalStateException("读取最新 TikTok 邮件失败：" + rootMessage(error), error);
+    }
+  }
+
+  private static Properties mailProperties() {
+    Properties properties = new Properties();
+    properties.put("mail.store.protocol", "imaps");
+    properties.put("mail.imaps.host", "imap.qq.com");
+    properties.put("mail.imaps.port", "993");
+    properties.put("mail.imaps.ssl.enable", "true");
+    properties.put("mail.imaps.connectiontimeout", "15000");
+    properties.put("mail.imaps.timeout", "30000");
+    return properties;
+  }
+
   private MailSummary summarize(Message message) throws Exception {
     String subject = emptyToDefault(message.getSubject(), "（无主题）");
     String from = displayFrom(message);
@@ -172,8 +229,8 @@ public class MailDingtalkService {
     List<String> attachments = new ArrayList<>();
     String content = readContent(message, attachments);
     content = content.replaceAll("[\\t\\x0B\\f\\r ]+", " ")
-        .replaceAll("\\n\\s*\\n+", "\\n").trim();
-    if (content.length() > MAX_BODY_CHARS) content = content.substring(0, MAX_BODY_CHARS) + "...";
+        .replaceAll("\\n\\s*\\n+", "\n").trim();
+    if (content.length() > MAX_SOURCE_CHARS) content = content.substring(0, MAX_SOURCE_CHARS) + "...";
     return new MailSummary(subject, from, sentAt, content, attachments);
   }
 
@@ -234,7 +291,10 @@ public class MailDingtalkService {
   }
 
   private void sendToDingtalk(MailSummary mail, Credentials credentials) throws Exception {
-    String text = formatDingtalkMessage(mail);
+    sendTextToDingtalk(formatDingtalkMessage(mail), credentials);
+  }
+
+  private void sendTextToDingtalk(String text, Credentials credentials) throws Exception {
     String body = objectMapper.writeValueAsString(Map.of(
         "msgtype", "text", "text", Map.of("content", text)));
     HttpRequest request = HttpRequest.newBuilder(URI.create(signedWebhook(credentials)))
@@ -261,10 +321,14 @@ public class MailDingtalkService {
           .append("拒审原因：").append(emptyToDefault(violation.reason(), "邮件未提供明确原因"))
           .toString();
     }
+    String fallbackContent = mail.content().isBlank() ? "（邮件正文为空）" : mail.content();
+    if (fallbackContent.length() > MAX_MESSAGE_BODY_CHARS) {
+      fallbackContent = fallbackContent.substring(0, MAX_MESSAGE_BODY_CHARS) + "...";
+    }
     StringBuilder text = new StringBuilder("【TikTok 邮件通知】\n")
         .append("主题：").append(mail.subject()).append("\n")
         .append("时间：").append(mail.sentAt()).append("\n\n")
-        .append(mail.content().isBlank() ? "（邮件正文为空）" : mail.content());
+        .append(fallbackContent);
     if (!mail.attachments().isEmpty()) text.append("\n\n附件：").append(String.join("、", mail.attachments()));
     return text.toString();
   }

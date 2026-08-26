@@ -38,6 +38,7 @@ public class RuntimeConfig {
     loadOptionalFile("ssh.env");
     loadOptionalFile("jd-low-activity.env");
     loadOptionalFile("adpflux.env");
+    loadOptionalFile("mail-dingtalk.env");
     loadOptionalFile("report-visibility.env");
     // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
     values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
@@ -289,6 +290,53 @@ public class RuntimeConfig {
       saved.forEach(values::put);
     } catch (IOException error) {
       throw new IllegalStateException("保存 ADPFlux 收益接口配置失败：" + error.getMessage(), error);
+    }
+  }
+
+  public synchronized void saveMailDingtalkCredentials(
+      String emailValue,
+      String authorizationCodeValue,
+      String webhookValue,
+      String secretValue,
+      boolean autoEnabled) {
+    String email = clean(emailValue).toLowerCase(java.util.Locale.ROOT);
+    String authorizationCode = clean(authorizationCodeValue);
+    String webhook = clean(webhookValue);
+    String secret = clean(secretValue);
+    if (email.isBlank()) email = get("MAIL_DINGTALK_QQ_EMAIL", "");
+    if (authorizationCode.isBlank()) authorizationCode = decodedSecret("MAIL_DINGTALK_QQ_AUTH_CODE_B64");
+    if (webhook.isBlank()) webhook = decodedSecret("MAIL_DINGTALK_WEBHOOK_B64");
+    if (secret.isBlank()) secret = decodedSecret("MAIL_DINGTALK_SECRET_B64");
+    if (!email.matches("^[A-Za-z0-9._%+-]+@qq\\.com$")) {
+      throw new IllegalArgumentException("请填写有效的 QQ 邮箱地址");
+    }
+    if (authorizationCode.length() < 6 || authorizationCode.length() > 128
+        || authorizationCode.chars().anyMatch(Character::isWhitespace)) {
+      throw new IllegalArgumentException("请填写 QQ 邮箱 IMAP 授权码");
+    }
+    if (!webhook.matches("^https://oapi\\.dingtalk\\.com/robot/send\\?access_token=[A-Za-z0-9_-]{8,}$")) {
+      throw new IllegalArgumentException("请填写有效的钉钉机器人 Webhook 地址");
+    }
+    if (!secret.isBlank() && !secret.matches("^SEC[0-9A-Za-z_-]{8,}$")) {
+      throw new IllegalArgumentException("钉钉加签密钥格式无效，应以 SEC 开头");
+    }
+    Path path = runtimeDir.resolve("mail-dingtalk.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      Map<String, String> saved = Files.isRegularFile(path)
+          ? parseEnvironmentFile(Files.readString(path, StandardCharsets.UTF_8))
+          : new LinkedHashMap<>();
+      saved.put("MAIL_DINGTALK_QQ_EMAIL", email);
+      saved.put("MAIL_DINGTALK_QQ_AUTH_CODE_B64", encodeSecret(authorizationCode));
+      saved.put("MAIL_DINGTALK_WEBHOOK_B64", encodeSecret(webhook));
+      if (secret.isBlank()) saved.remove("MAIL_DINGTALK_SECRET_B64");
+      else saved.put("MAIL_DINGTALK_SECRET_B64", encodeSecret(secret));
+      saved.put("MAIL_DINGTALK_AUTO_ENABLED", String.valueOf(autoEnabled));
+      saveEnvironmentFile(path, "# Managed by the QQ mail to DingTalk tool.", saved);
+      saved.forEach(values::put);
+      if (secret.isBlank()) values.remove("MAIL_DINGTALK_SECRET_B64");
+    } catch (IOException error) {
+      throw new IllegalStateException("保存邮件转发配置失败：" + error.getMessage(), error);
     }
   }
 

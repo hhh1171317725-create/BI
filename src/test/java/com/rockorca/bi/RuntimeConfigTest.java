@@ -170,4 +170,25 @@ class RuntimeConfigTest {
         () -> config.saveJdLowActivityCredentials(
             "valid-jd-low-activity-token-123456", "not-a-sign"));
   }
+
+  @Test
+  void mailDingtalkCredentialsAreEncodedAndRetained() throws Exception {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+    String webhook = "https://oapi.dingtalk.com/robot/send?access_token=abcdefghijk";
+
+    config.saveMailDingtalkCredentials(
+        "alerts@qq.com", "qq-imap-code", webhook, "SECabcdefghijk", true);
+
+    Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(Files.readString(
+        temporaryDirectory.resolve("mail-dingtalk.env"), StandardCharsets.UTF_8));
+    assertEquals("alerts@qq.com", saved.get("MAIL_DINGTALK_QQ_EMAIL"));
+    assertTrue(!saved.get("MAIL_DINGTALK_QQ_AUTH_CODE_B64").contains("qq-imap-code"));
+    assertEquals("qq-imap-code", config.decodedSecret("MAIL_DINGTALK_QQ_AUTH_CODE_B64"));
+    assertEquals(webhook, config.decodedSecret("MAIL_DINGTALK_WEBHOOK_B64"));
+
+    config.saveMailDingtalkCredentials("", "", "", "", false);
+    assertEquals("alerts@qq.com", config.get("MAIL_DINGTALK_QQ_EMAIL", ""));
+    assertEquals("false", config.get("MAIL_DINGTALK_AUTO_ENABLED", ""));
+  }
 }

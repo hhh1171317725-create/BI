@@ -6,6 +6,7 @@
 - `jd.html`：京东广义新日报
 - `jd-low-activity.html`：京东低活任务报表
 - `tools.html`：报表工具中心
+- `mail-dingtalk.html`：QQ 邮箱未读邮件转发到钉钉群机器人
 - `login.html`：登录页
 - `pet.js`、`pet.css`：数据助手
 - `echarts.min.js`：图表依赖

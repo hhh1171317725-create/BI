@@ -41,6 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class MailDingtalkService {
+  private static final String TIKTOK_NOTIFICATION_SENDER = "no-reply@notifications.tiktok.com";
   private static final int MAX_MESSAGES_PER_RUN = 20;
   private static final int MAX_HISTORY = 2_000;
   private static final int MAX_BODY_CHARS = 3_200;
@@ -129,6 +130,10 @@ public class MailDingtalkService {
         messages.sort(Comparator.comparing(MailDingtalkService::sentDateSafe).reversed());
         for (Message message : messages) {
           if (items.size() >= MAX_MESSAGES_PER_RUN) break;
+          if (!fromTargetSender(message)) {
+            skipped++;
+            continue;
+          }
           String key = messageKey(message);
           if (history.contains(key)) {
             skipped++;
@@ -260,6 +265,21 @@ public class MailDingtalkService {
   private static String messageKey(Message message) throws Exception {
     String[] ids = message.getHeader("Message-ID");
     return ids != null && ids.length > 0 && !ids[0].isBlank() ? ids[0] : message.getFolder().getFullName() + ":" + message.getMessageNumber();
+  }
+
+  private static boolean fromTargetSender(Message message) {
+    try {
+      if (message.getFrom() == null) return false;
+      for (jakarta.mail.Address sender : message.getFrom()) {
+        if (sender instanceof InternetAddress address
+            && TIKTOK_NOTIFICATION_SENDER.equalsIgnoreCase(address.getAddress())) {
+          return true;
+        }
+      }
+      return false;
+    } catch (Exception ignored) {
+      return false;
+    }
   }
 
   private static String emptyToDefault(String value, String defaultValue) {

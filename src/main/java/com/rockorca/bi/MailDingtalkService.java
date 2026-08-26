@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -158,35 +160,70 @@ public class MailDingtalkService {
 
   private MailSummary summarize(Message message) throws Exception {
     String subject = emptyToDefault(message.getSubject(), "（无主题）");
-    String from = "";
-    if (message.getFrom() != null && message.getFrom().length > 0) {
-      from = InternetAddress.toString(message.getFrom());
-    }
+    String from = displayFrom(message);
     String sentAt = message.getSentDate() == null ? "" : message.getSentDate().toInstant()
         .atZone(ReportService.BEIJING).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     List<String> attachments = new ArrayList<>();
-    String content = readContent(message.getContent(), attachments);
+    String content = readContent(message, attachments);
     content = content.replaceAll("\\s+", " ").trim();
     if (content.length() > MAX_BODY_CHARS) content = content.substring(0, MAX_BODY_CHARS) + "...";
     return new MailSummary(subject, from, sentAt, content, attachments);
   }
 
-  private String readContent(Object content, List<String> attachments) throws Exception {
+  private String readContent(Part part, List<String> attachments) throws Exception {
+    Object content = part.getContent();
     if (content == null) return "";
-    if (content instanceof String text) return text;
+    if (content instanceof String text) return part.isMimeType("text/html") ? htmlToText(text) : text;
     if (!(content instanceof Multipart multipart)) return String.valueOf(content);
-    StringBuilder result = new StringBuilder();
+    String htmlFallback = "";
     for (int index = 0; index < multipart.getCount(); index++) {
-      BodyPart part = multipart.getBodyPart(index);
-      String disposition = part.getDisposition();
-      if (part.getFileName() != null || Part.ATTACHMENT.equalsIgnoreCase(disposition)) {
-        attachments.add(part.getFileName() == null ? "附件" : part.getFileName());
+      BodyPart bodyPart = multipart.getBodyPart(index);
+      String disposition = bodyPart.getDisposition();
+      if (bodyPart.getFileName() != null || Part.ATTACHMENT.equalsIgnoreCase(disposition)) {
+        attachments.add(bodyPart.getFileName() == null ? "附件" : bodyPart.getFileName());
       } else {
-        String value = readContent(part.getContent(), attachments);
-        if (!value.isBlank() && result.isEmpty()) result.append(value);
+        String value = readContent(bodyPart, attachments);
+        if (value.isBlank()) continue;
+        if (bodyPart.isMimeType("text/plain")) return value;
+        if (htmlFallback.isBlank()) htmlFallback = value;
       }
     }
-    return result.toString();
+    return htmlFallback;
+  }
+
+  private static String displayFrom(Message message) {
+    try {
+      if (message.getFrom() == null || message.getFrom().length == 0) return "";
+      jakarta.mail.Address sender = message.getFrom()[0];
+      if (!(sender instanceof InternetAddress address)) return sender.toString();
+      String personal = address.getPersonal();
+      String email = emptyToDefault(address.getAddress(), sender.toString());
+      return personal == null || personal.isBlank() ? email : personal + " <" + email + ">";
+    } catch (Exception ignored) {
+      return "";
+    }
+  }
+
+  private static String htmlToText(String html) {
+    String text = html.replaceAll("(?is)<(script|style|head)[^>]*>.*?</\\1>", " ")
+        .replaceAll("(?i)<br\\s*/?>", "\\n")
+        .replaceAll("(?i)</(p|div|li|tr|h[1-6])\\s*>", "\\n")
+        .replaceAll("(?s)<[^>]+>", " ");
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<")
+        .replace("&gt;", "> ").replace("&quot;", "\"").replace("&#39;", "'");
+    Matcher matcher = Pattern.compile("&#(x[0-9a-fA-F]+|[0-9]+);").matcher(text);
+    StringBuffer decoded = new StringBuffer();
+    while (matcher.find()) {
+      try {
+        String value = matcher.group(1);
+        int codePoint = value.startsWith("x") ? Integer.parseInt(value.substring(1), 16) : Integer.parseInt(value);
+        matcher.appendReplacement(decoded, Matcher.quoteReplacement(new String(Character.toChars(codePoint))));
+      } catch (Exception ignored) {
+        matcher.appendReplacement(decoded, Matcher.quoteReplacement(matcher.group()));
+      }
+    }
+    matcher.appendTail(decoded);
+    return decoded.toString();
   }
 
   private void sendToDingtalk(MailSummary mail, Credentials credentials) throws Exception {

@@ -126,7 +126,7 @@ public class MailDingtalkService {
       try {
         Message[] unread = inbox.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
         List<Message> messages = new ArrayList<>(List.of(unread));
-        messages.sort(Comparator.comparing(this::sentDateSafe).reversed());
+        messages.sort(Comparator.comparing(MailDingtalkService::sentDateSafe).reversed());
         for (Message message : messages) {
           if (items.size() >= MAX_MESSAGES_PER_RUN) break;
           String key = messageKey(message);

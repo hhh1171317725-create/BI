@@ -39,6 +39,7 @@ public class MailDingtalkApiController {
         ReportService.text(payload.get("authorizationCode")),
         ReportService.text(payload.get("webhook")),
         ReportService.text(payload.get("secret")),
+        ReportService.text(payload.get("keyword")),
         Boolean.TRUE.equals(payload.get("autoEnabled"))));
   }
 

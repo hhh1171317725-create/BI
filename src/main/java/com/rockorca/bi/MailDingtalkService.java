@@ -75,6 +75,7 @@ public class MailDingtalkService {
         "authorizationCodeSaved", !credentials.authorizationCode().isBlank(),
         "webhookSaved", !credentials.webhook().isBlank(),
         "secretSaved", !credentials.secret().isBlank(),
+        "keyword", credentials.keyword(),
         "autoEnabled", credentials.autoEnabled(),
         "intervalMinutes", 5,
         "running", running,
@@ -83,8 +84,8 @@ public class MailDingtalkService {
   }
 
   public synchronized Map<String, Object> saveSettings(
-      String email, String authorizationCode, String webhook, String secret, boolean autoEnabled) {
-    config.saveMailDingtalkCredentials(email, authorizationCode, webhook, secret, autoEnabled);
+      String email, String authorizationCode, String webhook, String secret, String keyword, boolean autoEnabled) {
+    config.saveMailDingtalkCredentials(email, authorizationCode, webhook, secret, keyword, autoEnabled);
     return status();
   }
 
@@ -297,8 +298,9 @@ public class MailDingtalkService {
   }
 
   private void sendTextToDingtalk(String text, Credentials credentials) throws Exception {
+    String payloadText = credentials.keyword().isBlank() ? text : credentials.keyword() + "\n" + text;
     String body = objectMapper.writeValueAsString(Map.of(
-        "msgtype", "text", "text", Map.of("content", text)));
+        "msgtype", "text", "text", Map.of("content", payloadText)));
     HttpRequest request = HttpRequest.newBuilder(URI.create(signedWebhook(credentials)))
         .timeout(Duration.ofSeconds(30)).header("Content-Type", "application/json;charset=utf-8")
         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build();
@@ -402,6 +404,7 @@ public class MailDingtalkService {
         config.decodedSecret("MAIL_DINGTALK_QQ_AUTH_CODE_B64"),
         config.decodedSecret("MAIL_DINGTALK_WEBHOOK_B64"),
         config.decodedSecret("MAIL_DINGTALK_SECRET_B64"),
+        config.get("MAIL_DINGTALK_KEYWORD", ""),
         "true".equalsIgnoreCase(config.get("MAIL_DINGTALK_AUTO_ENABLED", "true")));
   }
 
@@ -440,7 +443,8 @@ public class MailDingtalkService {
     return emptyToDefault(root.getMessage(), root.getClass().getSimpleName());
   }
 
-  private record Credentials(String email, String authorizationCode, String webhook, String secret, boolean autoEnabled) {
+  private record Credentials(
+      String email, String authorizationCode, String webhook, String secret, String keyword, boolean autoEnabled) {
     boolean configured() { return email.endsWith("@qq.com") && !authorizationCode.isBlank() && webhook.startsWith("https://oapi.dingtalk.com/"); }
     void validate() { if (!configured()) throw new IllegalStateException("请先配置 QQ 邮箱授权码和钉钉机器人 Webhook"); }
   }

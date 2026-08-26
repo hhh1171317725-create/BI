@@ -298,11 +298,13 @@ public class RuntimeConfig {
       String authorizationCodeValue,
       String webhookValue,
       String secretValue,
+      String keywordValue,
       boolean autoEnabled) {
     String email = clean(emailValue).toLowerCase(java.util.Locale.ROOT);
     String authorizationCode = clean(authorizationCodeValue);
     String webhook = clean(webhookValue);
     String secret = clean(secretValue);
+    String keyword = clean(keywordValue);
     if (email.isBlank()) email = get("MAIL_DINGTALK_QQ_EMAIL", "");
     if (authorizationCode.isBlank()) authorizationCode = decodedSecret("MAIL_DINGTALK_QQ_AUTH_CODE_B64");
     if (webhook.isBlank()) webhook = decodedSecret("MAIL_DINGTALK_WEBHOOK_B64");
@@ -320,6 +322,9 @@ public class RuntimeConfig {
     if (!secret.isBlank() && !secret.matches("^SEC[0-9A-Za-z_-]{8,}$")) {
       throw new IllegalArgumentException("钉钉加签密钥格式无效，应以 SEC 开头");
     }
+    if (keyword.length() > 64 || keyword.contains("\n") || keyword.contains("\r")) {
+      throw new IllegalArgumentException("钉钉机器人安全关键词不能超过 64 个字符");
+    }
     Path path = runtimeDir.resolve("mail-dingtalk.env");
     try {
       Files.createDirectories(runtimeDir);
@@ -331,10 +336,13 @@ public class RuntimeConfig {
       saved.put("MAIL_DINGTALK_WEBHOOK_B64", encodeSecret(webhook));
       if (secret.isBlank()) saved.remove("MAIL_DINGTALK_SECRET_B64");
       else saved.put("MAIL_DINGTALK_SECRET_B64", encodeSecret(secret));
+      if (keyword.isBlank()) saved.remove("MAIL_DINGTALK_KEYWORD");
+      else saved.put("MAIL_DINGTALK_KEYWORD", keyword);
       saved.put("MAIL_DINGTALK_AUTO_ENABLED", String.valueOf(autoEnabled));
       saveEnvironmentFile(path, "# Managed by the QQ mail to DingTalk tool.", saved);
       saved.forEach(values::put);
       if (secret.isBlank()) values.remove("MAIL_DINGTALK_SECRET_B64");
+      if (keyword.isBlank()) values.remove("MAIL_DINGTALK_KEYWORD");
     } catch (IOException error) {
       throw new IllegalStateException("保存邮件转发配置失败：" + error.getMessage(), error);
     }

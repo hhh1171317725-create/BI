@@ -178,7 +178,7 @@ class RuntimeConfigTest {
     String webhook = "https://oapi.dingtalk.com/robot/send?access_token=abcdefghijk";
 
     config.saveMailDingtalkCredentials(
-        "alerts@qq.com", "qq-imap-code", webhook, "SECabcdefghijk", true);
+        "alerts@qq.com", "qq-imap-code", webhook, "SECabcdefghijk", "广告预警", true);
 
     Map<String, String> saved = RuntimeConfig.parseEnvironmentFile(Files.readString(
         temporaryDirectory.resolve("mail-dingtalk.env"), StandardCharsets.UTF_8));
@@ -186,8 +186,9 @@ class RuntimeConfigTest {
     assertTrue(!saved.get("MAIL_DINGTALK_QQ_AUTH_CODE_B64").contains("qq-imap-code"));
     assertEquals("qq-imap-code", config.decodedSecret("MAIL_DINGTALK_QQ_AUTH_CODE_B64"));
     assertEquals(webhook, config.decodedSecret("MAIL_DINGTALK_WEBHOOK_B64"));
+    assertEquals("广告预警", saved.get("MAIL_DINGTALK_KEYWORD"));
 
-    config.saveMailDingtalkCredentials("", "", "", "", false);
+    config.saveMailDingtalkCredentials("", "", "", "", "广告预警", false);
     assertEquals("alerts@qq.com", config.get("MAIL_DINGTALK_QQ_EMAIL", ""));
     assertEquals("false", config.get("MAIL_DINGTALK_AUTO_ENABLED", ""));
   }

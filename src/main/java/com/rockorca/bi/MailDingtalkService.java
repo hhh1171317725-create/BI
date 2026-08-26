@@ -117,10 +117,12 @@ public class MailDingtalkService {
       lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
       lastResult = "最新一封 TikTok 邮件测试发送成功";
       return ReportService.mapOf("message", lastResult, "subject", summary.subject());
-    } catch (RuntimeException error) {
+    } catch (Exception error) {
+      RuntimeException failure = error instanceof RuntimeException runtime
+          ? runtime : new IllegalStateException("测试发送失败：" + rootMessage(error), error);
       lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-      lastResult = "测试失败：" + error.getMessage();
-      throw error;
+      lastResult = "测试失败：" + failure.getMessage();
+      throw failure;
     } finally {
       running = false;
     }

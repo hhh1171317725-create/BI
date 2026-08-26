@@ -47,6 +47,12 @@ public class MailDingtalkService {
   private static final int MAX_MESSAGES_PER_RUN = 20;
   private static final int MAX_HISTORY = 2_000;
   private static final int MAX_BODY_CHARS = 3_200;
+  private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile("(?i)Ad account ID\\s*:\\s*(\\d+)");
+  private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile(
+      "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID)\\b)");
+  private static final Pattern AD_GROUP_IDS_PATTERN = Pattern.compile("(?i)Ad Group ID\\s*:\\s*([0-9][0-9,\\s]*)");
+  private static final Pattern REVIEW_REASON_PATTERN = Pattern.compile(
+      "(?is)Our review indicates that\\s+(.+?)(?=\\s+We proactively enforce|\\s+Ad Group ID\\s*:|$)");
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
   private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
@@ -165,7 +171,8 @@ public class MailDingtalkService {
         .atZone(ReportService.BEIJING).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     List<String> attachments = new ArrayList<>();
     String content = readContent(message, attachments);
-    content = content.replaceAll("\\s+", " ").trim();
+    content = content.replaceAll("[\\t\\x0B\\f\\r ]+", " ")
+        .replaceAll("\\n\\s*\\n+", "\\n").trim();
     if (content.length() > MAX_BODY_CHARS) content = content.substring(0, MAX_BODY_CHARS) + "...";
     return new MailSummary(subject, from, sentAt, content, attachments);
   }
@@ -206,8 +213,8 @@ public class MailDingtalkService {
 
   private static String htmlToText(String html) {
     String text = html.replaceAll("(?is)<(script|style|head)[^>]*>.*?</\\1>", " ")
-        .replaceAll("(?i)<br\\s*/?>", "\\n")
-        .replaceAll("(?i)</(p|div|li|tr|h[1-6])\\s*>", "\\n")
+        .replaceAll("(?i)<br\\s*/?>", "\n")
+        .replaceAll("(?i)</(p|div|li|tr|h[1-6])\\s*>", "\n")
         .replaceAll("(?s)<[^>]+>", " ");
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<")
         .replace("&gt;", "> ").replace("&quot;", "\"").replace("&#39;", "'");
@@ -227,16 +234,9 @@ public class MailDingtalkService {
   }
 
   private void sendToDingtalk(MailSummary mail, Credentials credentials) throws Exception {
-    StringBuilder text = new StringBuilder("【QQ 邮箱新邮件】\n")
-        .append("主题：").append(mail.subject()).append("\n")
-        .append("发件人：").append(mail.from()).append("\n")
-        .append("时间：").append(mail.sentAt()).append("\n\n")
-        .append(mail.content().isBlank() ? "（邮件正文为空）" : mail.content());
-    if (!mail.attachments().isEmpty()) {
-      text.append("\n\n附件：").append(String.join("、", mail.attachments()));
-    }
+    String text = formatDingtalkMessage(mail);
     String body = objectMapper.writeValueAsString(Map.of(
-        "msgtype", "text", "text", Map.of("content", text.toString())));
+        "msgtype", "text", "text", Map.of("content", text)));
     HttpRequest request = HttpRequest.newBuilder(URI.create(signedWebhook(credentials)))
         .timeout(Duration.ofSeconds(30)).header("Content-Type", "application/json;charset=utf-8")
         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build();
@@ -248,6 +248,51 @@ public class MailDingtalkService {
     if ((int) ReportService.number(root.get("errcode")) != 0) {
       throw new IllegalStateException("钉钉机器人发送失败：" + ReportService.text(root.get("errmsg")));
     }
+  }
+
+  private static String formatDingtalkMessage(MailSummary mail) {
+    TikTokViolation violation = parseTikTokViolation(mail.content());
+    if (violation.hasDetails()) {
+      return new StringBuilder("【TikTok 广告拒审通知】\n")
+          .append("账户 ID：").append(emptyToDefault(violation.accountId(), "未识别")).append("\n")
+          .append("账户名称：").append(emptyToDefault(violation.accountName(), "未识别")).append("\n")
+          .append("系列 ID：").append(violation.adGroupIds().isEmpty()
+              ? "未识别" : String.join("、", violation.adGroupIds())).append("\n")
+          .append("拒审原因：").append(emptyToDefault(violation.reason(), "邮件未提供明确原因"))
+          .toString();
+    }
+    StringBuilder text = new StringBuilder("【TikTok 邮件通知】\n")
+        .append("主题：").append(mail.subject()).append("\n")
+        .append("时间：").append(mail.sentAt()).append("\n\n")
+        .append(mail.content().isBlank() ? "（邮件正文为空）" : mail.content());
+    if (!mail.attachments().isEmpty()) text.append("\n\n附件：").append(String.join("、", mail.attachments()));
+    return text.toString();
+  }
+
+  private static TikTokViolation parseTikTokViolation(String content) {
+    String accountId = firstMatch(ACCOUNT_ID_PATTERN, content);
+    String accountName = cleanField(firstMatch(ACCOUNT_NAME_PATTERN, content));
+    LinkedHashSet<String> adGroupIds = new LinkedHashSet<>();
+    Matcher groups = AD_GROUP_IDS_PATTERN.matcher(content);
+    while (groups.find()) {
+      for (String value : groups.group(1).split("\\D+")) {
+        if (!value.isBlank()) adGroupIds.add(value);
+      }
+    }
+    String rawReason = cleanField(firstMatch(REVIEW_REASON_PATTERN, content));
+    String reason = rawReason.toLowerCase().contains("sexually suggestive")
+        ? "素材可能包含或推广性暗示内容，包括性暗示文字、音频、动作、性行为暗示或敏感部位暗示，违反 TikTok 广告政策。"
+        : rawReason;
+    return new TikTokViolation(accountId, accountName, List.copyOf(adGroupIds), reason);
+  }
+
+  private static String firstMatch(Pattern pattern, String content) {
+    Matcher matcher = pattern.matcher(content == null ? "" : content);
+    return matcher.find() ? matcher.group(1).trim() : "";
+  }
+
+  private static String cleanField(String value) {
+    return value == null ? "" : value.replaceAll("\\s+", " ").trim();
   }
 
   private String signedWebhook(Credentials credentials) {
@@ -334,5 +379,8 @@ public class MailDingtalkService {
     void validate() { if (!configured()) throw new IllegalStateException("请先配置 QQ 邮箱授权码和钉钉机器人 Webhook"); }
   }
   private record MailSummary(String subject, String from, String sentAt, String content, List<String> attachments) {}
+  private record TikTokViolation(String accountId, String accountName, List<String> adGroupIds, String reason) {
+    boolean hasDetails() { return !accountId.isBlank() || !accountName.isBlank() || !adGroupIds.isEmpty(); }
+  }
   private record ForwardResult(int sent, int skipped, List<Map<String, Object>> items) {}
 }

@@ -55,4 +55,13 @@ class MailDingtalkServiceTest {
         "Important: Your account balance is running low", "Ad account ID: 7676449794404745237");
     assertEquals("预算或账户余额不足，可能影响广告继续投放，请及时检查并补充。", notice.status());
   }
+
+  @Test
+  void prefersCompleteHtmlDerivedContentOverLongGenericPlainText() {
+    String generic = "Important TikTok notification. ".repeat(100);
+    String complete = "Ad account ID: 7676449794404745237 Ad Group ID: 1874489175001681 "
+        + "Our review indicates that the creative contains sexually suggestive content.";
+    assertEquals(true,
+        MailDingtalkService.informationScore(complete) > MailDingtalkService.informationScore(generic));
+  }
 }

@@ -247,7 +247,7 @@ public class MailDingtalkService {
     if (content == null) return "";
     if (content instanceof String text) return part.isMimeType("text/html") ? htmlToText(text) : text;
     if (!(content instanceof Multipart multipart)) return String.valueOf(content);
-    String htmlFallback = "";
+    String richestContent = "";
     for (int index = 0; index < multipart.getCount(); index++) {
       BodyPart bodyPart = multipart.getBodyPart(index);
       String disposition = bodyPart.getDisposition();
@@ -256,11 +256,23 @@ public class MailDingtalkService {
       } else {
         String value = readContent(bodyPart, attachments);
         if (value.isBlank()) continue;
-        if (bodyPart.isMimeType("text/plain")) return value;
-        if (htmlFallback.isBlank()) htmlFallback = value;
+        // TikTok multipart/alternative messages often contain a short plain-text
+        // body and a complete HTML body. Keep the richest version so IDs and the
+        // policy reason are not discarded with the HTML part.
+        if (informationScore(value) > informationScore(richestContent)) richestContent = value;
       }
     }
-    return htmlFallback;
+    return richestContent;
+  }
+
+  static int informationScore(String value) {
+    if (value == null || value.isBlank()) return 0;
+    String lower = normalizeForParsing(value).toLowerCase();
+    int score = Math.min(value.length(), MAX_SOURCE_CHARS);
+    if (lower.contains("ad group id") || lower.contains("campaign id")) score += 100_000;
+    if (lower.contains("our review indicates") || lower.contains("policy violation")) score += 50_000;
+    if (lower.contains("ad account id")) score += 20_000;
+    return score;
   }
 
   private static String displayFrom(Message message) {
@@ -331,7 +343,7 @@ public class MailDingtalkService {
           .append("邮件主题：").append(mail.subject())
           .toString();
     }
-    TikTokViolation violation = parseTikTokViolation(mail.content());
+    TikTokViolation violation = parseTikTokViolation(mail.subject() + "\n" + mail.content());
     if (violation.hasDetails()) {
       return new StringBuilder("【TikTok 广告拒审通知】\n")
           .append("账户 ID：").append(emptyToDefault(violation.accountId(), "未识别")).append("\n")

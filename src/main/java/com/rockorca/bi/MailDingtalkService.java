@@ -51,7 +51,8 @@ public class MailDingtalkService {
   private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile("(?i)Ad account ID\\s*:\\s*(\\d+)");
   private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile(
       "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID)\\b)");
-  private static final Pattern AD_GROUP_IDS_PATTERN = Pattern.compile("(?i)Ad Group ID\\s*:\\s*([0-9][0-9,\\s]*)");
+  private static final Pattern AD_GROUP_IDS_PATTERN = Pattern.compile(
+      "(?i)(?:Ad\\s*Group|Campaign)\\s*ID(?:s|\\(s\\))?\\s*[:：#-]?\\s*([0-9][0-9,，;；\\s]*)");
   private static final Pattern REVIEW_REASON_PATTERN = Pattern.compile(
       "(?is)Our review indicates that\\s+(.+?)(?=\\s+We proactively enforce|\\s+Ad Group ID\\s*:|$)");
   private final RuntimeConfig config;
@@ -340,20 +341,33 @@ public class MailDingtalkService {
   }
 
   private static TikTokViolation parseTikTokViolation(String content) {
+    content = normalizeForParsing(content);
     String accountId = firstMatch(ACCOUNT_ID_PATTERN, content);
     String accountName = cleanField(firstMatch(ACCOUNT_NAME_PATTERN, content));
-    LinkedHashSet<String> adGroupIds = new LinkedHashSet<>();
-    Matcher groups = AD_GROUP_IDS_PATTERN.matcher(content);
-    while (groups.find()) {
-      for (String value : groups.group(1).split("\\D+")) {
-        if (!value.isBlank()) adGroupIds.add(value);
-      }
-    }
+    List<String> adGroupIds = extractAdGroupIds(content);
     String rawReason = cleanField(firstMatch(REVIEW_REASON_PATTERN, content));
     String reason = rawReason.toLowerCase().contains("sexually suggestive")
         ? "素材可能包含或推广性暗示内容，包括性暗示文字、音频、动作、性行为暗示或敏感部位暗示，违反 TikTok 广告政策。"
         : rawReason;
-    return new TikTokViolation(accountId, accountName, List.copyOf(adGroupIds), reason);
+    return new TikTokViolation(accountId, accountName, adGroupIds, reason);
+  }
+
+  static List<String> extractAdGroupIds(String content) {
+    LinkedHashSet<String> ids = new LinkedHashSet<>();
+    Matcher groups = AD_GROUP_IDS_PATTERN.matcher(normalizeForParsing(content));
+    while (groups.find()) {
+      for (String value : groups.group(1).split("\\D+")) {
+        if (value.length() >= 6) ids.add(value);
+      }
+    }
+    return List.copyOf(ids);
+  }
+
+  private static String normalizeForParsing(String content) {
+    return (content == null ? "" : content)
+        .replace('\u00a0', ' ')
+        .replace('\u202f', ' ')
+        .replaceAll("[\\u200B-\\u200D\\uFEFF]", "");
   }
 
   private static String firstMatch(Pattern pattern, String content) {

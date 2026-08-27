@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -34,14 +36,23 @@ public class AccountVaultService {
   }
 
   public Map<String, Object> list(String queryValue, int pageValue, int pageSizeValue) {
+    return list(queryValue, pageValue, pageSizeValue, null);
+  }
+
+  public Map<String, Object> list(
+      String queryValue, int pageValue, int pageSizeValue, Long assignedUserId) {
     String query = clean(queryValue, 200, "搜索词");
     int page = Math.max(1, pageValue);
     // 账户对应关系页面会一次读取匹配结果后，结合实时账户指标在浏览器中做全局排序。
     // 上限与 Excel 导出量级保持一致，避免只对当前数据库分页进行排序。
     int pageSize = Math.max(10, Math.min(10_000, pageSizeValue));
-    AccountVaultRepository.Page result = repository.list(query, "ad_account", page, pageSize);
+    AccountVaultRepository.Page result = assignedUserId == null
+        ? repository.list(query, "ad_account", page, pageSize)
+        : repository.list(query, "ad_account", page, pageSize, assignedUserId);
+    Map<Long, List<Long>> assignments = repository.listAssignments();
     return ReportService.mapOf(
-        "entries", result.entries().stream().map(AccountVaultService::view).toList(),
+        "entries", result.entries().stream()
+            .map(entry -> view(entry, assignments.getOrDefault(entry.id(), List.of()))).toList(),
         "total", result.total(), "page", page, "pageSize", pageSize,
         "pages", Math.max(1, (result.total() + pageSize - 1) / pageSize));
   }
@@ -50,7 +61,10 @@ public class AccountVaultService {
     AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
     ensureUnused(entry, 0, repository.listUsageEntries());
     ensureOptions(entry);
-    return view(repository.create(entry));
+    AccountVaultRepository.Entry created = repository.create(entry);
+    List<Long> assignedUserIds = assignedUserIds(payload.get("assignedUserIds"));
+    repository.replaceAssignments(created.id(), assignedUserIds);
+    return view(created, assignedUserIds);
   }
 
   public synchronized Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
@@ -58,11 +72,34 @@ public class AccountVaultService {
     AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
     ensureUnused(entry, id, repository.listUsageEntries());
     ensureOptions(entry);
-    return view(repository.update(id, entry));
+    AccountVaultRepository.Entry updated = repository.update(id, entry);
+    List<Long> assignedUserIds = assignedUserIds(payload.get("assignedUserIds"));
+    repository.replaceAssignments(id, assignedUserIds);
+    return view(updated, assignedUserIds);
   }
 
   public void delete(long id) {
     repository.delete(id);
+  }
+
+  public Set<String> assignedAccountIds(long userId) {
+    Set<String> ids = new LinkedHashSet<>();
+    for (AccountVaultRepository.Entry entry
+        : repository.list("", "ad_account", 1, 10_000, userId).entries()) {
+      ids.addAll(accountLines(entry.accountId()));
+    }
+    return ids;
+  }
+
+  public Set<String> assignedRevenueSourceIds(long userId) {
+    Set<String> ids = new LinkedHashSet<>();
+    for (AccountVaultRepository.Entry entry
+        : repository.list("", "ad_account", 1, 10_000, userId).entries()) {
+      for (String id : entry.revenueSourceIds().split("[\\r\\n,，;；]+")) {
+        if (!id.isBlank()) ids.add(id.trim());
+      }
+    }
+    return ids;
   }
 
   public Map<String, Object> options() {
@@ -192,6 +229,11 @@ public class AccountVaultService {
   }
 
   private static Map<String, Object> view(AccountVaultRepository.Entry entry) {
+    return view(entry, List.of());
+  }
+
+  private static Map<String, Object> view(
+      AccountVaultRepository.Entry entry, List<Long> assignedUserIds) {
     return ReportService.mapOf(
         "id", entry.id(),
         "keyword", entry.keyword().isBlank() ? entry.name() : entry.keyword(),
@@ -206,7 +248,27 @@ public class AccountVaultService {
         "revenueSourceIds", entry.revenueSourceIds(),
         "campaignQuantity", entry.campaignQuantity(),
         "dailyBudget", decimalText(entry.dailyBudget()),
+        "assignedUserIds", assignedUserIds,
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
+  }
+
+  private static List<Long> assignedUserIds(Object value) {
+    List<Long> ids = new ArrayList<>();
+    if (value instanceof Iterable<?> values) {
+      for (Object item : values) addUserId(ids, item);
+    } else {
+      for (String item : text(value).split("[,\\s]+")) addUserId(ids, item);
+    }
+    return ids.stream().distinct().toList();
+  }
+
+  private static void addUserId(List<Long> ids, Object value) {
+    try {
+      long id = Long.parseLong(text(value));
+      if (id > 0) ids.add(id);
+    } catch (NumberFormatException ignored) {
+      // Ignore malformed browser values; only positive database user IDs are stored.
+    }
   }
 
   private void ensureOptions(AccountVaultRepository.Entry entry) {

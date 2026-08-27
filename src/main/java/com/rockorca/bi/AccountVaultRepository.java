@@ -8,7 +8,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -96,6 +98,15 @@ public class AccountVaultRepository {
             PRIMARY KEY (id),
             UNIQUE KEY uk_account_vault_option (option_type, option_value)
           ) ENGINE=InnoDB COMMENT='账户映射 channel 与 style ID 选项'
+          """);
+      statement.execute("""
+          CREATE TABLE IF NOT EXISTS account_vault_entry_users (
+            entry_id BIGINT UNSIGNED NOT NULL,
+            user_id BIGINT UNSIGNED NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (entry_id, user_id),
+            KEY idx_account_vault_entry_users_user (user_id, entry_id)
+          ) ENGINE=InnoDB COMMENT='账户对应关系的运营权限'
           """);
       migrateAccountIdColumn(connection);
       migrateMaterialUrlColumn(connection);
@@ -311,6 +322,10 @@ public class AccountVaultRepository {
   }
 
   public Page list(String query, String category, int page, int pageSize) {
+    return list(query, category, page, pageSize, null);
+  }
+
+  public Page list(String query, String category, int page, int pageSize, Long assignedUserId) {
     initialize();
     StringBuilder where = new StringBuilder(" WHERE 1=1");
     List<String> parameters = new ArrayList<>();
@@ -325,6 +340,11 @@ public class AccountVaultRepository {
           + " OR owner_name LIKE ? OR notes LIKE ?)");
       String pattern = "%" + query + "%";
       for (int index = 0; index < 13; index++) parameters.add(pattern);
+    }
+    if (assignedUserId != null) {
+      where.append(" AND EXISTS (SELECT 1 FROM account_vault_entry_users permission"
+          + " WHERE permission.entry_id = account_vault_entries.id AND permission.user_id = ?)");
+      parameters.add(String.valueOf(assignedUserId));
     }
     try (Connection connection = reports.openConnection()) {
       long total;
@@ -362,6 +382,66 @@ public class AccountVaultRepository {
       try (ResultSet result = statement.executeQuery()) {
         if (!result.next()) throw new IllegalArgumentException("账户资料不存在");
         return map(result);
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public boolean assignedTo(long entryId, long userId) {
+    initialize();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "SELECT 1 FROM account_vault_entry_users WHERE entry_id = ? AND user_id = ?")) {
+      statement.setLong(1, entryId);
+      statement.setLong(2, userId);
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next();
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public Map<Long, List<Long>> listAssignments() {
+    initialize();
+    Map<Long, List<Long>> assignments = new LinkedHashMap<>();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "SELECT entry_id, user_id FROM account_vault_entry_users ORDER BY entry_id, user_id");
+         ResultSet result = statement.executeQuery()) {
+      while (result.next()) {
+        assignments.computeIfAbsent(result.getLong("entry_id"), ignored -> new ArrayList<>())
+            .add(result.getLong("user_id"));
+      }
+      return assignments;
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public void replaceAssignments(long entryId, List<Long> userIds) {
+    initialize();
+    try (Connection connection = reports.openConnection()) {
+      connection.setAutoCommit(false);
+      try (PreparedStatement delete = connection.prepareStatement(
+               "DELETE FROM account_vault_entry_users WHERE entry_id = ?");
+           PreparedStatement insert = connection.prepareStatement(
+               "INSERT INTO account_vault_entry_users (entry_id, user_id) VALUES (?, ?)")) {
+        delete.setLong(1, entryId);
+        delete.executeUpdate();
+        for (long userId : userIds.stream().filter(id -> id > 0).distinct().toList()) {
+          insert.setLong(1, entryId);
+          insert.setLong(2, userId);
+          insert.addBatch();
+        }
+        insert.executeBatch();
+        connection.commit();
+      } catch (SQLException error) {
+        connection.rollback();
+        throw error;
+      } finally {
+        connection.setAutoCommit(true);
       }
     } catch (SQLException error) {
       throw databaseError(error);
@@ -473,11 +553,26 @@ public class AccountVaultRepository {
 
   public void delete(long id) {
     initialize();
-    try (Connection connection = reports.openConnection();
-         PreparedStatement statement = connection.prepareStatement(
-             "DELETE FROM account_vault_entries WHERE id = ?")) {
-      statement.setLong(1, id);
-      if (statement.executeUpdate() != 1) throw new IllegalArgumentException("账户资料不存在");
+    try (Connection connection = reports.openConnection()) {
+      connection.setAutoCommit(false);
+      try (PreparedStatement permissions = connection.prepareStatement(
+               "DELETE FROM account_vault_entry_users WHERE entry_id = ?");
+           PreparedStatement statement = connection.prepareStatement(
+               "DELETE FROM account_vault_entries WHERE id = ?")) {
+        permissions.setLong(1, id);
+        permissions.executeUpdate();
+        statement.setLong(1, id);
+        if (statement.executeUpdate() != 1) throw new IllegalArgumentException("账户资料不存在");
+        connection.commit();
+      } catch (SQLException error) {
+        connection.rollback();
+        throw error;
+      } catch (RuntimeException error) {
+        connection.rollback();
+        throw error;
+      } finally {
+        connection.setAutoCommit(true);
+      }
     } catch (SQLException error) {
       throw databaseError(error);
     }

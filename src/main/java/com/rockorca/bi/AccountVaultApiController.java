@@ -3,8 +3,12 @@ package com.rockorca.bi;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.Set;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,11 +33,20 @@ public class AccountVaultApiController {
   private final AccountVaultService vault;
   private final SessionService sessions;
   private final UserService users;
+  private final AdpfluxService accountReports;
+  private final ClickflareRevenueService revenueReports;
 
-  public AccountVaultApiController(AccountVaultService vault, SessionService sessions, UserService users) {
+  public AccountVaultApiController(
+      AccountVaultService vault,
+      SessionService sessions,
+      UserService users,
+      AdpfluxService accountReports,
+      ClickflareRevenueService revenueReports) {
     this.vault = vault;
     this.sessions = sessions;
     this.users = users;
+    this.accountReports = accountReports;
+    this.revenueReports = revenueReports;
   }
 
   @GetMapping
@@ -42,8 +55,59 @@ public class AccountVaultApiController {
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "20") int pageSize,
       HttpServletRequest request) {
-    admin(request);
-    return vault.list(query, page, pageSize);
+    UserRepository.UserAccount actor = currentUser(request);
+    return vault.list(query, page, pageSize, actor.admin() ? null : actor.id());
+  }
+
+  @GetMapping("/operators")
+  public Map<String, Object> operators(HttpServletRequest request) {
+    UserRepository.UserAccount actor = admin(request);
+    List<Map<String, Object>> operators = users.listUsers(actor).stream()
+        .filter(user -> "user".equals(user.get("role")) && Boolean.TRUE.equals(user.get("active")))
+        .toList();
+    return ReportService.mapOf("operators", operators);
+  }
+
+  @PostMapping("/metrics")
+  public Map<String, Object> metrics(
+      @RequestBody Map<String, Object> payload, HttpServletRequest request) {
+    UserRepository.UserAccount actor = currentUser(request);
+    Map<String, Object> report = accountReports.analyze(
+        ReportService.text(payload.get("start")),
+        ReportService.text(payload.get("end")), "", "all", false);
+    if (actor.admin()) return report;
+    Set<String> allowed = vault.assignedAccountIds(actor.id());
+    return ReportService.mapOf("by_account", rows(report.get("by_account")).stream()
+        .filter(row -> allowed.contains(ReportService.text(row.get("advertiserId"))))
+        .toList());
+  }
+
+  @GetMapping("/revenue")
+  public Map<String, Object> revenue(
+      @RequestParam(defaultValue = "") String date,
+      @RequestParam(defaultValue = "") String start,
+      @RequestParam(defaultValue = "") String end,
+      @RequestParam(defaultValue = "false") boolean refresh,
+      HttpServletRequest request) {
+    UserRepository.UserAccount actor = currentUser(request);
+    Map<String, Object> report;
+    if (!start.isBlank() || !end.isBlank()) {
+      if (start.isBlank() || end.isBlank()) {
+        throw new IllegalArgumentException("收益范围查询需要同时填写开始日期和结束日期");
+      }
+      report = revenueReports.revenueRange(start, end);
+    } else {
+      String resolved = date.isBlank()
+          ? LocalDate.now(ReportService.BEIJING).toString() : date;
+      report = revenueReports.revenue(resolved, actor.admin() && refresh);
+    }
+    if (actor.admin()) return report;
+    Set<String> allowed = vault.assignedRevenueSourceIds(actor.id());
+    Map<String, Object> filtered = new LinkedHashMap<>(report);
+    filtered.put("rows", rows(report.get("rows")).stream()
+        .filter(row -> allowed.contains(ReportService.text(row.get("campaignId"))))
+        .toList());
+    return filtered;
   }
 
   @PostMapping
@@ -110,9 +174,23 @@ public class AccountVaultApiController {
   }
 
   private UserRepository.UserAccount admin(HttpServletRequest request) {
-    UserRepository.UserAccount actor = sessions.currentUser(request);
-    if (actor == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
+    UserRepository.UserAccount actor = currentUser(request);
     users.requireAdmin(actor);
     return actor;
+  }
+
+  private UserRepository.UserAccount currentUser(HttpServletRequest request) {
+    UserRepository.UserAccount actor = sessions.currentUser(request);
+    if (actor == null) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
+    }
+    return actor;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Map<String, Object>> rows(Object value) {
+    if (!(value instanceof List<?> list)) return List.of();
+    return list.stream().filter(Map.class::isInstance)
+        .map(item -> (Map<String, Object>) item).toList();
   }
 }

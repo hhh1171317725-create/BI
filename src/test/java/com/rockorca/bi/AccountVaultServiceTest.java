@@ -32,6 +32,24 @@ class AccountVaultServiceTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void limitsOperatorListsToAssignedMappings() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    AccountVaultRepository.Entry assigned = storedEntry(9, "Assigned", "10001", "channel-a");
+    when(repository.list("", "ad_account", 1, 10_000, 77L))
+        .thenReturn(new AccountVaultRepository.Page(List.of(assigned), 1));
+    when(repository.listAssignments()).thenReturn(Map.of(9L, List.of(77L)));
+
+    Map<String, Object> result = new AccountVaultService(repository).list("", 1, 10_000, 77L);
+    List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
+
+    assertEquals(1, entries.size());
+    assertEquals("Assigned", entries.getFirst().get("keyword"));
+    assertEquals(List.of(77L), entries.getFirst().get("assignedUserIds"));
+    verify(repository).list("", "ad_account", 1, 10_000, 77L);
+  }
+
+  @Test
   void acceptsArticleUrlsWithAdvertisingMacros() {
     assertDoesNotThrow(() -> AccountVaultService.validateUrl(
         "https://hub.next-game.org/2783/?utm_campaign={campaign_id}"

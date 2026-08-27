@@ -5,9 +5,8 @@
     jdLowActivity: '/jd-low-activity',
     adpflux: '/adpflux'
   };
-  const currentReport = location.pathname === '/account-vault'
-      ? 'adpflux'
-      : Object.entries(reportPaths).find(([, path]) => location.pathname === path)?.[0];
+  const currentReport = Object.entries(reportPaths)
+      .find(([, path]) => location.pathname === path)?.[0];
   const style = document.createElement('style');
   style.textContent = '.report-visibility-hidden{display:none!important}'
       + 'html.report-visibility-checking body{visibility:hidden}';

@@ -73,6 +73,16 @@ public class UserRepository {
             PRIMARY KEY (user_id)
           ) ENGINE=InnoDB COMMENT='用户日报板块可见权限'
           """);
+      statement.execute("""
+          CREATE TABLE IF NOT EXISTS report_user_tool_visibility (
+            user_id BIGINT UNSIGNED NOT NULL,
+            tool_key VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+            visible TINYINT(1) NOT NULL DEFAULT 1,
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (user_id, tool_key)
+          ) ENGINE=InnoDB COMMENT='用户工具中心可见权限'
+          """);
       boolean empty;
       try (ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM report_users")) {
         result.next();
@@ -216,6 +226,48 @@ public class UserRepository {
     }
   }
 
+  public Map<String, Boolean> toolVisibility(long userId) {
+    Map<String, Boolean> visibility = defaultToolVisibility();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT tool_key, visible
+             FROM report_user_tool_visibility
+             WHERE user_id = ?
+             """)) {
+      statement.setLong(1, userId);
+      try (ResultSet result = statement.executeQuery()) {
+        while (result.next()) {
+          String key = result.getString("tool_key");
+          if (visibility.containsKey(key)) visibility.put(key, result.getBoolean("visible"));
+        }
+        return visibility;
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public Map<String, Boolean> saveToolVisibility(
+      long userId, Map<String, Boolean> visibility) {
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             INSERT INTO report_user_tool_visibility (user_id, tool_key, visible)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE visible = VALUES(visible)
+             """)) {
+      for (Map.Entry<String, Boolean> entry : defaultToolVisibility().entrySet()) {
+        statement.setLong(1, userId);
+        statement.setString(2, entry.getKey());
+        statement.setBoolean(3, !Boolean.FALSE.equals(visibility.get(entry.getKey())));
+        statement.addBatch();
+      }
+      statement.executeBatch();
+      return toolVisibility(userId);
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
   public void markLogin(long id) {
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(
@@ -268,6 +320,20 @@ public class UserRepository {
     visibility.put("jd", true);
     visibility.put("jdLowActivity", true);
     visibility.put("adpflux", true);
+    return visibility;
+  }
+
+  private static Map<String, Boolean> defaultToolVisibility() {
+    Map<String, Boolean> visibility = new LinkedHashMap<>();
+    visibility.put("todo", true);
+    visibility.put("terminal", false);
+    visibility.put("accountVault", true);
+    visibility.put("adpfluxHelper", false);
+    visibility.put("mailDingtalk", false);
+    visibility.put("chat", true);
+    visibility.put("deeplink", true);
+    visibility.put("deeplinkAccount", true);
+    visibility.put("jdImages", true);
     return visibility;
   }
 }

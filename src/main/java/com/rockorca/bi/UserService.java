@@ -10,6 +10,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class UserService {
+  public static final List<String> TOOL_KEYS = List.of(
+      "todo", "terminal", "accountVault", "adpfluxHelper", "mailDingtalk",
+      "chat", "deeplink", "deeplinkAccount", "jdImages");
   private final UserRepository users;
   private final PasswordHasher passwords;
   private final RuntimeConfig config;
@@ -139,6 +142,36 @@ public class UserService {
     return users.saveReportVisibility(targetId, dhh, jd, jdLowActivity, adpflux);
   }
 
+  public Map<String, Boolean> effectiveToolVisibility(UserRepository.UserAccount actor) {
+    initialize();
+    if (actor == null || !actor.active()) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
+    }
+    if (actor.admin()) {
+      Map<String, Boolean> result = new LinkedHashMap<>();
+      TOOL_KEYS.forEach(key -> result.put(key, true));
+      return result;
+    }
+    return users.toolVisibility(actor.id());
+  }
+
+  public boolean canUseTool(UserRepository.UserAccount actor, String toolKey) {
+    return !Boolean.FALSE.equals(effectiveToolVisibility(actor).get(toolKey));
+  }
+
+  public Map<String, Boolean> saveToolVisibility(
+      UserRepository.UserAccount actor, long targetId, Map<String, Object> payload) {
+    requireAdmin(actor);
+    initialize();
+    UserRepository.UserAccount target = requireExisting(targetId);
+    if (target.admin()) {
+      throw new IllegalArgumentException("管理员始终可以使用全部工具，无需单独设置");
+    }
+    Map<String, Boolean> visibility = new LinkedHashMap<>();
+    TOOL_KEYS.forEach(key -> visibility.put(key, !Boolean.FALSE.equals(payload.get(key))));
+    return users.saveToolVisibility(targetId, visibility);
+  }
+
   public Map<String, Object> view(UserRepository.UserAccount user, boolean current) {
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("id", user.id());
@@ -152,6 +185,7 @@ public class UserService {
     result.put("reportVisibility", user.admin()
         ? Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true)
         : users.reportVisibility(user.id()));
+    result.put("toolVisibility", effectiveToolVisibility(user));
     return result;
   }
 

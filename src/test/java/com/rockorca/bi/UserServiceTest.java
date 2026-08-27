@@ -90,4 +90,32 @@ class UserServiceTest {
     assertEquals(false, result.get("jd"));
     verify(repository).saveReportVisibility(2L, true, false, true, false);
   }
+
+  @Test
+  void operatorUsesAssignedToolVisibility() {
+    when(repository.toolVisibility(2L)).thenReturn(
+        Map.of("todo", true, "terminal", false, "accountVault", true));
+
+    Map<String, Boolean> result = service.effectiveToolVisibility(member);
+
+    assertEquals(true, result.get("todo"));
+    assertEquals(false, result.get("terminal"));
+    assertEquals(true, result.get("accountVault"));
+  }
+
+  @Test
+  void adminCanSaveOperatorToolVisibility() {
+    when(repository.findById(2L)).thenReturn(Optional.of(member));
+    when(repository.saveToolVisibility(org.mockito.ArgumentMatchers.eq(2L),
+        org.mockito.ArgumentMatchers.anyMap())).thenReturn(
+            Map.of("todo", true, "terminal", false));
+
+    Map<String, Boolean> result = service.saveToolVisibility(
+        admin, 2L, Map.of("todo", true, "terminal", false));
+
+    assertEquals(true, result.get("todo"));
+    assertEquals(false, result.get("terminal"));
+    verify(repository).saveToolVisibility(
+        org.mockito.ArgumentMatchers.eq(2L), org.mockito.ArgumentMatchers.anyMap());
+  }
 }

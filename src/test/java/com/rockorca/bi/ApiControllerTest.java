@@ -125,6 +125,23 @@ class ApiControllerTest {
   }
 
   @Test
+  void toolVisibilityApisDelegate() throws Exception {
+    when(users.effectiveToolVisibility(user)).thenReturn(
+        Map.of("todo", true, "terminal", true));
+    when(users.saveToolVisibility(eq(user), eq(2L), any())).thenReturn(
+        Map.of("todo", true, "terminal", false));
+
+    mvc.perform(get("/api/tool-visibility"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.todo").value(true));
+    mvc.perform(post("/api/users/2/tool-visibility")
+            .contentType("application/json")
+            .content("{\"todo\":true,\"terminal\":false}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.toolVisibility.terminal").value(false));
+  }
+
+  @Test
   void dhhApisDelegateWithDefaultsAndPayload() throws Exception {
     when(reports.currentDhh()).thenReturn(Map.of("source", "current"));
     when(reports.savedReportCredentials())

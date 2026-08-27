@@ -107,6 +107,21 @@ public class AccountApiController {
             !Boolean.FALSE.equals(payload.get("adpflux"))));
   }
 
+  @GetMapping("/tool-visibility")
+  public Map<String, Boolean> toolVisibility(HttpServletRequest request) {
+    return users.effectiveToolVisibility(currentUser(request));
+  }
+
+  @PostMapping("/users/{id}/tool-visibility")
+  public Map<String, Object> setToolVisibility(
+      @PathVariable long id,
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    return ReportService.mapOf(
+        "ok", true,
+        "toolVisibility", users.saveToolVisibility(currentUser(request), id, payload));
+  }
+
   private UserRepository.UserAccount currentUser(HttpServletRequest request) {
     UserRepository.UserAccount user = sessions.currentUser(request);
     if (user == null) {

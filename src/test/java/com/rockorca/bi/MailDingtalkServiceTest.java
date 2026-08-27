@@ -35,4 +35,24 @@ class MailDingtalkServiceTest {
             "Our review indicates that the landing page contains unsupported claims. "
                 + "We proactively enforce our Advertising Policies."));
   }
+
+  @Test
+  void parsesBudgetExhaustedEmail() {
+    MailDingtalkService.TikTokBudgetNotice notice = MailDingtalkService.parseTikTokBudgetNotice(
+        "Your campaign budget has been exhausted",
+        "Ad account ID: 7676449794404745237 Ad account name: XM-budget-test "
+            + "Campaign ID: 1874489175001681 Your campaign has reached its budget limit.");
+    assertEquals(true, notice.isBudgetNotice());
+    assertEquals("7676449794404745237", notice.accountId());
+    assertEquals("XM-budget-test", notice.accountName());
+    assertEquals(List.of("1874489175001681"), notice.campaignIds());
+    assertEquals("预算已用尽或达到上限，相关广告可能已停止或减少投放。", notice.status());
+  }
+
+  @Test
+  void parsesLowBalanceEmail() {
+    MailDingtalkService.TikTokBudgetNotice notice = MailDingtalkService.parseTikTokBudgetNotice(
+        "Important: Your account balance is running low", "Ad account ID: 7676449794404745237");
+    assertEquals("预算或账户余额不足，可能影响广告继续投放，请及时检查并补充。", notice.status());
+  }
 }

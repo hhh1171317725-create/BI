@@ -50,7 +50,7 @@ public class MailDingtalkService {
   private static final int MAX_MESSAGE_BODY_CHARS = 3_200;
   private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile("(?i)Ad account ID\\s*:\\s*(\\d+)");
   private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile(
-      "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID)\\b)");
+      "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID|Campaign ID)\\b)");
   private static final Pattern AD_GROUP_IDS_PATTERN = Pattern.compile(
       "(?i)(?:Ad\\s*Group|Campaign)\\s*ID(?:s|\\(s\\))?\\s*[:：#-]?\\s*([0-9][0-9,，;；\\s]*)");
   private static final Pattern REVIEW_REASON_PATTERN = Pattern.compile(
@@ -320,6 +320,17 @@ public class MailDingtalkService {
   }
 
   private static String formatDingtalkMessage(MailSummary mail) {
+    TikTokBudgetNotice budget = parseTikTokBudgetNotice(mail.subject(), mail.content());
+    if (budget.isBudgetNotice()) {
+      return new StringBuilder("【TikTok 预算通知】\n")
+          .append("账户 ID：").append(emptyToDefault(budget.accountId(), "未识别")).append("\n")
+          .append("账户名称：").append(emptyToDefault(budget.accountName(), "未识别")).append("\n")
+          .append("系列 ID：").append(budget.campaignIds().isEmpty()
+              ? "未识别" : String.join("、", budget.campaignIds())).append("\n")
+          .append("预算状态：").append(budget.status()).append("\n")
+          .append("邮件主题：").append(mail.subject())
+          .toString();
+    }
     TikTokViolation violation = parseTikTokViolation(mail.content());
     if (violation.hasDetails()) {
       return new StringBuilder("【TikTok 广告拒审通知】\n")
@@ -381,6 +392,39 @@ public class MailDingtalkService {
     String reason = cleanField(firstMatch(REVIEW_REASON_PATTERN, normalized));
     if (reason.isBlank()) reason = cleanField(firstMatch(DETAILS_REASON_PATTERN, normalized));
     return reason;
+  }
+
+  static TikTokBudgetNotice parseTikTokBudgetNotice(String subject, String content) {
+    String source = normalizeForParsing(emptyToDefault(subject, "") + "\n" + emptyToDefault(content, ""));
+    String lower = source.toLowerCase();
+    boolean budgetNotice = lower.contains("budget") || lower.contains("account balance")
+        || lower.contains("insufficient balance") || lower.contains("余额") || lower.contains("预算");
+    if (!budgetNotice) return new TikTokBudgetNotice(false, "", "", List.of(), "");
+
+    String status;
+    if (containsAny(lower, "budget has been exhausted", "budget is exhausted", "out of budget",
+        "reached its budget", "budget limit has been reached", "budget cap")) {
+      status = "预算已用尽或达到上限，相关广告可能已停止或减少投放。";
+    } else if (containsAny(lower, "running low", "low balance", "insufficient balance",
+        "insufficient budget", "balance is low")) {
+      status = "预算或账户余额不足，可能影响广告继续投放，请及时检查并补充。";
+    } else if (containsAny(lower, "budget changed", "budget has changed", "budget updated",
+        "budget adjusted")) {
+      status = "预算设置发生变化，请进入 TikTok Ads Manager 核对最新预算。";
+    } else if (containsAny(lower, "daily budget", "lifetime budget")) {
+      status = "广告预算需要关注，请检查日预算、总预算及当前消耗。";
+    } else {
+      status = "检测到预算或余额相关通知，请进入 TikTok Ads Manager 查看详情。";
+    }
+    return new TikTokBudgetNotice(true,
+        firstMatch(ACCOUNT_ID_PATTERN, source),
+        cleanField(firstMatch(ACCOUNT_NAME_PATTERN, source)),
+        extractAdGroupIds(source), status);
+  }
+
+  private static boolean containsAny(String source, String... values) {
+    for (String value : values) if (source.contains(value)) return true;
+    return false;
   }
 
   private static String normalizeForParsing(String content) {
@@ -488,5 +532,7 @@ public class MailDingtalkService {
   private record TikTokViolation(String accountId, String accountName, List<String> adGroupIds, String reason) {
     boolean hasDetails() { return !accountId.isBlank() || !accountName.isBlank() || !adGroupIds.isEmpty(); }
   }
+  record TikTokBudgetNotice(
+      boolean isBudgetNotice, String accountId, String accountName, List<String> campaignIds, String status) {}
   private record ForwardResult(int sent, int skipped, List<Map<String, Object>> items) {}
 }

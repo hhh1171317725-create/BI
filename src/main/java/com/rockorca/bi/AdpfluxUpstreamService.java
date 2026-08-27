@@ -148,8 +148,7 @@ public class AdpfluxUpstreamService {
       Map<String, Object> root =
           objectMapper.readValue(response.body(), new TypeReference<>() {});
       if ((int) ReportService.number(root.get("code")) != 0) {
-        throw new IllegalStateException(
-            "上游接口请求失败：" + ReportService.text(root.get("message")));
+        throw new IllegalStateException(upstreamError(ReportService.text(root.get("message"))));
       }
       Map<String, Object> data = objectMap(root.get("data"));
       Map<String, Object> pageInfo = objectMap(data.get("page_info"));
@@ -217,6 +216,15 @@ public class AdpfluxUpstreamService {
   private static String shorten(String value) {
     String text = String.valueOf(value == null ? "" : value).replaceAll("\\s+", " ").trim();
     return text.substring(0, Math.min(500, text.length()));
+  }
+
+  static String upstreamError(String message) {
+    String value = ReportService.text(message);
+    String normalized = value.toLowerCase().replace('-', '_').replace(' ', '_');
+    if (normalized.contains("token_has_expired") || normalized.contains("token_expired")) {
+      return "消耗 AuthorizationFront 已过期，请重新登录 ADPFlux，更新页面最上方的消耗凭据后保存并重试";
+    }
+    return "上游接口请求失败：" + value;
   }
 
   record Credentials(String token, String companyId) {

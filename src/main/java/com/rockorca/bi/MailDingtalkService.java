@@ -9,7 +9,6 @@ import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.search.FlagTerm;
 import jakarta.mail.search.FromStringTerm;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -158,8 +157,11 @@ public class MailDingtalkService {
       Folder inbox = store.getFolder("INBOX");
       inbox.open(Folder.READ_WRITE);
       try {
-        Message[] unread = inbox.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
-        List<Message> messages = new ArrayList<>(List.of(unread));
+        // Do not rely on the unread flag: QQ clients may mark a new message as read
+        // before this scheduled job sees it. Message-ID history remains the source
+        // of truth for exactly-once delivery.
+        Message[] matching = inbox.search(new FromStringTerm(TIKTOK_NOTIFICATION_SENDER));
+        List<Message> messages = new ArrayList<>(List.of(matching));
         messages.sort(Comparator.comparing(MailDingtalkService::sentDateSafe).reversed());
         for (Message message : messages) {
           if (items.size() >= MAX_MESSAGES_PER_RUN) break;

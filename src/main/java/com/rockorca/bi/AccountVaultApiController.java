@@ -76,7 +76,7 @@ public class AccountVaultApiController {
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")), "", "all", false);
     if (actor.admin()) return report;
-    Set<String> allowed = vault.assignedAccountIds(actor.id());
+    Set<String> allowed = vault.ownedAccountIds(actor.id());
     return ReportService.mapOf("by_account", rows(report.get("by_account")).stream()
         .filter(row -> allowed.contains(ReportService.text(row.get("advertiserId"))))
         .toList());
@@ -102,7 +102,7 @@ public class AccountVaultApiController {
       report = revenueReports.revenue(resolved, actor.admin() && refresh);
     }
     if (actor.admin()) return report;
-    Set<String> allowed = vault.assignedRevenueSourceIds(actor.id());
+    Set<String> allowed = vault.ownedRevenueSourceIds(actor.id());
     Map<String, Object> filtered = new LinkedHashMap<>(report);
     filtered.put("rows", rows(report.get("rows")).stream()
         .filter(row -> allowed.contains(ReportService.text(row.get("campaignId"))))
@@ -112,40 +112,43 @@ public class AccountVaultApiController {
 
   @PostMapping
   public Map<String, Object> create(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
-    UserRepository.UserAccount actor = admin(request);
+    UserRepository.UserAccount actor = currentUser(request);
     return ReportService.mapOf("ok", true, "entry", vault.create(payload, actor.id()));
   }
 
   @PutMapping("/{id}")
   public Map<String, Object> update(
       @PathVariable long id, @RequestBody Map<String, Object> payload, HttpServletRequest request) {
-    UserRepository.UserAccount actor = admin(request);
+    UserRepository.UserAccount actor = currentUser(request);
+    if (!actor.admin() && !vault.ownedBy(id, actor.id())) forbidden();
     return ReportService.mapOf("ok", true, "entry", vault.update(id, payload, actor.id()));
   }
 
   @DeleteMapping("/{id}")
   public Map<String, Object> delete(@PathVariable long id, HttpServletRequest request) {
-    admin(request);
+    UserRepository.UserAccount actor = currentUser(request);
+    if (!actor.admin() && !vault.ownedBy(id, actor.id())) forbidden();
     vault.delete(id);
     return ReportService.mapOf("ok", true);
   }
 
   @GetMapping("/options")
   public Map<String, Object> options(HttpServletRequest request) {
-    admin(request);
-    return vault.options();
+    UserRepository.UserAccount actor = currentUser(request);
+    return vault.options(actor.admin() ? null : actor.id());
   }
 
   @PostMapping("/options")
   public Map<String, Object> createOption(
       @RequestBody Map<String, Object> payload, HttpServletRequest request) {
-    admin(request);
-    return ReportService.mapOf("ok", true, "option", vault.createOption(payload));
+    UserRepository.UserAccount actor = currentUser(request);
+    return ReportService.mapOf("ok", true, "option", vault.createOption(payload, actor.id()));
   }
 
   @DeleteMapping("/options/{id}")
   public Map<String, Object> deleteOption(@PathVariable long id, HttpServletRequest request) {
-    admin(request);
+    UserRepository.UserAccount actor = currentUser(request);
+    if (!actor.admin() && !vault.optionOwnedBy(id, actor.id())) forbidden();
     vault.deleteOption(id);
     return ReportService.mapOf("ok", true);
   }
@@ -153,15 +156,15 @@ public class AccountVaultApiController {
   @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Map<String, Object> importWorkbook(
       @RequestPart("file") MultipartFile file, HttpServletRequest request) throws Exception {
-    UserRepository.UserAccount actor = admin(request);
+    UserRepository.UserAccount actor = currentUser(request);
     int imported = vault.importWorkbook(file.getBytes(), actor.id());
     return ReportService.mapOf("ok", true, "imported", imported);
   }
 
   @GetMapping("/export")
   public ResponseEntity<byte[]> export(HttpServletRequest request) {
-    admin(request);
-    byte[] content = vault.exportWorkbook();
+    UserRepository.UserAccount actor = currentUser(request);
+    byte[] content = vault.exportWorkbook(actor.admin() ? null : actor.id());
     String filename = "关键词账户映射_"
         + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
     return ResponseEntity.ok()
@@ -185,6 +188,10 @@ public class AccountVaultApiController {
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
     }
     return actor;
+  }
+
+  private static void forbidden() {
+    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只能修改自己创建的对应关系");
   }
 
   @SuppressWarnings("unchecked")

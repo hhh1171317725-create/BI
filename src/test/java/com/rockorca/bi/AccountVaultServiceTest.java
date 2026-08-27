@@ -33,19 +33,17 @@ class AccountVaultServiceTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void limitsOperatorListsToAssignedMappings() {
+  void limitsOperatorListsToMappingsCreatedByThatOperator() {
     AccountVaultRepository repository = mock(AccountVaultRepository.class);
     AccountVaultRepository.Entry assigned = storedEntry(9, "Assigned", "10001", "channel-a");
     when(repository.list("", "ad_account", 1, 10_000, 77L))
         .thenReturn(new AccountVaultRepository.Page(List.of(assigned), 1));
-    when(repository.listAssignments()).thenReturn(Map.of(9L, List.of(77L)));
 
     Map<String, Object> result = new AccountVaultService(repository).list("", 1, 10_000, 77L);
     List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
 
     assertEquals(1, entries.size());
     assertEquals("Assigned", entries.getFirst().get("keyword"));
-    assertEquals(List.of(77L), entries.getFirst().get("assignedUserIds"));
     verify(repository).list("", "ad_account", 1, 10_000, 77L);
   }
 
@@ -114,9 +112,9 @@ class AccountVaultServiceTest {
   @SuppressWarnings("unchecked")
   void groupsSavedChannelAndStyleOptions() {
     AccountVaultRepository repository = mock(AccountVaultRepository.class);
-    when(repository.listOptions()).thenReturn(List.of(
-        new AccountVaultRepository.OptionEntry(1, "channel", "channel-a"),
-        new AccountVaultRepository.OptionEntry(2, "style_id", "1751233588")));
+    when(repository.listOptions(null)).thenReturn(List.of(
+        new AccountVaultRepository.OptionEntry(1, "channel", "channel-a", 1),
+        new AccountVaultRepository.OptionEntry(2, "style_id", "1751233588", 1)));
     when(repository.listUsageEntries()).thenReturn(List.of(
         storedEntry(9, "Existing", "10001", "channel-a")));
     AccountVaultService service = new AccountVaultService(repository);
@@ -132,11 +130,26 @@ class AccountVaultServiceTest {
   }
 
   @Test
+  void limitsSavedOptionsAndUsageToTheCreatingOperator() {
+    AccountVaultRepository repository = mock(AccountVaultRepository.class);
+    when(repository.listOptions(77L)).thenReturn(List.of(
+        new AccountVaultRepository.OptionEntry(1, "channel", "channel-own", 77)));
+    when(repository.list("", "ad_account", 1, 10_000, 77L)).thenReturn(
+        new AccountVaultRepository.Page(
+            List.of(storedEntry(9, "Own mapping", "10001", "channel-own")), 1));
+
+    new AccountVaultService(repository).options(77L);
+
+    verify(repository).listOptions(77L);
+    verify(repository).list("", "ad_account", 1, 10_000, 77L);
+  }
+
+  @Test
   void rejectsUnknownOptionTypes() {
     AccountVaultService service = new AccountVaultService(mock(AccountVaultRepository.class));
 
     assertThrows(IllegalArgumentException.class,
-        () -> service.createOption(Map.of("type", "other", "value", "x")));
+        () -> service.createOption(Map.of("type", "other", "value", "x"), 1));
   }
 
   @Test

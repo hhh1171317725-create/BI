@@ -41,7 +41,7 @@ public class AccountVaultRepository {
 
   public record Page(List<Entry> entries, long total) {}
 
-  public record OptionEntry(long id, String type, String value) {}
+  public record OptionEntry(long id, String type, String value, long createdBy) {}
 
   private static final String COLUMNS = "id, category, name, account_id, username, secret_encrypted,"
       + " url, material_url, copy_text, revenue_source_ids, keyword_text, channel_id, style_id, country,"
@@ -92,11 +92,12 @@ public class AccountVaultRepository {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             option_type VARCHAR(20) NOT NULL,
             option_value VARCHAR(255) NOT NULL,
+            created_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
             created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
             updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
               ON UPDATE CURRENT_TIMESTAMP(3),
             PRIMARY KEY (id),
-            UNIQUE KEY uk_account_vault_option (option_type, option_value)
+            UNIQUE KEY uk_account_vault_option (option_type, option_value, created_by)
           ) ENGINE=InnoDB COMMENT='账户映射 channel 与 style ID 选项'
           """);
       statement.execute("""
@@ -113,15 +114,16 @@ public class AccountVaultRepository {
       migrateCopyTextColumn(connection);
       migrateRevenueSourceIdsColumn(connection);
       migrateAdCreationColumns(connection);
+      migrateOptionOwnership(connection);
       statement.execute("""
-          INSERT IGNORE INTO account_vault_options (option_type, option_value)
-          SELECT 'channel', TRIM(channel_id)
+          INSERT IGNORE INTO account_vault_options (option_type, option_value, created_by)
+          SELECT 'channel', TRIM(channel_id), created_by
             FROM account_vault_entries
            WHERE category = 'ad_account' AND TRIM(channel_id) <> ''
           """);
       statement.execute("""
-          INSERT IGNORE INTO account_vault_options (option_type, option_value)
-          SELECT 'style_id', TRIM(style_id)
+          INSERT IGNORE INTO account_vault_options (option_type, option_value, created_by)
+          SELECT 'style_id', TRIM(style_id), created_by
             FROM account_vault_entries
            WHERE category = 'ad_account' AND TRIM(style_id) <> ''
           """);
@@ -131,18 +133,20 @@ public class AccountVaultRepository {
     }
   }
 
-  public List<OptionEntry> listOptions() {
+  public List<OptionEntry> listOptions(Long ownerUserId) {
     initialize();
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(
-             "SELECT id, option_type, option_value FROM account_vault_options"
+             "SELECT id, option_type, option_value, created_by FROM account_vault_options"
+                 + (ownerUserId == null ? "" : " WHERE created_by = ?")
                  + " ORDER BY option_type, option_value")) {
+      if (ownerUserId != null) statement.setLong(1, ownerUserId);
       List<OptionEntry> options = new ArrayList<>();
       try (ResultSet result = statement.executeQuery()) {
         while (result.next()) {
           options.add(new OptionEntry(
               result.getLong("id"), result.getString("option_type"),
-              result.getString("option_value")));
+              result.getString("option_value"), result.getLong("created_by")));
         }
       }
       return options;
@@ -151,25 +155,32 @@ public class AccountVaultRepository {
     }
   }
 
-  public OptionEntry createOption(String type, String value) {
+  public List<OptionEntry> listOptions() {
+    return listOptions(null);
+  }
+
+  public OptionEntry createOption(String type, String value, long createdBy) {
     initialize();
     try (Connection connection = reports.openConnection()) {
       try (PreparedStatement statement = connection.prepareStatement(
-          "INSERT IGNORE INTO account_vault_options (option_type, option_value) VALUES (?, ?)")) {
+          "INSERT IGNORE INTO account_vault_options (option_type, option_value, created_by)"
+              + " VALUES (?, ?, ?)")) {
         statement.setString(1, type);
         statement.setString(2, value);
+        statement.setLong(3, createdBy);
         statement.executeUpdate();
       }
       try (PreparedStatement statement = connection.prepareStatement(
-          "SELECT id, option_type, option_value FROM account_vault_options"
-              + " WHERE option_type = ? AND option_value = ?")) {
+          "SELECT id, option_type, option_value, created_by FROM account_vault_options"
+              + " WHERE option_type = ? AND option_value = ? AND created_by = ?")) {
         statement.setString(1, type);
         statement.setString(2, value);
+        statement.setLong(3, createdBy);
         try (ResultSet result = statement.executeQuery()) {
           if (!result.next()) throw new IllegalStateException("保存选项后未能读取数据");
           return new OptionEntry(
               result.getLong("id"), result.getString("option_type"),
-              result.getString("option_value"));
+              result.getString("option_value"), result.getLong("created_by"));
         }
       }
     } catch (SQLException error) {
@@ -186,6 +197,64 @@ public class AccountVaultRepository {
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("选项不存在");
     } catch (SQLException error) {
       throw databaseError(error);
+    }
+  }
+
+  public boolean optionOwnedBy(long id, long userId) {
+    initialize();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement(
+             "SELECT created_by FROM account_vault_options WHERE id = ?")) {
+      statement.setLong(1, id);
+      try (ResultSet result = statement.executeQuery()) {
+        if (!result.next()) throw new IllegalArgumentException("选项不存在");
+        return result.getLong("created_by") == userId;
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  private static void migrateOptionOwnership(Connection connection) throws SQLException {
+    boolean hasColumn;
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT COUNT(*)
+          FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_options'
+           AND COLUMN_NAME = 'created_by'
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        result.next();
+        hasColumn = result.getInt(1) > 0;
+      }
+    }
+    try (Statement statement = connection.createStatement()) {
+      if (!hasColumn) {
+        statement.execute("ALTER TABLE account_vault_options"
+            + " ADD COLUMN created_by BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER option_value");
+      }
+    }
+    String indexColumns = "";
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+          FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_options'
+           AND INDEX_NAME = 'uk_account_vault_option'
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        if (result.next()) indexColumns = result.getString(1);
+      }
+    }
+    if (!"option_type,option_value,created_by".equalsIgnoreCase(indexColumns)) {
+      try (Statement statement = connection.createStatement()) {
+        if (indexColumns != null && !indexColumns.isBlank()) {
+          statement.execute("ALTER TABLE account_vault_options DROP INDEX uk_account_vault_option");
+        }
+        statement.execute("ALTER TABLE account_vault_options ADD UNIQUE KEY"
+            + " uk_account_vault_option (option_type, option_value, created_by)");
+      }
     }
   }
 
@@ -325,7 +394,7 @@ public class AccountVaultRepository {
     return list(query, category, page, pageSize, null);
   }
 
-  public Page list(String query, String category, int page, int pageSize, Long assignedUserId) {
+  public Page list(String query, String category, int page, int pageSize, Long ownerUserId) {
     initialize();
     StringBuilder where = new StringBuilder(" WHERE 1=1");
     List<String> parameters = new ArrayList<>();
@@ -341,10 +410,9 @@ public class AccountVaultRepository {
       String pattern = "%" + query + "%";
       for (int index = 0; index < 13; index++) parameters.add(pattern);
     }
-    if (assignedUserId != null) {
-      where.append(" AND EXISTS (SELECT 1 FROM account_vault_entry_users permission"
-          + " WHERE permission.entry_id = account_vault_entries.id AND permission.user_id = ?)");
-      parameters.add(String.valueOf(assignedUserId));
+    if (ownerUserId != null) {
+      where.append(" AND created_by = ?");
+      parameters.add(String.valueOf(ownerUserId));
     }
     try (Connection connection = reports.openConnection()) {
       long total;

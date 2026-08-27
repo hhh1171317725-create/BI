@@ -40,19 +40,17 @@ public class AccountVaultService {
   }
 
   public Map<String, Object> list(
-      String queryValue, int pageValue, int pageSizeValue, Long assignedUserId) {
+      String queryValue, int pageValue, int pageSizeValue, Long ownerUserId) {
     String query = clean(queryValue, 200, "搜索词");
     int page = Math.max(1, pageValue);
     // 账户对应关系页面会一次读取匹配结果后，结合实时账户指标在浏览器中做全局排序。
     // 上限与 Excel 导出量级保持一致，避免只对当前数据库分页进行排序。
     int pageSize = Math.max(10, Math.min(10_000, pageSizeValue));
-    AccountVaultRepository.Page result = assignedUserId == null
+    AccountVaultRepository.Page result = ownerUserId == null
         ? repository.list(query, "ad_account", page, pageSize)
-        : repository.list(query, "ad_account", page, pageSize, assignedUserId);
-    Map<Long, List<Long>> assignments = repository.listAssignments();
+        : repository.list(query, "ad_account", page, pageSize, ownerUserId);
     return ReportService.mapOf(
-        "entries", result.entries().stream()
-            .map(entry -> view(entry, assignments.getOrDefault(entry.id(), List.of()))).toList(),
+        "entries", result.entries().stream().map(AccountVaultService::view).toList(),
         "total", result.total(), "page", page, "pageSize", pageSize,
         "pages", Math.max(1, (result.total() + pageSize - 1) / pageSize));
   }
@@ -61,10 +59,7 @@ public class AccountVaultService {
     AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
     ensureUnused(entry, 0, repository.listUsageEntries());
     ensureOptions(entry);
-    AccountVaultRepository.Entry created = repository.create(entry);
-    List<Long> assignedUserIds = assignedUserIds(payload.get("assignedUserIds"));
-    repository.replaceAssignments(created.id(), assignedUserIds);
-    return view(created, assignedUserIds);
+    return view(repository.create(entry));
   }
 
   public synchronized Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
@@ -72,17 +67,18 @@ public class AccountVaultService {
     AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
     ensureUnused(entry, id, repository.listUsageEntries());
     ensureOptions(entry);
-    AccountVaultRepository.Entry updated = repository.update(id, entry);
-    List<Long> assignedUserIds = assignedUserIds(payload.get("assignedUserIds"));
-    repository.replaceAssignments(id, assignedUserIds);
-    return view(updated, assignedUserIds);
+    return view(repository.update(id, entry));
   }
 
   public void delete(long id) {
     repository.delete(id);
   }
 
-  public Set<String> assignedAccountIds(long userId) {
+  public boolean ownedBy(long entryId, long userId) {
+    return repository.find(entryId).createdBy() == userId;
+  }
+
+  public Set<String> ownedAccountIds(long userId) {
     Set<String> ids = new LinkedHashSet<>();
     for (AccountVaultRepository.Entry entry
         : repository.list("", "ad_account", 1, 10_000, userId).entries()) {
@@ -91,7 +87,7 @@ public class AccountVaultService {
     return ids;
   }
 
-  public Set<String> assignedRevenueSourceIds(long userId) {
+  public Set<String> ownedRevenueSourceIds(long userId) {
     Set<String> ids = new LinkedHashSet<>();
     for (AccountVaultRepository.Entry entry
         : repository.list("", "ad_account", 1, 10_000, userId).entries()) {
@@ -102,10 +98,13 @@ public class AccountVaultService {
     return ids;
   }
 
-  public Map<String, Object> options() {
-    List<AccountVaultRepository.OptionEntry> options = repository.listOptions();
+  public Map<String, Object> options(Long ownerUserId) {
+    List<AccountVaultRepository.OptionEntry> options = repository.listOptions(ownerUserId);
     Map<String, List<String>> channelUsage = new LinkedHashMap<>();
-    for (AccountVaultRepository.Entry entry : repository.listUsageEntries()) {
+    List<AccountVaultRepository.Entry> usageEntries = ownerUserId == null
+        ? repository.listUsageEntries()
+        : repository.list("", "ad_account", 1, 10_000, ownerUserId).entries();
+    for (AccountVaultRepository.Entry entry : usageEntries) {
       String keyword = entry.keyword().isBlank() ? entry.name() : entry.keyword();
       channelUsage.computeIfAbsent(entry.channelId().toLowerCase(), ignored -> new ArrayList<>())
           .add(keyword);
@@ -117,15 +116,23 @@ public class AccountVaultService {
             .map(AccountVaultService::optionView).toList());
   }
 
-  public Map<String, Object> createOption(Map<String, Object> payload) {
+  public Map<String, Object> options() {
+    return options(null);
+  }
+
+  public Map<String, Object> createOption(Map<String, Object> payload, long actorId) {
     String type = optionType(text(payload.get("type")));
     String value = clean(text(payload.get("value")), 255, optionLabel(type));
     if (value.isBlank()) throw new IllegalArgumentException("请填写" + optionLabel(type));
-    return optionView(repository.createOption(type, value));
+    return optionView(repository.createOption(type, value, actorId));
   }
 
   public void deleteOption(long id) {
     repository.deleteOption(id);
+  }
+
+  public boolean optionOwnedBy(long id, long userId) {
+    return repository.optionOwnedBy(id, userId);
   }
 
   public synchronized int importWorkbook(byte[] content, long actorId) {
@@ -153,8 +160,14 @@ public class AccountVaultService {
   }
 
   public byte[] exportWorkbook() {
+    return exportWorkbook(null);
+  }
+
+  public byte[] exportWorkbook(Long ownerUserId) {
     List<AccountVaultRepository.Entry> entries =
-        repository.list("", "ad_account", 1, 10_000).entries();
+        ownerUserId == null
+            ? repository.list("", "ad_account", 1, 10_000).entries()
+            : repository.list("", "ad_account", 1, 10_000, ownerUserId).entries();
     try (XSSFWorkbook workbook = new XSSFWorkbook();
          ByteArrayOutputStream output = new ByteArrayOutputStream()) {
       Sheet sheet = workbook.createSheet("关键词账户映射");
@@ -229,11 +242,6 @@ public class AccountVaultService {
   }
 
   private static Map<String, Object> view(AccountVaultRepository.Entry entry) {
-    return view(entry, List.of());
-  }
-
-  private static Map<String, Object> view(
-      AccountVaultRepository.Entry entry, List<Long> assignedUserIds) {
     return ReportService.mapOf(
         "id", entry.id(),
         "keyword", entry.keyword().isBlank() ? entry.name() : entry.keyword(),
@@ -248,32 +256,13 @@ public class AccountVaultService {
         "revenueSourceIds", entry.revenueSourceIds(),
         "campaignQuantity", entry.campaignQuantity(),
         "dailyBudget", decimalText(entry.dailyBudget()),
-        "assignedUserIds", assignedUserIds,
+        "createdBy", entry.createdBy(),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
   }
 
-  private static List<Long> assignedUserIds(Object value) {
-    List<Long> ids = new ArrayList<>();
-    if (value instanceof Iterable<?> values) {
-      for (Object item : values) addUserId(ids, item);
-    } else {
-      for (String item : text(value).split("[,\\s]+")) addUserId(ids, item);
-    }
-    return ids.stream().distinct().toList();
-  }
-
-  private static void addUserId(List<Long> ids, Object value) {
-    try {
-      long id = Long.parseLong(text(value));
-      if (id > 0) ids.add(id);
-    } catch (NumberFormatException ignored) {
-      // Ignore malformed browser values; only positive database user IDs are stored.
-    }
-  }
-
   private void ensureOptions(AccountVaultRepository.Entry entry) {
-    repository.createOption("channel", entry.channelId());
-    repository.createOption("style_id", entry.styleId());
+    repository.createOption("channel", entry.channelId(), entry.createdBy());
+    repository.createOption("style_id", entry.styleId(), entry.createdBy());
   }
 
   private static void ensureUnused(
@@ -301,7 +290,9 @@ public class AccountVaultService {
   }
 
   private static Map<String, Object> optionView(AccountVaultRepository.OptionEntry option) {
-    return ReportService.mapOf("id", option.id(), "type", option.type(), "value", option.value());
+    return ReportService.mapOf(
+        "id", option.id(), "type", option.type(), "value", option.value(),
+        "createdBy", option.createdBy());
   }
 
   private static Map<String, Object> channelOptionView(

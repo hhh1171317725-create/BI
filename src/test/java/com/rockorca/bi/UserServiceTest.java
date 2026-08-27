@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,5 +62,32 @@ class UserServiceTest {
         IllegalArgumentException.class,
         () -> service.changeOwnPassword(admin, "wrong", "654321"));
     assertEquals("当前密码不正确", error.getMessage());
+  }
+
+  @Test
+  void operatorVisibilityIntersectsGlobalVisibility() {
+    when(repository.reportVisibility(2L)).thenReturn(
+        Map.of("dhh", true, "jd", false, "jdLowActivity", true, "adpflux", true));
+
+    Map<String, Boolean> result = service.effectiveReportVisibility(
+        member, Map.of("dhh", true, "jd", true, "jdLowActivity", false, "adpflux", true));
+
+    assertEquals(true, result.get("dhh"));
+    assertEquals(false, result.get("jd"));
+    assertEquals(false, result.get("jdLowActivity"));
+    assertEquals(true, result.get("adpflux"));
+  }
+
+  @Test
+  void adminCanSaveOperatorReportVisibility() {
+    when(repository.findById(2L)).thenReturn(Optional.of(member));
+    when(repository.saveReportVisibility(2L, true, false, true, false)).thenReturn(
+        Map.of("dhh", true, "jd", false, "jdLowActivity", true, "adpflux", false));
+
+    Map<String, Boolean> result = service.saveReportVisibility(
+        admin, 2L, true, false, true, false);
+
+    assertEquals(false, result.get("jd"));
+    verify(repository).saveReportVisibility(2L, true, false, true, false);
   }
 }

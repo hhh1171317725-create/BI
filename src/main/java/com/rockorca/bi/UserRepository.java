@@ -7,7 +7,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
 
@@ -58,6 +60,18 @@ public class UserRepository {
             UNIQUE KEY uk_report_users_username (username),
             KEY idx_report_users_role_active (role, active)
           ) ENGINE=InnoDB COMMENT='报表系统登录用户'
+          """);
+      statement.execute("""
+          CREATE TABLE IF NOT EXISTS report_user_visibility (
+            user_id BIGINT UNSIGNED NOT NULL,
+            dhh_visible TINYINT(1) NOT NULL DEFAULT 1,
+            jd_visible TINYINT(1) NOT NULL DEFAULT 1,
+            jd_low_activity_visible TINYINT(1) NOT NULL DEFAULT 1,
+            adpflux_visible TINYINT(1) NOT NULL DEFAULT 1,
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (user_id)
+          ) ENGINE=InnoDB COMMENT='用户日报板块可见权限'
           """);
       boolean empty;
       try (ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM report_users")) {
@@ -155,6 +169,53 @@ public class UserRepository {
     }
   }
 
+  public Map<String, Boolean> reportVisibility(long userId) {
+    Map<String, Boolean> visibility = defaultReportVisibility();
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             SELECT dhh_visible, jd_visible, jd_low_activity_visible, adpflux_visible
+             FROM report_user_visibility
+             WHERE user_id = ?
+             """)) {
+      statement.setLong(1, userId);
+      try (ResultSet result = statement.executeQuery()) {
+        if (!result.next()) return visibility;
+        visibility.put("dhh", result.getBoolean("dhh_visible"));
+        visibility.put("jd", result.getBoolean("jd_visible"));
+        visibility.put("jdLowActivity", result.getBoolean("jd_low_activity_visible"));
+        visibility.put("adpflux", result.getBoolean("adpflux_visible"));
+        return visibility;
+      }
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
+  public Map<String, Boolean> saveReportVisibility(
+      long userId, boolean dhh, boolean jd, boolean jdLowActivity, boolean adpflux) {
+    try (Connection connection = reports.openConnection();
+         PreparedStatement statement = connection.prepareStatement("""
+             INSERT INTO report_user_visibility
+               (user_id, dhh_visible, jd_visible, jd_low_activity_visible, adpflux_visible)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               dhh_visible = VALUES(dhh_visible),
+               jd_visible = VALUES(jd_visible),
+               jd_low_activity_visible = VALUES(jd_low_activity_visible),
+               adpflux_visible = VALUES(adpflux_visible)
+             """)) {
+      statement.setLong(1, userId);
+      statement.setBoolean(2, dhh);
+      statement.setBoolean(3, jd);
+      statement.setBoolean(4, jdLowActivity);
+      statement.setBoolean(5, adpflux);
+      statement.executeUpdate();
+      return reportVisibility(userId);
+    } catch (SQLException error) {
+      throw databaseError(error);
+    }
+  }
+
   public void markLogin(long id) {
     try (Connection connection = reports.openConnection();
          PreparedStatement statement = connection.prepareStatement(
@@ -199,5 +260,14 @@ public class UserRepository {
 
   private static IllegalStateException databaseError(SQLException error) {
     return new IllegalStateException("用户数据库操作失败：" + error.getMessage(), error);
+  }
+
+  private static Map<String, Boolean> defaultReportVisibility() {
+    Map<String, Boolean> visibility = new LinkedHashMap<>();
+    visibility.put("dhh", true);
+    visibility.put("jd", true);
+    visibility.put("jdLowActivity", true);
+    visibility.put("adpflux", true);
+    return visibility;
   }
 }

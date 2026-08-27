@@ -106,6 +106,39 @@ public class UserService {
     return view(users.setActive(targetId, active), false);
   }
 
+  public Map<String, Boolean> effectiveReportVisibility(
+      UserRepository.UserAccount actor, Map<String, Object> globalVisibility) {
+    initialize();
+    if (actor == null || !actor.active()) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
+    }
+    Map<String, Boolean> result = new LinkedHashMap<>();
+    Map<String, Boolean> personal = actor.admin()
+        ? Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true)
+        : users.reportVisibility(actor.id());
+    for (String key : List.of("dhh", "jd", "jdLowActivity", "adpflux")) {
+      result.put(key, !Boolean.FALSE.equals(globalVisibility.get(key))
+          && !Boolean.FALSE.equals(personal.get(key)));
+    }
+    return result;
+  }
+
+  public Map<String, Boolean> saveReportVisibility(
+      UserRepository.UserAccount actor,
+      long targetId,
+      boolean dhh,
+      boolean jd,
+      boolean jdLowActivity,
+      boolean adpflux) {
+    requireAdmin(actor);
+    initialize();
+    UserRepository.UserAccount target = requireExisting(targetId);
+    if (target.admin()) {
+      throw new IllegalArgumentException("管理员始终可以访问已启用的日报，无需单独设置");
+    }
+    return users.saveReportVisibility(targetId, dhh, jd, jdLowActivity, adpflux);
+  }
+
   public Map<String, Object> view(UserRepository.UserAccount user, boolean current) {
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("id", user.id());
@@ -116,6 +149,9 @@ public class UserService {
     result.put("createdAt", text(user.createdAt()));
     result.put("updatedAt", text(user.updatedAt()));
     result.put("lastLoginAt", text(user.lastLoginAt()));
+    result.put("reportVisibility", user.admin()
+        ? Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true)
+        : users.reportVisibility(user.id()));
     return result;
   }
 

@@ -92,6 +92,21 @@ public class AccountApiController {
         "user", users.setActive(currentUser(request), id, active));
   }
 
+  @PostMapping("/users/{id}/report-visibility")
+  public Map<String, Object> setReportVisibility(
+      @PathVariable long id,
+      @RequestBody Map<String, Object> payload,
+      HttpServletRequest request) {
+    return ReportService.mapOf(
+        "ok", true,
+        "reportVisibility", users.saveReportVisibility(
+            currentUser(request), id,
+            !Boolean.FALSE.equals(payload.get("dhh")),
+            !Boolean.FALSE.equals(payload.get("jd")),
+            !Boolean.FALSE.equals(payload.get("jdLowActivity")),
+            !Boolean.FALSE.equals(payload.get("adpflux"))));
+  }
+
   private UserRepository.UserAccount currentUser(HttpServletRequest request) {
     UserRepository.UserAccount user = sessions.currentUser(request);
     if (user == null) {

@@ -131,6 +131,8 @@ class ApiControllerTest {
         .thenReturn(Map.of("token", "report-token", "userId", "20"));
     when(reports.reportVisibility())
         .thenReturn(Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true));
+    when(users.effectiveReportVisibility(eq(user), any()))
+        .thenReturn(Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true));
     when(reports.saveReportVisibility(true, false, true, true))
         .thenReturn(Map.of("dhh", true, "jd", false, "jdLowActivity", true, "adpflux", true));
     when(reports.saveReportCredentials("new-report-token", "21"))

@@ -53,10 +53,11 @@ public class ReportApiController {
   }
 
   @GetMapping("/report-visibility")
-  public ResponseEntity<Map<String, Object>> reportVisibility() {
+  public ResponseEntity<Map<String, Boolean>> reportVisibility(HttpServletRequest request) {
+    UserRepository.UserAccount actor = sessions.currentUser(request);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(reports.reportVisibility());
+        .body(users.effectiveReportVisibility(actor, reports.reportVisibility()));
   }
 
   @PostMapping("/report-visibility")

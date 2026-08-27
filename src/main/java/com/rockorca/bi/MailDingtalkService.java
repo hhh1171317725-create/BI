@@ -55,6 +55,8 @@ public class MailDingtalkService {
       "(?i)(?:Ad\\s*Group|Campaign)\\s*ID(?:s|\\(s\\))?\\s*[:：#-]?\\s*([0-9][0-9,，;；\\s]*)");
   private static final Pattern REVIEW_REASON_PATTERN = Pattern.compile(
       "(?is)Our review indicates that\\s+(.+?)(?=\\s+We proactively enforce|\\s+Ad Group ID\\s*:|$)");
+  private static final Pattern DETAILS_REASON_PATTERN = Pattern.compile(
+      "(?is)See the following for details\\s*[:：]?\\s*(.+?)(?=\\s+(?:Ad Group|Campaign)\\s*ID|\\s+Training videos|$)");
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
   private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
@@ -345,10 +347,7 @@ public class MailDingtalkService {
     String accountId = firstMatch(ACCOUNT_ID_PATTERN, content);
     String accountName = cleanField(firstMatch(ACCOUNT_NAME_PATTERN, content));
     List<String> adGroupIds = extractAdGroupIds(content);
-    String rawReason = cleanField(firstMatch(REVIEW_REASON_PATTERN, content));
-    String reason = rawReason.toLowerCase().contains("sexually suggestive")
-        ? "素材可能包含或推广性暗示内容，包括性暗示文字、音频、动作、性行为暗示或敏感部位暗示，违反 TikTok 广告政策。"
-        : rawReason;
+    String reason = extractViolationReason(content);
     return new TikTokViolation(accountId, accountName, adGroupIds, reason);
   }
 
@@ -361,6 +360,27 @@ public class MailDingtalkService {
       }
     }
     return List.copyOf(ids);
+  }
+
+  static String extractViolationReason(String content) {
+    String normalized = normalizeForParsing(content);
+    String lower = normalized.toLowerCase();
+    if (lower.contains("sexually suggestive") || lower.contains("sexualised content")
+        || lower.contains("sexualized content")) {
+      return "素材可能包含或推广性暗示内容，包括性暗示文字、音频、动作、性行为暗示或敏感部位暗示，违反 TikTok 广告政策。";
+    }
+    if (lower.contains("misleading") || lower.contains("deceptive")) {
+      return "素材或落地页可能包含误导、欺骗或夸大信息，违反 TikTok 广告政策。";
+    }
+    if (lower.contains("before-and-after") || lower.contains("before and after")) {
+      return "素材可能包含效果前后对比或不当效果承诺，违反 TikTok 广告政策。";
+    }
+    if (lower.contains("personal attributes")) {
+      return "素材可能直接或间接指向用户的个人属性，违反 TikTok 广告政策。";
+    }
+    String reason = cleanField(firstMatch(REVIEW_REASON_PATTERN, normalized));
+    if (reason.isBlank()) reason = cleanField(firstMatch(DETAILS_REASON_PATTERN, normalized));
+    return reason;
   }
 
   private static String normalizeForParsing(String content) {

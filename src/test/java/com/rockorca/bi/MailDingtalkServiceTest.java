@@ -57,6 +57,16 @@ class MailDingtalkServiceTest {
   }
 
   @Test
+  void parsesLocalizedBudgetAccountLabels() {
+    MailDingtalkService.TikTokBudgetNotice notice = MailDingtalkService.parseTikTokBudgetNotice(
+        "预算提醒", "广告主 ID：7676449794404745237 广告账户名称：预算测试账户 "
+            + "推广系列 ID：1874489175001681 账户余额不足");
+    assertEquals("7676449794404745237", notice.accountId());
+    assertEquals("预算测试账户", notice.accountName());
+    assertEquals(List.of("1874489175001681"), notice.campaignIds());
+  }
+
+  @Test
   void prefersCompleteHtmlDerivedContentOverLongGenericPlainText() {
     String generic = "Important TikTok notification. ".repeat(100);
     String complete = "Ad account ID: 7676449794404745237 Ad Group ID: 1874489175001681 "

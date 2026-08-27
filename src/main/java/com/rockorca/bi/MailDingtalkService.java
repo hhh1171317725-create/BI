@@ -48,11 +48,14 @@ public class MailDingtalkService {
   private static final int MAX_HISTORY = 2_000;
   private static final int MAX_SOURCE_CHARS = 50_000;
   private static final int MAX_MESSAGE_BODY_CHARS = 3_200;
-  private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile("(?i)Ad account ID\\s*:\\s*(\\d+)");
+  private static final Pattern ACCOUNT_ID_PATTERN = Pattern.compile(
+      "(?iu)(?:(?:Ad(?:vertiser|vertising)?\\s*)?Account|Advertiser|广告账户|广告主)\\s*(?:ID|编号|ID号)\\s*[:：#-]?\\s*(\\d{6,})");
   private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile(
-      "(?is)Ad account name\\s*:\\s*(.+?)(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group ID|Campaign ID)\\b)");
+      "(?isu)(?:(?:Ad(?:vertiser|vertising)?\\s*)?Account|Advertiser|广告账户|广告主)\\s*(?:Name|名称)\\s*[:：#-]?\\s*(.+?)"
+          + "(?=\\s+(?:View rejection details|Not delivering reason|Further Details|How to fix|Policy Violation|Affected countries|Ad Group|Campaign|Promotion Series|Budget|Balance|广告组|推广系列|预算|余额)|$)");
   private static final Pattern AD_GROUP_IDS_PATTERN = Pattern.compile(
-      "(?i)(?:Ad\\s*Group|Campaign)\\s*ID(?:s|\\(s\\))?\\s*[:：#-]?\\s*([0-9][0-9,，;；\\s]*)");
+      "(?iu)(?:Ad\\s*Group|Campaign|Promotion\\s*Series|广告组|推广系列|系列)\\s*"
+          + "(?:ID|编号|ID号)(?:s|\\(s\\))?\\s*[:：#-]?\\s*([0-9][0-9,，;；\\s]*)");
   private static final Pattern REVIEW_REASON_PATTERN = Pattern.compile(
       "(?is)Our review indicates that\\s+(.+?)(?=\\s+We proactively enforce|\\s+Ad Group ID\\s*:|$)");
   private static final Pattern DETAILS_REASON_PATTERN = Pattern.compile(
@@ -119,7 +122,8 @@ public class MailDingtalkService {
       sendTextToDingtalk("【测试发送，不影响正式转发】\n" + formatDingtalkMessage(summary), credentials);
       lastRunAt = ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
       lastResult = "最新一封 TikTok 邮件测试发送成功";
-      return ReportService.mapOf("message", lastResult, "subject", summary.subject());
+      return ReportService.mapOf("message", lastResult, "subject", summary.subject(),
+          "diagnostics", diagnostics(summary));
     } catch (Exception error) {
       RuntimeException failure = error instanceof RuntimeException runtime
           ? runtime : new IllegalStateException("测试发送失败：" + rootMessage(error), error);
@@ -401,9 +405,35 @@ public class MailDingtalkService {
     if (lower.contains("personal attributes")) {
       return "素材可能直接或间接指向用户的个人属性，违反 TikTok 广告政策。";
     }
+    if (containsAny(lower, "性暗示", "色情内容", "成人内容", "裸露")) {
+      return "素材可能包含或推广性暗示、色情、成人或裸露内容，违反 TikTok 广告政策。";
+    }
+    if (containsAny(lower, "误导", "欺骗", "夸大宣传")) {
+      return "素材或落地页可能包含误导、欺骗或夸大信息，违反 TikTok 广告政策。";
+    }
     String reason = cleanField(firstMatch(REVIEW_REASON_PATTERN, normalized));
     if (reason.isBlank()) reason = cleanField(firstMatch(DETAILS_REASON_PATTERN, normalized));
+    if (reason.isBlank()) {
+      reason = cleanField(firstMatch(Pattern.compile(
+          "(?isu)(?:拒审原因|不投放原因|违规原因|Reason(?:s)?)\\s*[:：#-]\\s*(.+?)"
+              + "(?=\\s+(?:Ad Group|Campaign|Creative ID|广告组|推广系列|素材 ID)|$)"), normalized));
+    }
     return reason;
+  }
+
+  private static Map<String, Object> diagnostics(MailSummary mail) {
+    String source = mail.subject() + "\n" + mail.content();
+    TikTokBudgetNotice budget = parseTikTokBudgetNotice(mail.subject(), mail.content());
+    TikTokViolation violation = parseTikTokViolation(source);
+    String preview = cleanField(source);
+    if (preview.length() > 1_500) preview = preview.substring(0, 1_500) + "...";
+    return ReportService.mapOf(
+        "template", budget.isBudgetNotice() ? "budget" : "violation",
+        "accountId", budget.isBudgetNotice() ? budget.accountId() : violation.accountId(),
+        "accountName", budget.isBudgetNotice() ? budget.accountName() : violation.accountName(),
+        "seriesIds", budget.isBudgetNotice() ? budget.campaignIds() : violation.adGroupIds(),
+        "reason", budget.isBudgetNotice() ? budget.status() : violation.reason(),
+        "contentPreview", preview);
   }
 
   static TikTokBudgetNotice parseTikTokBudgetNotice(String subject, String content) {

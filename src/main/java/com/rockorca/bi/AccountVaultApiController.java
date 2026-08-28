@@ -100,7 +100,9 @@ public class AccountVaultApiController {
     } else {
       String resolved = date.isBlank()
           ? LocalDate.now(ReportService.BEIJING).toString() : date;
-      report = revenueReports.revenue(resolved, actor.admin() && refresh);
+      // Credentials stay on the server, so an authenticated operator can safely request a
+      // current snapshot while choosing an activity. Row visibility is still enforced below.
+      report = revenueReports.revenue(resolved, refresh);
     }
     // Operators need the current activity list once while editing so they can establish the
     // first binding. Regular table requests remain restricted to activities bound to their data.

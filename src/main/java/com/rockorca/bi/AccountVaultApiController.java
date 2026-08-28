@@ -88,6 +88,7 @@ public class AccountVaultApiController {
       @RequestParam(defaultValue = "") String start,
       @RequestParam(defaultValue = "") String end,
       @RequestParam(defaultValue = "false") boolean refresh,
+      @RequestParam(defaultValue = "false") boolean available,
       HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
     Map<String, Object> report;
@@ -101,7 +102,9 @@ public class AccountVaultApiController {
           ? LocalDate.now(ReportService.BEIJING).toString() : date;
       report = revenueReports.revenue(resolved, actor.admin() && refresh);
     }
-    if (actor.admin()) return report;
+    // Operators need the current activity list once while editing so they can establish the
+    // first binding. Regular table requests remain restricted to activities bound to their data.
+    if (actor.admin() || available) return report;
     Set<String> allowed = vault.ownedRevenueSourceIds(actor.id());
     Map<String, Object> filtered = new LinkedHashMap<>(report);
     filtered.put("rows", rows(report.get("rows")).stream()

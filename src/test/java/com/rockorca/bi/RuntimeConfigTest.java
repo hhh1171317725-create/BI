@@ -172,6 +172,28 @@ class RuntimeConfigTest {
   }
 
   @Test
+  void adpfluxBalanceCredentialsRemoveMarkdownEscapes() {
+    RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);
+
+    String arbitrageToken = "header.payload.signature_with_dash-123456";
+    String authorizationFront = "header.payload.signature_with_underscore-123456";
+    config.saveAdpfluxBalanceCredentials(
+        arbitrageToken.replace("_", "\\_"),
+        "10017864344199803618",
+        authorizationFront.replace("_", "\\_"),
+        "70017864344226243679",
+        "10017618944851621347");
+
+    assertEquals(
+        arbitrageToken,
+        config.decodedSecret("ADPFLUX_BALANCE_ARBITRAGE_TOKEN_B64"));
+    assertEquals(
+        authorizationFront,
+        config.decodedSecret("ADPFLUX_BALANCE_AUTHORIZATION_FRONT_B64"));
+  }
+
+  @Test
   void mailDingtalkCredentialsAreEncodedAndRetained() throws Exception {
     RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
     ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);

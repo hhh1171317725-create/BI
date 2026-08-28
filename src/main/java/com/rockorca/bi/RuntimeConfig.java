@@ -227,9 +227,9 @@ public class RuntimeConfig {
       String authorizationFrontValue,
       String companyExIdValue,
       String upAgentIdValue) {
-    String arbitrageToken = clean(arbitrageTokenValue);
+    String arbitrageToken = normalizePastedToken(arbitrageTokenValue);
     String arbitrageCompanyId = clean(arbitrageCompanyIdValue);
-    String authorizationFront = clean(authorizationFrontValue);
+    String authorizationFront = normalizePastedToken(authorizationFrontValue);
     String companyExId = clean(companyExIdValue);
     String upAgentId = clean(upAgentIdValue);
     if (arbitrageToken.isBlank()) {
@@ -247,6 +247,8 @@ public class RuntimeConfig {
     if (upAgentId.isBlank()) {
       upAgentId = get("ADPFLUX_BALANCE_UP_AGENT_ID", "");
     }
+    arbitrageToken = normalizePastedToken(arbitrageToken);
+    authorizationFront = normalizePastedToken(authorizationFront);
     if (!validToken(arbitrageToken) || !validToken(authorizationFront)) {
       throw new IllegalArgumentException("请填写有效的余额接口 token");
     }
@@ -498,6 +500,12 @@ public class RuntimeConfig {
 
   private static String clean(String value) {
     return String.valueOf(value == null ? "" : value).trim();
+  }
+
+  private static String normalizePastedToken(String value) {
+    return clean(value)
+        .replace("\\_", "_")
+        .replace("\\-", "-");
   }
 
   private static boolean validToken(String value) {

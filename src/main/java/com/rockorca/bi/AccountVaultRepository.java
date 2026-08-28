@@ -71,7 +71,7 @@ public class AccountVaultRepository {
             keyword_text VARCHAR(1000) NOT NULL DEFAULT '',
             channel_id VARCHAR(255) NOT NULL DEFAULT '',
             style_id VARCHAR(255) NOT NULL DEFAULT '',
-            country VARCHAR(255) NOT NULL DEFAULT '',
+            country VARCHAR(2000) NOT NULL DEFAULT '',
             campaign_quantity INT UNSIGNED NOT NULL DEFAULT 1,
             daily_budget DECIMAL(12,2) NOT NULL DEFAULT 20.00,
             owner_name VARCHAR(255) NOT NULL DEFAULT '',
@@ -114,6 +114,7 @@ public class AccountVaultRepository {
       migrateCopyTextColumn(connection);
       migrateRevenueSourceIdsColumn(connection);
       migrateAdCreationColumns(connection);
+      migrateCountryColumn(connection);
       migrateOptionOwnership(connection);
       statement.execute("""
           INSERT IGNORE INTO account_vault_options (option_type, option_value, created_by)
@@ -358,6 +359,27 @@ public class AccountVaultRepository {
         statement.execute("ALTER TABLE account_vault_entries"
             + " ADD COLUMN daily_budget DECIMAL(12,2) NOT NULL DEFAULT 20.00"
             + " AFTER campaign_quantity");
+      }
+    }
+  }
+
+  private static void migrateCountryColumn(Connection connection) throws SQLException {
+    long maximumLength = 0;
+    try (PreparedStatement query = connection.prepareStatement("""
+        SELECT CHARACTER_MAXIMUM_LENGTH
+          FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'account_vault_entries'
+           AND COLUMN_NAME = 'country'
+        """)) {
+      try (ResultSet result = query.executeQuery()) {
+        if (result.next()) maximumLength = result.getLong(1);
+      }
+    }
+    if (maximumLength < 2000) {
+      try (Statement statement = connection.createStatement()) {
+        statement.execute("ALTER TABLE account_vault_entries"
+            + " MODIFY country VARCHAR(2000) NOT NULL DEFAULT ''");
       }
     }
   }

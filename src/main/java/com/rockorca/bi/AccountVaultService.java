@@ -330,7 +330,7 @@ public class AccountVaultService {
       String country = part.trim();
       if (!country.isBlank() && !countries.contains(country)) countries.add(country);
     }
-    return clean(String.join(",", countries), 255, "投放国家");
+    return clean(String.join(",", countries), 2000, "投放国家");
   }
 
   static List<Map<String, Object>> parseWorkbook(Workbook workbook) {

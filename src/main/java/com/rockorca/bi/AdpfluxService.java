@@ -79,7 +79,15 @@ public class AdpfluxService {
           upstream.fetchRows(start, end, credentials.token(), credentials.companyId());
       config.saveAdpfluxCredentials(credentials.token(), credentials.companyId());
       repository.replaceRange(rows, start, end, "manual");
-      return analyze(start, end, "", "all", false);
+      String balanceSyncError = "";
+      try {
+        balances.syncNow();
+      } catch (Exception error) {
+        balanceSyncError = error.getMessage();
+      }
+      Map<String, Object> result = new LinkedHashMap<>(analyze(start, end, "", "all", false));
+      result.put("balanceSyncError", balanceSyncError);
+      return result;
     });
   }
 

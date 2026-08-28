@@ -30,6 +30,8 @@ public class AdpfluxBalanceService {
   private final AdpfluxRepository repository;
   private final HttpClient client;
   private final AtomicBoolean syncRunning = new AtomicBoolean(false);
+  private volatile String lastAttemptAt = "";
+  private volatile String lastSyncError = "";
 
   @Autowired
   public AdpfluxBalanceService(
@@ -68,7 +70,9 @@ public class AdpfluxBalanceService {
         "balanceArbitrageCompanyId", credentials.arbitrageCompanyId(),
         "balanceCompanyExId", credentials.companyExId(),
         "balanceUpAgentId", credentials.upAgentId(),
-        "balanceCachedAt", repository.latestBalanceSyncTime());
+        "balanceCachedAt", repository.latestBalanceSyncTime(),
+        "balanceLastAttemptAt", lastAttemptAt,
+        "balanceLastError", lastSyncError);
   }
 
   public void saveCredentials(
@@ -89,15 +93,35 @@ public class AdpfluxBalanceService {
   @Scheduled(initialDelay = 15_000, fixedDelay = 600_000)
   public void scheduledSync() {
     Credentials credentials = credentials();
-    if (!credentials.configured() || !syncRunning.compareAndSet(false, true)) return;
+    if (!credentials.configured()) {
+      lastSyncError = "余额接口凭据不完整，请重新配置余额接口凭据";
+      return;
+    }
     try {
-      List<Map<String, Object>> rows = fetchBalances(credentials);
-      repository.replaceCurrentBalances(rows);
+      int count = syncNow();
       System.out.println(
-          "ADPFlux账户余额定时更新成功：" + rows.size() + " 个账户 "
+          "ADPFlux账户余额定时更新成功：" + count + " 个账户 "
               + ZonedDateTime.now(ReportService.BEIJING));
     } catch (Exception error) {
       System.err.println("ADPFlux账户余额定时更新失败：" + error.getMessage());
+    }
+  }
+
+  /** Refreshes the current balance snapshot with the server-side credentials. */
+  public int syncNow() {
+    if (!syncRunning.compareAndSet(false, true)) {
+      throw new IllegalStateException("ADPFlux 账户余额正在同步，请稍后再试");
+    }
+    lastAttemptAt = ZonedDateTime.now(ReportService.BEIJING).toLocalDateTime().toString();
+    try {
+      List<Map<String, Object>> rows = fetchBalances(credentials());
+      repository.replaceCurrentBalances(rows);
+      lastSyncError = "";
+      return rows.size();
+    } catch (Exception error) {
+      lastSyncError = error.getMessage();
+      if (error instanceof RuntimeException runtime) throw runtime;
+      throw new IllegalStateException("ADPFlux 账户余额同步失败：" + error.getMessage(), error);
     } finally {
       syncRunning.set(false);
     }

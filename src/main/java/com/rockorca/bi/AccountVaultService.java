@@ -58,8 +58,12 @@ public class AccountVaultService {
         "pages", Math.max(1, (result.total() + pageSize - 1) / pageSize));
   }
 
+  public synchronized Map<String, Object> create(Map<String, ?> payload, long actorId) {
+    return create(payload, actorId, false);
+  }
+
   public synchronized Map<String, Object> create(
-      Map<String, Object> payload, long actorId, boolean admin) {
+      Map<String, ?> payload, long actorId, boolean admin) {
     AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
     ensureUnused(entry, 0, repository.listUsageEntries());
     ensureOptions(entry);
@@ -70,7 +74,7 @@ public class AccountVaultService {
   }
 
   public synchronized Map<String, Object> update(
-      long id, Map<String, Object> payload, long actorId, boolean admin) {
+      long id, Map<String, ?> payload, long actorId, boolean admin) {
     AccountVaultRepository.Entry existing = repository.find(id);
     AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
     ensureUnused(entry, id, repository.listUsageEntries());
@@ -223,7 +227,7 @@ public class AccountVaultService {
   }
 
   private static AccountVaultRepository.Entry entry(
-      Map<String, Object> payload, long createdBy, long updatedBy) {
+      Map<String, ?> payload, long createdBy, long updatedBy) {
     String keyword = clean(text(payload.get("keyword")), 1000, "关键词");
     if (keyword.isBlank()) throw new IllegalArgumentException("请填写关键词");
     String accountIds = normalizeAccounts(text(payload.get("accountIds")));
@@ -277,7 +281,7 @@ public class AccountVaultService {
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
   }
 
-  private static List<Long> assignedUserIds(Map<String, Object> payload) {
+  private static List<Long> assignedUserIds(Map<String, ?> payload) {
     Object value = payload.get("assignedUserIds");
     if (!(value instanceof Iterable<?> values)) return List.of();
     List<Long> ids = new ArrayList<>();

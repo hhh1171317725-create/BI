@@ -49,25 +49,36 @@ public class AccountVaultService {
     AccountVaultRepository.Page result = ownerUserId == null
         ? repository.list(query, "ad_account", page, pageSize)
         : repository.list(query, "ad_account", page, pageSize, ownerUserId);
+    Map<Long, List<Long>> assignments = repository.listAssignments();
     return ReportService.mapOf(
-        "entries", result.entries().stream().map(AccountVaultService::view).toList(),
+        "entries", result.entries().stream()
+            .map(entry -> view(entry, effectiveAssignments(entry, assignments.get(entry.id()))))
+            .toList(),
         "total", result.total(), "page", page, "pageSize", pageSize,
         "pages", Math.max(1, (result.total() + pageSize - 1) / pageSize));
   }
 
-  public synchronized Map<String, Object> create(Map<String, Object> payload, long actorId) {
+  public synchronized Map<String, Object> create(
+      Map<String, Object> payload, long actorId, boolean admin) {
     AccountVaultRepository.Entry entry = entry(payload, actorId, actorId);
     ensureUnused(entry, 0, repository.listUsageEntries());
     ensureOptions(entry);
-    return view(repository.create(entry));
+    AccountVaultRepository.Entry saved = repository.create(entry);
+    List<Long> assignedUserIds = admin ? assignedUserIds(payload) : List.of(actorId);
+    repository.replaceAssignments(saved.id(), assignedUserIds);
+    return view(saved, assignedUserIds);
   }
 
-  public synchronized Map<String, Object> update(long id, Map<String, Object> payload, long actorId) {
+  public synchronized Map<String, Object> update(
+      long id, Map<String, Object> payload, long actorId, boolean admin) {
     AccountVaultRepository.Entry existing = repository.find(id);
     AccountVaultRepository.Entry entry = entry(payload, existing.createdBy(), actorId);
     ensureUnused(entry, id, repository.listUsageEntries());
     ensureOptions(entry);
-    return view(repository.update(id, entry));
+    AccountVaultRepository.Entry saved = repository.update(id, entry);
+    List<Long> assignedUserIds = admin ? assignedUserIds(payload) : List.of(actorId);
+    repository.replaceAssignments(id, assignedUserIds);
+    return view(saved, assignedUserIds);
   }
 
   public void delete(long id) {
@@ -242,6 +253,11 @@ public class AccountVaultService {
   }
 
   private static Map<String, Object> view(AccountVaultRepository.Entry entry) {
+    return view(entry, List.of());
+  }
+
+  private static Map<String, Object> view(
+      AccountVaultRepository.Entry entry, List<Long> assignedUserIds) {
     return ReportService.mapOf(
         "id", entry.id(),
         "keyword", entry.keyword().isBlank() ? entry.name() : entry.keyword(),
@@ -256,8 +272,33 @@ public class AccountVaultService {
         "revenueSourceIds", entry.revenueSourceIds(),
         "campaignQuantity", entry.campaignQuantity(),
         "dailyBudget", decimalText(entry.dailyBudget()),
+        "assignedUserIds", assignedUserIds,
         "createdBy", entry.createdBy(),
         "updatedAt", entry.updatedAt() == null ? "" : entry.updatedAt().toString());
+  }
+
+  private static List<Long> assignedUserIds(Map<String, Object> payload) {
+    Object value = payload.get("assignedUserIds");
+    if (!(value instanceof Iterable<?> values)) return List.of();
+    List<Long> ids = new ArrayList<>();
+    for (Object item : values) {
+      try {
+        long id = Long.parseLong(text(item).trim());
+        if (id > 0 && !ids.contains(id)) ids.add(id);
+      } catch (NumberFormatException ignored) {
+        throw new IllegalArgumentException("账户所属运营格式无效");
+      }
+    }
+    if (ids.size() > 100) throw new IllegalArgumentException("单条对应关系最多分配 100 个运营");
+    return List.copyOf(ids);
+  }
+
+  private static List<Long> effectiveAssignments(
+      AccountVaultRepository.Entry entry, List<Long> assignedUserIds) {
+    if (assignedUserIds != null && !assignedUserIds.isEmpty()) return assignedUserIds;
+    // Existing rows predate account-level assignment. Treat their creator as the initial owner
+    // until an administrator explicitly changes the account ownership in the editor.
+    return entry.createdBy() > 0 ? List.of(entry.createdBy()) : List.of();
   }
 
   private void ensureOptions(AccountVaultRepository.Entry entry) {

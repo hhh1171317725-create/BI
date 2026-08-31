@@ -123,7 +123,8 @@ public class AccountVaultApiController {
   @PostMapping
   public Map<String, Object> create(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
-    return ReportService.mapOf("ok", true, "entry", vault.create(payload, actor.id()));
+    return ReportService.mapOf(
+        "ok", true, "entry", vault.create(payload, actor.id(), actor.admin()));
   }
 
   @PutMapping("/{id}")
@@ -131,7 +132,8 @@ public class AccountVaultApiController {
       @PathVariable long id, @RequestBody Map<String, Object> payload, HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
     if (!actor.admin() && !vault.ownedBy(id, actor.id())) forbidden();
-    return ReportService.mapOf("ok", true, "entry", vault.update(id, payload, actor.id()));
+    return ReportService.mapOf(
+        "ok", true, "entry", vault.update(id, payload, actor.id(), actor.admin()));
   }
 
   @DeleteMapping("/{id}")

@@ -433,7 +433,10 @@ public class AccountVaultRepository {
       for (int index = 0; index < 13; index++) parameters.add(pattern);
     }
     if (ownerUserId != null) {
-      where.append(" AND created_by = ?");
+      where.append(" AND (created_by = ? OR EXISTS ("
+          + "SELECT 1 FROM account_vault_entry_users assigned "
+          + "WHERE assigned.entry_id = account_vault_entries.id AND assigned.user_id = ?))");
+      parameters.add(String.valueOf(ownerUserId));
       parameters.add(String.valueOf(ownerUserId));
     }
     try (Connection connection = reports.openConnection()) {

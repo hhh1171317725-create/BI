@@ -54,9 +54,10 @@ public class AccountVaultApiController {
       @RequestParam(defaultValue = "") String query,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "20") int pageSize,
+      @RequestParam(defaultValue = "0") long operatorId,
       HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
-    return vault.list(query, page, pageSize, actor.admin() ? null : actor.id());
+    return vault.list(query, page, pageSize, scopedUserId(actor, operatorId));
   }
 
   @GetMapping("/operators")
@@ -75,8 +76,10 @@ public class AccountVaultApiController {
     Map<String, Object> report = accountReports.analyze(
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")), "", "all", false);
-    if (actor.admin()) return report;
-    Set<String> allowed = vault.ownedAccountIds(actor.id());
+    long requestedOperatorId = Math.round(ReportService.number(payload.get("operatorId")));
+    Long scopedUserId = scopedUserId(actor, requestedOperatorId);
+    if (scopedUserId == null) return report;
+    Set<String> allowed = vault.ownedAccountIds(scopedUserId);
     return ReportService.mapOf("by_account", rows(report.get("by_account")).stream()
         .filter(row -> allowed.contains(ReportService.text(row.get("advertiserId"))))
         .toList());
@@ -89,6 +92,7 @@ public class AccountVaultApiController {
       @RequestParam(defaultValue = "") String end,
       @RequestParam(defaultValue = "false") boolean refresh,
       @RequestParam(defaultValue = "false") boolean available,
+      @RequestParam(defaultValue = "0") long operatorId,
       HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
     Map<String, Object> report;
@@ -106,8 +110,9 @@ public class AccountVaultApiController {
     }
     // Operators need the current activity list once while editing so they can establish the
     // first binding. Regular table requests remain restricted to activities bound to their data.
-    if (actor.admin() || available) return report;
-    Set<String> allowed = vault.ownedRevenueSourceIds(actor.id());
+    Long scopedUserId = scopedUserId(actor, operatorId);
+    if (available || scopedUserId == null) return report;
+    Set<String> allowed = vault.ownedRevenueSourceIds(scopedUserId);
     Map<String, Object> filtered = new LinkedHashMap<>(report);
     filtered.put("rows", rows(report.get("rows")).stream()
         .filter(row -> allowed.contains(ReportService.text(row.get("campaignId"))))
@@ -167,9 +172,10 @@ public class AccountVaultApiController {
   }
 
   @GetMapping("/export")
-  public ResponseEntity<byte[]> export(HttpServletRequest request) {
+  public ResponseEntity<byte[]> export(
+      @RequestParam(defaultValue = "0") long operatorId, HttpServletRequest request) {
     UserRepository.UserAccount actor = currentUser(request);
-    byte[] content = vault.exportWorkbook(actor.admin() ? null : actor.id());
+    byte[] content = vault.exportWorkbook(scopedUserId(actor, operatorId));
     String filename = "关键词账户映射_"
         + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
     return ResponseEntity.ok()
@@ -185,6 +191,11 @@ public class AccountVaultApiController {
     UserRepository.UserAccount actor = currentUser(request);
     users.requireAdmin(actor);
     return actor;
+  }
+
+  private static Long scopedUserId(UserRepository.UserAccount actor, long requestedOperatorId) {
+    if (!actor.admin()) return actor.id();
+    return requestedOperatorId > 0 ? requestedOperatorId : null;
   }
 
   private UserRepository.UserAccount currentUser(HttpServletRequest request) {

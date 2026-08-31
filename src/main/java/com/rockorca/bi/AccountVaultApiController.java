@@ -64,7 +64,7 @@ public class AccountVaultApiController {
   public Map<String, Object> operators(HttpServletRequest request) {
     UserRepository.UserAccount actor = admin(request);
     List<Map<String, Object>> operators = users.listUsers(actor).stream()
-        .filter(user -> "user".equals(user.get("role")) && Boolean.TRUE.equals(user.get("active")))
+        .filter(user -> !"admin".equalsIgnoreCase(ReportService.text(user.get("role"))))
         .toList();
     return ReportService.mapOf("operators", operators);
   }

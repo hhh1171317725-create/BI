@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "投放工具助手",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "支持京东商品主图下载、Adpflux 广告创建、素材账户选择和充值账户查询。",
-  "permissions": ["activeTab", "downloads", "scripting", "tabs", "alarms", "storage"],
+  "permissions": ["activeTab", "downloads", "scripting", "tabs", "alarms", "storage", "cookies"],
   "host_permissions": [
     "https://item.jd.com/*",
     "https://*.360buyimg.com/*",
@@ -11,7 +11,8 @@
     "https://www.huanghaha.fun/*",
     "https://www.adpflux.com/*",
     "https://ad.hubxad.com/*",
-    "https://cl.mobgi.com/*"
+    "https://cl.mobgi.com/*",
+    "https://cli1.mobgi.com/*"
   ],
   "background": {
     "service_worker": "background.js"

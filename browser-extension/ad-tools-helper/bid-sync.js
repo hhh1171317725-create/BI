@@ -6,7 +6,7 @@ const bidRead=async()=> (await chrome.storage.local.get(BID_KEY))[BID_KEY];
 const bidWrite=async value=>chrome.storage.local.set({[BID_KEY]:value});
 
 // Both fetch functions execute in the corresponding site's own page context.
-// Cookies remain in Chrome and are never included in messages or uploads.
+// Session cookies remain in Chrome. Only the numeric userId is read below.
 async function bidWebsiteRequest(origin, path, payload) {
   if (location.origin!==origin || !['/bid-monitor','/bid-monitor.html'].includes(location.pathname))
     return {error:'网站页面已切换'};
@@ -20,17 +20,28 @@ async function bidWebsiteRequest(origin, path, payload) {
     return {data:await response.json()};
   } catch { return {error:'网站接口无法访问，请检查部署和网络'}; }
 }
-function bidChuangliangIdentity() {
-  if (location.origin!=='https://cl.mobgi.com') return {error:'请打开已登录的创量页面'};
-  const user=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('userId='))?.slice(7);
-  if (!user || !/^\d{1,30}$/.test(user)) return {error:'无法从创量页面读取 userId，不能据此判断登录失效。请确认创量页面能正常查询，再刷新创量页面重试'};
-  return {data:{clientUser:user}};
+async function bidChuangliangIdentity(tab) {
+  if (new URL(tab.url).origin!=='https://cl.mobgi.com') throw Error('请打开已登录的创量页面');
+  if (!chrome.cookies?.get) throw Error('缺少 Cookie 读取权限，请重新加载插件 1.9.2 并允许新增权限');
+  const stores=await chrome.cookies.getAllCookieStores();
+  const store=stores.find(item=>item.tabIds.includes(tab.id));
+  if (!store) throw Error('无法确定创量标签页的 Cookie 存储，请在同一 Chrome 用户资料中重新打开创量');
+  // The API host is authoritative: its cookie can be HttpOnly or host/path scoped.
+  // Never enumerate cookie values or read authentication/session cookie names.
+  for (const url of ['https://cli1.mobgi.com/Toutiao/Promotion/getList',tab.url]) {
+    const cookie=await chrome.cookies.get({url,name:'userId',storeId:store.id});
+    if (!cookie) continue;
+    if (!/^\d{1,30}$/.test(cookie.value)) throw Error('创量 userId 格式异常，请在创量重新确认登录账户');
+    return {clientUser:cookie.value};
+  }
+  throw Error('创量网页及接口域名均未找到 userId Cookie；未发出数据请求。请提供当前成功请求中的 client-user 和 main-user-id（不要发送 Cookie 或密码），以核对身份来源');
+}
+async function bidVerifyChuangliangUser(tab,expected) {
+  const identity=await bidChuangliangIdentity(tab);
+  if (identity.clientUser!==expected) throw Error(`当前创量用户为 ${identity.clientUser}，但 client-user 填写为 ${expected}。请点击“读取当前创量用户”，核对 main-user-id 后重新启用`);
 }
 async function bidChuangliangPage(body, clientUser, mainUserId) {
   if (location.origin!=='https://cl.mobgi.com') return {error:'创量页面已关闭或切换'};
-  const currentUser=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('userId='))?.slice(7);
-  if (!currentUser) return {error:'创量页面没有可读取的 userId，尚未发出查询请求。请确认创量页面正常登录并刷新后重试'};
-  if (currentUser!==clientUser) return {error:`当前创量用户为 ${currentUser}，但 client-user 填写为 ${clientUser}。请点击“读取当前创量用户”，核对 main-user-id 后重新启用`};
   try {
     const response=await fetch('https://cli1.mobgi.com/Toutiao/Promotion/getList', {
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json;charset=UTF-8',
@@ -72,11 +83,11 @@ async function bidRun() {
   try {
     await bidWrite({...config,state:'running',error:'',startedAt:Date.now(),heartbeat:Date.now(),progress:'正在检查网站登录'});
     const tabs=await chrome.tabs.query({url:config.origin+'/*'});
-    const bi=tabs.find(tab=>['/bid-monitor','/bid-monitor.html'].includes(new URL(tab.url).pathname));
+    const bi=tabs.find(tab=>Boolean(tab.incognito)===Boolean(config.incognito) && ['/bid-monitor','/bid-monitor.html'].includes(new URL(tab.url).pathname));
     if (!bi) throw Error('请保持网站出价监测页面打开，再重新启用同步');
     const identity=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'/identity',null]);
     if (String(identity.userId)!==config.userId) throw Error('网站账户已切换，请用当前账户重新启用同步');
-    const clTabs=await chrome.tabs.query({url:'https://cl.mobgi.com/*'});
+    const clTabs=(await chrome.tabs.query({url:'https://cl.mobgi.com/*'})).filter(tab=>Boolean(tab.incognito)===Boolean(config.incognito));
     if (!clTabs.length) throw Error('请打开已登录的创量页面，再重新启用同步');
     const cl=clTabs.find(tab=>tab.active)||clTabs[0];
     const state={rows:[],ids:new Set(),total:null}, day=BidSyncCore.date(), deadline=Date.now()+240000;
@@ -85,6 +96,7 @@ async function bidRun() {
       await bidLive(config);
       if (Date.now()>deadline) throw Error('本轮采集超过 4 分钟，未覆盖旧数据，请缩小数据量或使用导出报表');
       await bidProgress(config,`正在读取创量第 ${page} 页，已读取 ${state.rows.length}${state.total===null?'':' / '+state.total} 条`);
+      await bidVerifyChuangliangUser(cl,config.clientUser);
       const data=await bidExecute(cl.id,bidChuangliangPage,[BidSyncCore.body(day,page),config.clientUser,config.mainUserId]);
       complete=BidSyncCore.append(state,BidSyncCore.parse(data));
       if (complete) break;
@@ -92,6 +104,7 @@ async function bidRun() {
     if (!complete || !state.rows.length) throw Error('没有完整计划数据，保留上次结果');
     if (day!==BidSyncCore.date()) throw Error('采集跨日，未保存混合日期的数据，请重新启用');
     await bidLive(config);
+    await bidVerifyChuangliangUser(cl,config.clientUser);
     await bidProgress(config,`已读取 ${state.rows.length} 条，正在保存到网站`);
     const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,rows:state.rows}]);
     await bidLive(config);
@@ -126,10 +139,10 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     let config=await bidRead();
     const own=config?.origin===url.origin && config.userId===userId;
     if (message.command==='detect') {
-      const tabs=await chrome.tabs.query({url:'https://cl.mobgi.com/*'});
+      const tabs=(await chrome.tabs.query({url:'https://cl.mobgi.com/*'})).filter(tab=>Boolean(tab.incognito)===Boolean(sender.tab.incognito));
       if (!tabs.length) throw Error('请在同一 Chrome 用户资料中打开已登录的创量页面');
       const tab=tabs.find(item=>item.active)||tabs[0];
-      return {version:chrome.runtime.getManifest().version,...await bidExecute(tab.id,bidChuangliangIdentity,[])};
+      return {version:chrome.runtime.getManifest().version,...await bidChuangliangIdentity(tab)};
     } else if (message.command==='stop') {
       // Stopping a shared browser scheduler never exposes the prior user's data.
       if (config) await bidWrite({...config,enabled:false,state:'stopped',generation:crypto.randomUUID()});
@@ -139,7 +152,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       const minutes=Number(message.minutes);
       if (![5,10,15,30,60].includes(minutes)) throw Error('请选择有效更新间隔');
       if (!/^\d{1,30}$/.test(message.clientUser||'') || !/^\d{1,30}$/.test(message.mainUserId||'')) throw Error('请填写创量 client-user 和 main-user-id');
-      config={origin:url.origin,userId,clientUser:message.clientUser,mainUserId:message.mainUserId,minutes,
+      config={origin:url.origin,userId,clientUser:message.clientUser,mainUserId:message.mainUserId,minutes,incognito:Boolean(sender.tab.incognito),
         enabled:true,state:'waiting',generation:crypto.randomUUID(),error:'',lastSuccess:own?config.lastSuccess:null};
       await bidWrite(config);
       await chrome.alarms.create(BID_ALARM,{delayInMinutes:minutes,periodInMinutes:minutes});

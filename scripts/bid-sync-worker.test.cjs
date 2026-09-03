@@ -7,15 +7,18 @@ const core=require('../browser-extension/ad-tools-helper/bid-sync-core.js');
 const script=fs.readFileSync(require.resolve('../browser-extension/ad-tools-helper/bid-sync.js'),'utf8');
 function setup({reject=false,switched=false,saved=null}={}) {
  let listener,alarmListener,storage=saved,uploads=[],alarm=null;
+ const cookieReads=[];
  const rows=[{promotion_id:'123',media_account_id:'999',stat_cost:10,convert_cnt:2,active_register:4,cpa_bid:5}];
  const origin='https://www.huanghaha.fun';
  const chrome={
+  cookies:{getAllCookieStores:async()=>[{id:'profile-store',tabIds:[1,2]}],get:async details=>{
+   cookieReads.push(details);return {name:'userId',value:'123',httpOnly:true};
+  }},
   storage:{local:{get:async()=>({bidSync:storage}),set:async obj=>{storage=obj.bidSync;}}},
   alarms:{get:async()=>alarm,create:async(name,options)=>{alarm={name,...options};},clear:async()=>{alarm=null;},onAlarm:{addListener:fn=>{alarmListener=fn;}}},
-  runtime:{getManifest:()=>({version:'1.9.1'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
+  runtime:{getManifest:()=>({version:'1.9.2'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
   tabs:{query:async({url})=>url.includes('cl.mobgi')?[{id:2,url:'https://cl.mobgi.com/'}]:[{id:1,url:origin+'/bid-monitor.html'}]},
   scripting:{executeScript:async({func,args})=>{
-   if(func.name==='bidChuangliangIdentity')return [{result:{data:{clientUser:'123'}}}];
    if(func.name==='bidWebsiteRequest') {
     if(args[1]==='/identity')return [{result:{data:{userId:switched?'2':'1'}}}];
     uploads.push(args[2]);return [{result:{data:{count:args[2].rows.length,updatedAt:'2026-09-03T04:00:00Z'}}}];
@@ -27,7 +30,7 @@ function setup({reject=false,switched=false,saved=null}={}) {
  vm.runInNewContext(script,context);
  const sender={url:origin+'/bid-monitor.html',tab:{id:1},frameId:0};
  return {context,send:(command,customSender=sender)=>new Promise(resolve=>listener({type:'bid-sync',command,minutes:10,clientUser:'123',mainUserId:'456'},customSender,resolve)),
-  fire:()=>alarmListener({name:'bi-bid-sync'}),get:()=>({storage,uploads,alarm}),
+  fire:()=>alarmListener({name:'bi-bid-sync'}),get:()=>({storage,uploads,alarm,cookieReads}),
   settle:async()=>{for(let i=0;i<100;i++){await new Promise(r=>setImmediate(r));if(storage?.state==='ready'||storage?.state==='paused')return;}throw Error('Worker did not settle');}};
 }
 test('start uploads complete snapshot and alarm updates again without duplicates',async()=>{
@@ -60,17 +63,39 @@ test('interrupted running state is paused instead of appearing to run forever',a
  const app=setup({saved:{origin:'https://www.huanghaha.fun',userId:'1',enabled:true,state:'running',minutes:10,generation:'old'}});
  const result=await app.send('status');assert.equal(result.enabled,false);assert.match(result.error,/中断/);
 });
-test('actual page identity reader returns only user ID, not session cookie',()=>{
- const {context}=setup();context.location={origin:'https://cl.mobgi.com'};
- context.document={cookie:'userId=987654; chuangliang_session=private-session'};
- const result=context.bidChuangliangIdentity();assert.equal(result.data.clientUser,'987654');
- assert.ok(!JSON.stringify(result).includes('private-session'));
- context.document.cookie='';assert.match(context.bidChuangliangIdentity().error,/不能据此判断登录失效/);
+test('HttpOnly API user ID is readable without document.cookie and only userId is requested',async()=>{
+ const app=setup();const result=await app.context.bidChuangliangIdentity({id:2,url:'https://cl.mobgi.com/'});
+ assert.equal(result.clientUser,'123');assert.deepEqual(Object.keys(result),['clientUser']);
+ const [request]=app.get().cookieReads;
+ assert.equal(request.name,'userId');assert.equal(request.storeId,'profile-store');
+ assert.equal(request.url,'https://cli1.mobgi.com/Toutiao/Promotion/getList');
 });
-test('actual page query distinguishes mismatch and unreadable identity without querying',async()=>{
+test('missing API cookie falls back to selected page path, still restricted to userId',async()=>{
+ const {context}=setup();const reads=[];
+ context.chrome.cookies.get=async details=>{reads.push(details);return details.url.includes('cli1.')?null:{value:'321'};};
+ const result=await context.bidChuangliangIdentity({id:2,url:'https://cl.mobgi.com/plans'});
+ assert.equal(result.clientUser,'321');assert.equal(reads[1].url,'https://cl.mobgi.com/plans');assert.ok(reads.every(r=>r.name==='userId'));
+});
+test('missing cookie is explicit and does not query upstream',async()=>{
+ const app=setup();app.context.chrome.cookies.get=async()=>null;
+ await app.send('start');await app.settle();assert.equal(app.get().uploads.length,0);assert.match(app.get().storage.error,/均未找到/);
+});
+test('account mismatch still blocks the upload',async()=>{
+ const app=setup();app.context.chrome.cookies.get=async()=>({value:'987654'});
+ await app.send('start');await app.settle();assert.equal(app.get().uploads.length,0);assert.match(app.get().storage.error,/987654.*123/);
+});
+test('Cookie store comes from selected tab, never the default or other profile',async()=>{
+ const app=setup();app.context.chrome.cookies.getAllCookieStores=async()=>[{id:'regular',tabIds:[1]},{id:'incognito',tabIds:[2]}];
+ await app.context.bidChuangliangIdentity({id:2,url:'https://cl.mobgi.com/'});
+ assert.equal(app.get().cookieReads[0].storeId,'incognito');
+ await assert.rejects(()=>app.context.bidChuangliangIdentity({id:9,url:'https://cl.mobgi.com/'}),/Cookie 存储/);
+});
+test('query no longer incorrectly demands a JavaScript readable cookie',async()=>{
  const {context}=setup();context.location={origin:'https://cl.mobgi.com'};
- context.document={cookie:'userId=987654'};
- context.fetch=()=>{throw Error('must not reach network');};
- const result=await context.bidChuangliangPage({},'123','456');assert.match(result.error,/987654.*123/);
- context.document.cookie='';assert.match((await context.bidChuangliangPage({},'123','456')).error,/没有可读取/);
+ context.document={get cookie(){throw Error('document.cookie must not be read');}};
+ context.AbortSignal=AbortSignal;
+ let sent;
+ context.fetch=async(url,options)=>{sent={url,options};return {ok:true,json:async()=>({code:0})};};
+ const result=await context.bidChuangliangPage({},'123','456');assert.equal(result.data.code,0);
+ assert.equal(sent.options.credentials,'include');assert.equal(sent.options.headers.Cookie,undefined);
 });

@@ -9,7 +9,7 @@ window.addEventListener('message',event=>{
 });
 function syncCommand(command){return new Promise((resolve,reject)=>{
   const requestId=crypto.randomUUID();
-  const timer=setTimeout(()=>{syncRequests.delete(requestId);reject(Error('插件未及时返回状态，请更新到 1.9.1 并刷新页面；确认网站登录及网络正常'));},30000);
+  const timer=setTimeout(()=>{syncRequests.delete(requestId);reject(Error('插件未及时返回状态，请更新到 1.9.2 并刷新页面；确认网站登录及网络正常'));},30000);
   syncRequests.set(requestId,{resolve,timer});
   window.postMessage({source:'bi-bid-page',requestId,command,minutes:Number($('#syncMinutes').value),
     clientUser:$('#clientUser').value.trim(),mainUserId:$('#mainUserId').value.trim()},location.origin);
@@ -61,7 +61,7 @@ $('#syncDetect').onclick=async()=>{
   syncText('正在读取已打开的创量页面用户…');
   try{
     const result=await syncCommand('detect');if(result.error)throw Error(result.error);
-    if(!/^\d{1,30}$/.test(result.clientUser||''))throw Error('插件未返回用户 ID，请更新到 1.9.1');
+    if(!/^\d{1,30}$/.test(result.clientUser||''))throw Error('插件未返回用户 ID，请更新到 1.9.2');
     $('#clientUser').value=result.clientUser;
     $('#clientUser').closest('details').open=true;
     syncText('已填写当前创量用户 '+result.clientUser+'；请核对同一账户的 main-user-id，然后启用同步');

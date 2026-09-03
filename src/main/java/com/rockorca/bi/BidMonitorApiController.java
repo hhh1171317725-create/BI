@@ -6,6 +6,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,10 +37,11 @@ public class BidMonitorApiController {
       throw new IllegalArgumentException("查询日期范围必须为 1 至 93 天");
     int page = Integer.parseInt(text(input, "page"));
     if (page < 1 || page > 200) throw new IllegalArgumentException("分页超出限制（最多 200 页）");
-    String cookie = text(input, "cookie");
+    String cookie = normalizeCookie(text(input, "cookie"));
     String user = text(input, "clientUser"), main = text(input, "mainUserId");
     if (cookie.isBlank() || !user.matches("[0-9]+") || !main.matches("[0-9]+"))
       throw new IllegalArgumentException("请填写 Cookie、client-user 和 main-user-id");
+    validateCookieUser(cookie, user);
     Map<String, Object> conditions = new LinkedHashMap<>();
     conditions.put("search_field", "promotion_name");
     conditions.put("search_keyword", text(input, "keyword"));
@@ -60,10 +63,13 @@ public class BidMonitorApiController {
     body.put("select_kpi_fields", List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate"));
     HttpRequest request = HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
         .timeout(Duration.ofSeconds(40)).header("Content-Type", "application/json;charset=UTF-8")
-        .header("Accept", "application/json").header("Cookie", cookie)
+        .header("Accept", "application/json, text/plain, */*").header("Cookie", cookie)
+        .header("Accept-Language", "zh-CN,zh;q=0.9")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
         .header("Origin", "https://cl.mobgi.com").header("Referer", "https://cl.mobgi.com/")
         .header("client-user", user).header("main-user-id", main)
-        .header("ff-request-id", UUID.randomUUID().toString().replace("-", ""))
+        .header("ff-request-id", ZonedDateTime.now(ReportService.BEIJING)
+            .format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + UUID.randomUUID().toString().replace("-", ""))
         .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
     if (response.statusCode() != 200) throw new IllegalArgumentException("创量接口 HTTP " + response.statusCode() + "，请检查登录凭据或网络");
@@ -71,7 +77,7 @@ public class BidMonitorApiController {
     try { result = mapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {}); }
     catch (Exception error) { throw new IllegalArgumentException("创量返回的不是 JSON，请重新登录或导入报表"); }
     if (!List.of("0", "200").contains(text(result, "code")))
-      throw new IllegalArgumentException("创量拒绝请求（code=" + text(result, "code") + "）：请更新登录凭据，或使用 Excel 导入");
+      throw new IllegalArgumentException(upstreamError(result, cookie));
     Object data = result.get("data");
     Map<?, ?> container = data instanceof Map<?, ?> map ? map : result;
     Object raw = data instanceof List<?> ? data : container.get("list");
@@ -116,6 +122,46 @@ public class BidMonitorApiController {
       }
       return Map.of("rows", rows);
     }
+  }
+
+  static String normalizeCookie(String value) {
+    String cookie = value.trim().replace("\\_", "_");
+    if (cookie.regionMatches(true, 0, "Cookie:", 0, 7)) cookie = cookie.substring(7).trim();
+    if (cookie.length() >= 2 && ((cookie.startsWith("'") && cookie.endsWith("'"))
+        || (cookie.startsWith("\"") && cookie.endsWith("\"")))) cookie = cookie.substring(1, cookie.length() - 1);
+    if (cookie.contains("\r") || cookie.contains("\n"))
+      throw new IllegalArgumentException("Cookie 必须是单行请求头值，请不要粘贴整段 cURL");
+    return cookie;
+  }
+
+  static void validateCookieUser(String cookie, String user) {
+    Map<String, String> values = cookieValues(cookie);
+    if (!values.containsKey("chuangliang_session") || values.get("chuangliang_session").isBlank())
+      throw new IllegalArgumentException("Cookie 缺少 chuangliang_session，请复制当前成功请求的完整 Cookie");
+    if (values.containsKey("userId") && !values.get("userId").equals(user))
+      throw new IllegalArgumentException("Cookie 中的 userId 与 client-user 不一致，请使用同一次成功请求的凭据");
+  }
+
+  private static Map<String, String> cookieValues(String cookie) {
+    Map<String, String> values = new LinkedHashMap<>();
+    for (String item : cookie.split(";")) {
+      int separator = item.indexOf('=');
+      if (separator > 0) values.put(item.substring(0, separator).trim(), item.substring(separator + 1).trim());
+    }
+    return values;
+  }
+
+  static String upstreamError(Map<String, Object> result, String cookie) {
+    String detail = text(result, "message");
+    if (detail.isBlank()) detail = text(result, "supplement_message");
+    if (detail.isBlank()) detail = "上游未提供原因";
+    String output = "创量拒绝请求（code=" + text(result, "code") + "）：" + detail
+        + (text(result, "request_id").isBlank() ? "" : "；请求编号：" + text(result, "request_id"));
+    for (String secret : cookieValues(cookie).values()) {
+      if (!secret.isBlank()) output = output.replace(secret, "[已隐藏]");
+    }
+    output = output.replaceAll("[\\r\\n\\t]+", " ");
+    return output.substring(0, Math.min(output.length(), 600));
   }
 
   private static String text(Map<String, Object> values, String key) {

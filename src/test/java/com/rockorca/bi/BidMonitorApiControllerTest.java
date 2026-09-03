@@ -35,4 +35,22 @@ class BidMonitorApiControllerTest {
     assertThrows(IllegalArgumentException.class, () -> controller.page(Map.of(
         "startDate","2026-09-03","endDate","2026-09-01","page",1)));
   }
+
+  @Test void normalizesPastedMarkdownCookie() {
+    assertEquals("userId=12; chuangliang_session=abc_def", BidMonitorApiController.normalizeCookie(
+        "Cookie: 'userId=12; chuangliang\\_session=abc\\_def'"));
+    assertThrows(IllegalArgumentException.class, () -> BidMonitorApiController.normalizeCookie("a=b\nHeader: value"));
+  }
+
+  @Test void validatesSessionAndUserConsistency() {
+    assertThrows(IllegalArgumentException.class, () -> BidMonitorApiController.validateCookieUser("userId=12", "12"));
+    assertThrows(IllegalArgumentException.class, () -> BidMonitorApiController.validateCookieUser("userId=12; chuangliang_session=abc", "13"));
+    assertDoesNotThrow(() -> BidMonitorApiController.validateCookieUser("userId=12; chuangliang_session=abc", "12"));
+  }
+
+  @Test void preservesUpstreamReasonAndRedactsCredentials() {
+    String error = BidMonitorApiController.upstreamError(Map.of("code",-1,"message","非法访问 secret-value","request_id","trace-123"), "chuangliang_session=secret-value");
+    assertTrue(error.contains("非法访问"));assertTrue(error.contains("trace-123"));
+    assertFalse(error.contains("secret-value"));assertFalse(error.contains("请更新登录凭据"));
+  }
 }

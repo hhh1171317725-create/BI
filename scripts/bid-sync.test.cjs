@@ -6,6 +6,22 @@ const response=(rows,total=rows.length)=>({code:0,data:{list:rows,total_count:to
 test('uses current date and serialized conditions without copied cookies',()=>{
  const body=core.body('2026-09-03',2);assert.equal(body.page,2);assert.equal(body.start_date,body.end_date);
  assert.deepEqual(JSON.parse(body.conditions).media_account_id,[]);assert.ok(!JSON.stringify(body).includes('cookie'));
+ assert.deepEqual(JSON.parse(body.conditions).deep_bid_type,[]);
+ assert.equal(JSON.parse(body.conditions).cdt_start_date,'2026-08-28 00:00:00');
+ assert.equal(body.sort_field,'promotion_id');
+ const next=core.body('2026-09-03',2,7,4656);assert.equal(next.total_count,4656);assert.equal(next.total_page,47);
+});
+test('request ID matches verified upstream format including ff suffix',()=>{
+ const id=core.requestId(new Date('2026-09-03T04:54:23Z'));
+ assert.match(id,/^20260903125423[0-9a-f]{32}ff$/);assert.equal(id.length,48);
+});
+test('real nested page_info and advertiser nickname are recognized',()=>{
+ const result=core.parse({code:0,data:{list:[{...row,advertiser_nick:'account'}],page_info:{page:1,page_size:100,total_count:4656,total_page:47}}});
+ assert.equal(result.total,4656);assert.equal(result.rows[0].media_account_name,'account');
+});
+test('rolling creation window crosses months and rejects unsupported windows',()=>{
+ assert.deepEqual(core.createdRange('2026-09-03',14),{createdStart:'2026-08-21',createdEnd:'2026-09-03'});
+ assert.throws(()=>core.createdRange('2026-09-03',999));
 });
 test('allowlists metrics and preserves string IDs',()=>{
  const parsed=core.parse(response([{...row,cookie:'secret',account_info:{}}]));

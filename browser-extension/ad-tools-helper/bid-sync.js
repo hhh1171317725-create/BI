@@ -22,7 +22,7 @@ async function bidWebsiteRequest(origin, path, payload) {
 }
 async function bidChuangliangIdentity(tab) {
   if (new URL(tab.url).origin!=='https://cl.mobgi.com') throw Error('请打开已登录的创量页面');
-  if (!chrome.cookies?.get) throw Error('缺少 Cookie 读取权限，请重新加载插件 1.9.2 并允许新增权限');
+  if (!chrome.cookies?.get) throw Error('缺少 Cookie 读取权限，请重新加载插件 1.9.3 并允许新增权限');
   const stores=await chrome.cookies.getAllCookieStores();
   const store=stores.find(item=>item.tabIds.includes(tab.id));
   if (!store) throw Error('无法确定创量标签页的 Cookie 存储，请在同一 Chrome 用户资料中重新打开创量');
@@ -40,18 +40,19 @@ async function bidVerifyChuangliangUser(tab,expected) {
   const identity=await bidChuangliangIdentity(tab);
   if (identity.clientUser!==expected) throw Error(`当前创量用户为 ${identity.clientUser}，但 client-user 填写为 ${expected}。请点击“读取当前创量用户”，核对 main-user-id 后重新启用`);
 }
-async function bidChuangliangPage(body, clientUser, mainUserId) {
+async function bidChuangliangPage(body, clientUser, mainUserId, requestId) {
   if (location.origin!=='https://cl.mobgi.com') return {error:'创量页面已关闭或切换'};
+  if (!/^\d{14}[0-9a-f]{32}ff$/.test(requestId||'')) return {error:'请求编号格式无效，请更新插件'};
   try {
     const response=await fetch('https://cli1.mobgi.com/Toutiao/Promotion/getList', {
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json;charset=UTF-8',
         'Accept':'application/json, text/plain, */*','client-user':clientUser,'main-user-id':mainUserId,
-        'ff-request-id':new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date()).replace(/\D/g,'')+crypto.randomUUID().replaceAll('-','')},
+        'ff-request-id':requestId},
       body:JSON.stringify(body),signal:AbortSignal.timeout(20000)
     });
-    if (!response.ok) return {error:'创量接口 HTTP '+response.status+'，已暂停，请在创量页面检查登录和权限'};
+    if (!response.ok) return {error:'创量接口 HTTP '+response.status, retryable:[502,503,504].includes(response.status)};
     return {data:await response.json()};
-  } catch { return {error:'创量浏览器请求失败，可能是网络、跨域限制或登录验证，请先确认创量页面可正常查询'}; }
+  } catch (error) { return {error:error.name==='SyntaxError'?'创量返回的不是 JSON，未保存本轮数据':'创量浏览器请求失败，请确认网络及创量页面可正常查询',retryable:['TypeError','TimeoutError','AbortError'].includes(error.name)}; }
 }
 async function bidExecute(tabId,func,args) {
   let timer;
@@ -63,7 +64,9 @@ async function bidExecute(tabId,func,args) {
     ]);
   } finally { clearTimeout(timer); }
   const value=result[0]?.result;
-  if (!value || value.error) throw Error(value?.error || '浏览器未返回结果');
+  if (!value || value.error) {
+    const error=Error(value?.error || '浏览器未返回结果');error.retryable=value?.retryable===true;throw error;
+  }
   return value.data;
 }
 async function bidLive(config) {
@@ -74,6 +77,20 @@ async function bidProgress(config,progress) {
   const current=await bidRead();
   if (!current?.enabled || current.generation!==config.generation) throw Error('同步已停止或配置已改变');
   await bidWrite({...current,progress,heartbeat:Date.now()});
+}
+async function bidQueryPage(config,tab,args,deadline) {
+  for (let attempt=0;attempt<3;attempt++) {
+    await bidLive(config);
+    await bidVerifyChuangliangUser(tab,config.clientUser);
+    try { return await bidExecute(tab.id,bidChuangliangPage,args); }
+    catch (error) {
+      const delay=2000*(attempt+1);
+      if (!error.retryable || attempt===2 || Date.now()+delay>=deadline) throw error;
+      await bidProgress(config,`${error.message}；第 ${args[0].page} 页准备重试 ${attempt+1}/2`);
+      await new Promise(resolve=>setTimeout(resolve,delay));
+      args[3]=BidSyncCore.requestId();
+    }
+  }
 }
 async function bidRun() {
   if (bidRunning) return;
@@ -96,8 +113,7 @@ async function bidRun() {
       await bidLive(config);
       if (Date.now()>deadline) throw Error('本轮采集超过 4 分钟，未覆盖旧数据，请缩小数据量或使用导出报表');
       await bidProgress(config,`正在读取创量第 ${page} 页，已读取 ${state.rows.length}${state.total===null?'':' / '+state.total} 条`);
-      await bidVerifyChuangliangUser(cl,config.clientUser);
-      const data=await bidExecute(cl.id,bidChuangliangPage,[BidSyncCore.body(day,page),config.clientUser,config.mainUserId]);
+      const data=await bidQueryPage(config,cl,[BidSyncCore.body(day,page,config.createdDays??7,state.total),config.clientUser,config.mainUserId,BidSyncCore.requestId()],deadline);
       complete=BidSyncCore.append(state,BidSyncCore.parse(data));
       if (complete) break;
     }
@@ -106,7 +122,7 @@ async function bidRun() {
     await bidLive(config);
     await bidVerifyChuangliangUser(cl,config.clientUser);
     await bidProgress(config,`已读取 ${state.rows.length} 条，正在保存到网站`);
-    const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,rows:state.rows}]);
+    const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,...BidSyncCore.createdRange(day,config.createdDays??7),rows:state.rows}]);
     await bidLive(config);
     await bidWrite({...config,state:'ready',lastSuccess:saved.updatedAt,count:saved.count,error:'',progress:`本轮成功同步 ${saved.count} 条计划`,heartbeat:Date.now()});
   } catch (error) {
@@ -151,8 +167,10 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       if (bidRunning) throw Error('上一轮正在结束，请稍后再试');
       const minutes=Number(message.minutes);
       if (![5,10,15,30,60].includes(minutes)) throw Error('请选择有效更新间隔');
+      const createdDays=Number(message.createdDays??7);
+      if (![7,14,30,90].includes(createdDays)) throw Error('请选择有效的计划创建范围');
       if (!/^\d{1,30}$/.test(message.clientUser||'') || !/^\d{1,30}$/.test(message.mainUserId||'')) throw Error('请填写创量 client-user 和 main-user-id');
-      config={origin:url.origin,userId,clientUser:message.clientUser,mainUserId:message.mainUserId,minutes,incognito:Boolean(sender.tab.incognito),
+      config={origin:url.origin,userId,clientUser:message.clientUser,mainUserId:message.mainUserId,minutes,createdDays,incognito:Boolean(sender.tab.incognito),
         enabled:true,state:'waiting',generation:crypto.randomUUID(),error:'',lastSuccess:own?config.lastSuccess:null};
       await bidWrite(config);
       await chrome.alarms.create(BID_ALARM,{delayInMinutes:minutes,periodInMinutes:minutes});
@@ -167,7 +185,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     }
     return {version:chrome.runtime.getManifest().version,enabled:config.enabled,state:config.state,
       error:config.error||'',lastSuccess:config.lastSuccess||null,count:config.count,minutes:config.minutes,
-      progress:config.progress||'',heartbeat:config.heartbeat||null};
+      progress:config.progress||'',heartbeat:config.heartbeat||null,createdDays:config.createdDays??7};
   })().then(reply).catch(error=>reply({error:error.message}));
   return true;
 });

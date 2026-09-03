@@ -103,6 +103,14 @@ public class BidSnapshotController {
       }
       clean.add(record);
     }
-    return Map.of("date", date, "rows", clean, "updatedAt", Instant.now().toString());
+    Map<String, Object> snapshot = new LinkedHashMap<>(Map.of("date", date, "rows", clean, "updatedAt", Instant.now().toString()));
+    if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {
+      LocalDate start = LocalDate.parse(String.valueOf(input.get("createdStart")));
+      LocalDate end = LocalDate.parse(String.valueOf(input.get("createdEnd")));
+      if (start.isAfter(end) || end.isAfter(LocalDate.parse(date)) || start.plusDays(89).isBefore(end))
+        throw new IllegalArgumentException("计划创建范围须为 1 至 90 天，且不晚于统计日期");
+      snapshot.put("createdStart", start.toString()); snapshot.put("createdEnd", end.toString());
+    }
+    return snapshot;
   }
 }

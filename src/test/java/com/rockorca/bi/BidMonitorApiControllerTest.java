@@ -12,6 +12,15 @@ import tools.jackson.databind.ObjectMapper;
 class BidMonitorApiControllerTest {
   private final BidMonitorApiController controller = new BidMonitorApiController(new ObjectMapper());
 
+  @Test void requestIdMatchesSuccessfulUpstreamFormat() {
+    assertTrue(BidMonitorApiController.requestId().matches("[0-9]{14}[0-9a-f]{32}ff"));
+  }
+
+  @Test void readsTotalFromActualPageInfo() {
+    assertEquals(4656, BidMonitorApiController.totalCount(Map.of("page_info", Map.of("total_count",4656)),Map.of()));
+    assertEquals(20, BidMonitorApiController.totalCount(Map.of("total_count",20),Map.of()));
+  }
+
   @Test void readsExcelWithoutRoundingTextIds() throws Exception {
     try (var book = new XSSFWorkbook(); var bytes = new ByteArrayOutputStream()) {
       var sheet = book.createSheet(); var header = sheet.createRow(0); var row = sheet.createRow(1);

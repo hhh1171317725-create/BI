@@ -46,9 +46,9 @@ public class BidMonitorApiController {
     conditions.put("search_field", "promotion_name");
     conditions.put("search_keyword", text(input, "keyword"));
     conditions.put("search_type", "like");
-    for (String key : List.of("cl_project_id", "cl_app_id", "user_id", "media_account_id", "companys", "project_id", "scene_type", "strategy_id", "learning_phase", "external_action", "deep_external_action", "material_id"))
+    for (String key : List.of("cl_project_id", "cl_app_id", "user_id", "media_account_id", "companys", "project_id", "scene_type", "strategy_id", "learning_phase", "external_action", "deep_external_action", "deep_bid_type", "material_id"))
       conditions.put(key, List.of());
-    for (String key : List.of("landing_type", "delivery_mode", "status_first", "ad_type", "star_delivery_type", "star_task_id", "app_type", "deep_bid_type", "combinatorial_id", "status", "status_second"))
+    for (String key : List.of("landing_type", "delivery_mode", "status_first", "ad_type", "star_delivery_type", "star_task_id", "app_type", "combinatorial_id", "status", "status_second"))
       conditions.put(key, "");
     String createdStart = text(input, "createdStart"), createdEnd = text(input, "createdEnd");
     if (!createdStart.isBlank()) conditions.put("cdt_start_date", LocalDate.parse(createdStart) + " 00:00:00");
@@ -59,7 +59,7 @@ public class BidMonitorApiController {
     body.put("conditions", mapper.writeValueAsString(conditions));
     body.put("start_date", start.toString()); body.put("end_date", end.toString());
     body.put("page", page); body.put("page_size", 100);
-    body.put("sort_field", "stat_cost"); body.put("sort_direction", "desc"); body.put("data_type", "list");
+    body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
     body.put("select_kpi_fields", List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate"));
     HttpRequest request = HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
         .timeout(Duration.ofSeconds(40)).header("Content-Type", "application/json;charset=UTF-8")
@@ -68,8 +68,7 @@ public class BidMonitorApiController {
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
         .header("Origin", "https://cl.mobgi.com").header("Referer", "https://cl.mobgi.com/")
         .header("client-user", user).header("main-user-id", main)
-        .header("ff-request-id", ZonedDateTime.now(ReportService.BEIJING)
-            .format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + UUID.randomUUID().toString().replace("-", ""))
+        .header("ff-request-id", requestId())
         .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
     if (response.statusCode() != 200) throw new IllegalArgumentException("创量接口 HTTP " + response.statusCode() + "，请检查登录凭据或网络");
@@ -92,11 +91,22 @@ public class BidMonitorApiController {
     }
     Map<String, Object> output = new LinkedHashMap<>();
     output.put("rows", rows);
-    Object total = container.get("total_count");
-    if (total == null) total = result.get("total_count");
-    if (total == null) total = container.get("total");
+    Object total = totalCount(container, result);
     output.put("total", total); output.put("page", page);
     return output;
+  }
+
+  static String requestId() {
+    return ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+        + UUID.randomUUID().toString().replace("-", "") + "ff";
+  }
+
+  static Object totalCount(Map<?, ?> container, Map<?, ?> result) {
+    Object total = container.get("page_info") instanceof Map<?, ?> page ? page.get("total_count") : null;
+    if (total == null) total = container.get("total_count");
+    if (total == null) total = result.get("total_count");
+    if (total == null) total = container.get("total");
+    return total;
   }
 
   @PostMapping("/import")

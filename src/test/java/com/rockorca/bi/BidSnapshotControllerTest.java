@@ -22,6 +22,15 @@ class BidSnapshotControllerTest {
     var saved=(Map<?,?>)((List<?>)result.get("rows")).getFirst();
     assertFalse(saved.containsKey("cookie"));assertEquals("7676449794404745237",saved.get("media_account_id"));
   }
+
+  @Test void retainsCreationScopeAndRejectsInvalidRanges() {
+    var data=new HashMap<>(input(List.of(row())));
+    var date=LocalDate.now(ReportService.BEIJING);
+    data.put("createdStart",date.minusDays(6).toString());data.put("createdEnd",date.toString());
+    assertEquals(date.minusDays(6).toString(),BidSnapshotController.validate(data).get("createdStart"));
+    data.put("createdStart",date.minusDays(100).toString());
+    assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
+  }
   @Test void rejectsEmptyDuplicateAndMissingMetrics() {
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of())));
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(row(),row()))));

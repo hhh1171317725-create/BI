@@ -16,14 +16,16 @@ function setup({reject=false,switched=false,saved=null}={}) {
   }},
   storage:{local:{get:async()=>({bidSync:storage}),set:async obj=>{storage=obj.bidSync;}}},
   alarms:{get:async()=>alarm,create:async(name,options)=>{alarm={name,...options};},clear:async()=>{alarm=null;},onAlarm:{addListener:fn=>{alarmListener=fn;}}},
-  runtime:{getManifest:()=>({version:'1.9.2'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
+  runtime:{getManifest:()=>({version:'1.9.3'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
   tabs:{query:async({url})=>url.includes('cl.mobgi')?[{id:2,url:'https://cl.mobgi.com/'}]:[{id:1,url:origin+'/bid-monitor.html'}]},
   scripting:{executeScript:async({func,args})=>{
    if(func.name==='bidWebsiteRequest') {
     if(args[1]==='/identity')return [{result:{data:{userId:switched?'2':'1'}}}];
     uploads.push(args[2]);return [{result:{data:{count:args[2].rows.length,updatedAt:'2026-09-03T04:00:00Z'}}}];
    }
-   return [{result:{data:reject?{code:-1}:{code:0,data:{list:rows,total_count:1}}}}];
+   assert.match(args[3],/^\d{14}[0-9a-f]{32}ff$/);
+   assert.deepEqual(JSON.parse(args[0].conditions).deep_bid_type,[]);
+   return [{result:{data:reject?{code:-1}:{code:0,data:{list:rows,page_info:{total_count:1}}}}}];
   }}
  };
  const context={chrome,crypto,URL,Date,Intl,Set,Error,setTimeout,clearTimeout,BidSyncCore:core};
@@ -43,7 +45,7 @@ test('start uploads complete snapshot and alarm updates again without duplicates
 test('upstream access rejection pauses without uploading or scheduling retries',async()=>{
  const app=setup({reject:true});await app.send('start');await app.settle();
  assert.equal(app.get().uploads.length,0);assert.equal(app.get().storage.enabled,false);assert.equal(app.get().alarm,null);
- assert.match(app.get().storage.error,/拒绝/);
+ assert.match(app.get().storage.error,/code=-1/);
 });
 test('restored scheduler checks bound website account before collecting',async()=>{
  const app=setup({switched:true,saved:{origin:'https://www.huanghaha.fun',userId:'1',enabled:true,minutes:10,generation:'old'}});
@@ -96,6 +98,24 @@ test('query no longer incorrectly demands a JavaScript readable cookie',async()=
  context.AbortSignal=AbortSignal;
  let sent;
  context.fetch=async(url,options)=>{sent={url,options};return {ok:true,json:async()=>({code:0})};};
- const result=await context.bidChuangliangPage({},'123','456');assert.equal(result.data.code,0);
+ const result=await context.bidChuangliangPage({},'123','456',core.requestId());assert.equal(result.data.code,0);
  assert.equal(sent.options.credentials,'include');assert.equal(sent.options.headers.Cookie,undefined);
+ assert.match(sent.options.headers['ff-request-id'],/^\d{14}[0-9a-f]{32}ff$/);
+});
+test('temporary gateway failure is retried with a new request ID',async()=>{
+ const config={enabled:true,generation:'test',clientUser:'123'};
+ const app=setup({saved:config});let calls=0;const ids=[];
+ app.context.setTimeout=fn=>setTimeout(fn,0);
+ app.context.chrome.scripting.executeScript=async({args})=>{
+  ids.push(args[3]);calls++;return [{result:calls===1?{error:'HTTP 503',retryable:true}:{data:{code:0}}}];
+ };
+ const result=await app.context.bidQueryPage(config,{id:2,url:'https://cl.mobgi.com/'},[core.body('2026-09-03',1),'123','456',core.requestId()],Date.now()+10000);
+ assert.equal(result.code,0);assert.equal(calls,2);assert.notEqual(ids[0],ids[1]);
+});
+test('HTTP authentication failure is never retried',async()=>{
+ const config={enabled:true,generation:'test',clientUser:'123'};
+ const app=setup({saved:config});let calls=0;
+ app.context.chrome.scripting.executeScript=async()=>{calls++;return [{result:{error:'HTTP 401',retryable:false}}];};
+ await assert.rejects(()=>app.context.bidQueryPage(config,{id:2,url:'https://cl.mobgi.com/'},[core.body('2026-09-03',1),'123','456',core.requestId()],Date.now()+10000),/401/);
+ assert.equal(calls,1);
 });

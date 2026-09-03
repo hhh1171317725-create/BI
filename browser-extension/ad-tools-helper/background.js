@@ -1,3 +1,5 @@
+importScripts('bid-sync-core.js', 'bid-sync.js');
+
 function extensionFor(url) {
   const match = new URL(url).pathname.match(/\.(jpe?g|png|webp|avif)(?:$|\.)/i);
   return (match?.[1] || "jpg").toLowerCase().replace("jpeg", "jpg");

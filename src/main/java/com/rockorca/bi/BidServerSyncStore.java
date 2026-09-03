@@ -71,4 +71,15 @@ public class BidServerSyncStore {
       }
     }
   }
+
+  List<Long> dingtalkDue(long now) throws Exception {
+    initialize();
+    try(var connection=reports.openConnection();var statement=connection.prepareStatement(
+        "SELECT user_id FROM bid_monitor_server_sync WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.dingDueAt')) AS UNSIGNED)>0 AND CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.dingDueAt')) AS UNSIGNED)<=? ORDER BY CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.dingDueAt')) AS UNSIGNED) LIMIT 2")) {
+      statement.setLong(1,now);
+      try(var result=statement.executeQuery()){
+        var ids=new ArrayList<Long>();while(result.next())ids.add(result.getLong(1));return ids;
+      }
+    }
+  }
 }

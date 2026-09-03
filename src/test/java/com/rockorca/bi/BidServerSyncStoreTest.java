@@ -8,6 +8,16 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class BidServerSyncStoreTest {
+  @Test void dingtalkScheduleQueryIsSeparateFromDataSyncDueTime()throws Exception{
+    var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
+    when(reports.openConnection()).thenReturn(connection);when(connection.createStatement()).thenReturn(mock(Statement.class));
+    var statement=mock(PreparedStatement.class);when(connection.prepareStatement(contains("$.dingDueAt"))).thenReturn(statement);
+    var result=mock(ResultSet.class);when(statement.executeQuery()).thenReturn(result);
+    when(result.next()).thenReturn(true,false);when(result.getLong(1)).thenReturn(7L);
+    var store=new BidServerSyncStore(reports,new ObjectMapper());
+    assertEquals(java.util.List.of(7L),store.dingtalkDue(1000L));verify(statement).setLong(1,1000L);
+    verify(connection,never()).prepareStatement(contains("WHERE due_at>0"));
+  }
   @Test void writesScheduleAndPayloadInSameLockedTransaction()throws Exception{
     var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
     when(reports.openConnection()).thenReturn(connection);when(connection.createStatement()).thenReturn(mock(Statement.class));

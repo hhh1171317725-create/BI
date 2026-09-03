@@ -56,13 +56,16 @@ public class BidSnapshotController {
   @GetMapping
   public Map<String, Object> get(HttpServletRequest request) throws Exception {
     long owner = user(request);
+    return Map.of("userId", String.valueOf(owner), "snapshot", readOwned(owner));
+  }
+
+  Map<String, Object> readOwned(long owner) throws Exception {
     initialize();
     try (var connection = reports.openConnection();
          var statement = connection.prepareStatement("SELECT payload FROM bid_monitor_snapshots WHERE user_id=?")) {
       statement.setLong(1, owner);
       try (var result = statement.executeQuery()) {
-        return Map.of("userId", String.valueOf(owner), "snapshot", result.next()
-            ? mapper.readValue(result.getString(1), new TypeReference<Map<String, Object>>() {}) : Map.of());
+        return result.next()?mapper.readValue(result.getString(1), new TypeReference<Map<String, Object>>() {}):Map.of();
       }
     }
   }

@@ -14,6 +14,19 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   page.on('dialog',dialog=>dialog.accept());
   const syncCommands=[],queriedPages=[],preparedQueries=[];let savedRules=[],pricingRevision='';
   let syncStatus={userId:'1',configured:false,enabled:false,state:'stopped',minutes:10,createdDays:4};
+  let ding={userId:'1',configured:false,enabled:false,time:'18:00',tasks:[],keyword:'',revision:'',state:'',lastResult:'尚未发送'},dingSent=0;
+  await page.route('**/api/bid-monitor/dingtalk**',async route=>{
+   const request=route.request(),action=new URL(request.url()).pathname.split('/').pop();
+   if(request.method()==='POST'){
+    const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');
+    if(action==='dingtalk'){
+     assert.equal(input.pricingRevision,pricingRevision);assert.equal(input.time,'18:00');assert.deepEqual(input.tasks,['任务A']);
+     ding={...ding,configured:true,enabled:input.enabled,time:input.time,tasks:input.tasks,keyword:input.keyword,revision:'d1',state:'saved'};
+    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:'【任务 TOP5】\n任务：任务A\n范围：已采集消耗前400条'}]}});return;}
+    else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 / 1 个任务'};}
+   }
+   await route.fulfill({json:{...ding,availableTasks:savedRules.map(r=>r.name),pricingRevision}});
+  });
   await page.route('**/api/bid-monitor/server-sync**',async route=>{
    const request=route.request(),action=new URL(request.url()).pathname.split('/').pop();
    if(action==='pricing'){
@@ -40,7 +53,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    }
    await route.fulfill({json:syncStatus});
   });
-  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
+  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html`);await page.locator('body.ready').waitFor();
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.waitForFunction(()=>!document.querySelector('#pricingFields').disabled);
   for(const [name,keyword,price] of [['任务A','客户-A','21.5'],['任务B','客户-B','30']]){
@@ -49,6 +62,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#pricingSave').click();await page.waitForFunction(()=>document.querySelector('#pricingStatus').textContent==='任务价格已保存');
   await page.locator('#pricingReload').click();await page.waitForFunction(()=>document.querySelector('#pricingStatus').textContent==='任务价格已从服务器读取');
   assert.equal(savedRules.length,2);
+  await page.locator('#dingReload').click();await page.locator('#dingTasks input[value="任务A"]').waitFor();
+  assert.equal(await page.locator('#dingTime').inputValue(),'18:00');
+  await page.locator('#dingWebhook').fill('https://oapi.dingtalk.com/robot/send?access_token=test-only-token');
+  await page.locator('#dingKeyword').fill('TOP5');await page.locator('#dingTasks input[value="任务A"]').check();
+  await page.locator('#dingSave').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('机器人已加密保存'));
+  assert.equal(await page.locator('#dingWebhook').inputValue(),'');assert.equal(ding.enabled,true);
+  await page.locator('#dingPreviewButton').click();await page.locator('#dingPreview').waitFor({state:'visible'});
+  assert.match(await page.locator('#dingPreview').textContent(),/任务 TOP5/);assert.equal(dingSent,0);
+  await page.locator('#dingSend').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('已发送 1 / 1'));
+  assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);

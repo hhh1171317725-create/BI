@@ -25,7 +25,7 @@ $('#pricingSave').onclick=async()=>{
   try{
     const data=await api('/api/bid-monitor/server-sync/pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedUserId:pricingOwner,revision:pricingRevision,rules:taskRules}),signal:AbortSignal.timeout(15000)});
     if(data.userId!==pricingOwner){location.reload();return;}
-    taskRules=data.rules;pricingRevision=data.revision;pricingDirty=false;pricingDraw();render();pricingStatus('任务价格已保存');
+    taskRules=data.rules;pricingRevision=data.revision;pricingDirty=false;pricingDraw();render();pricingStatus('任务价格已保存');window.dispatchEvent(new Event('bid-pricing-saved'));
   }catch(error){pricingStatus(error.message,true);}finally{pricingBusy=false;$('#pricingFields').disabled=false;}
 };
 $('#pricingReload').onclick=pricingLoad;

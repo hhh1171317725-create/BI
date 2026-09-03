@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class BidServerSyncService {
+  private static final long INTERVAL_MILLIS=600000L;
   private static final Logger LOG=LoggerFactory.getLogger(BidServerSyncService.class);
   private final BidServerSyncStore store;
   private final BidCredentialCipher cipher;
@@ -67,20 +68,30 @@ public class BidServerSyncService {
     output.put("userId",Long.toString(owner));
     output.put("configured",state.containsKey("credential"));
     output.put("enabled",Boolean.TRUE.equals(state.get("enabled")));
-    for (String key:List.of("clientUser","mainUserId","minutes","state","error","lastSuccess","dueAt","progress"))
+    for (String key:List.of("clientUser","mainUserId","state","error","lastSuccess","dueAt","progress"))
       if (state.containsKey(key)) output.put(key,state.get(key));
+    output.put("minutes",10);
     output.put("createdDays",4);
     return output;
   }
 
   Map<String,Object> start(long owner,Map<String,Object> input) throws Exception {
-    int minutes=option(input,"minutes",Set.of(5,10,15,30,60));
-    int days=4;
-    String user=text(input,"clientUser"),main=text(input,"mainUserId");
-    if (!user.matches("[0-9]{1,30}")||!main.matches("[0-9]{1,30}")) throw new IllegalArgumentException("请填写有效的 client-user 和 main-user-id");
+    return configure(owner,input,false);
+  }
+
+  Map<String,Object> prepareQuery(long owner,Map<String,Object> input)throws Exception{
+    return configure(owner,input,true);
+  }
+
+  private Map<String,Object> configure(long owner,Map<String,Object> input,boolean querying)throws Exception{
     String cookie=BidMonitorApiController.normalizeCookie(text(input,"cookie"));
     if(cookie.length()>16000)throw new IllegalArgumentException("Cookie 过长");
     var saved=store.update(owner,(connection,state)->{
+      String user=text(input,"clientUser"),main=text(input,"mainUserId");
+      if(user.isBlank())user=text(state,"clientUser");
+      if(main.isBlank())main=text(state,"mainUserId");
+      if (!user.matches("[0-9]{1,30}")||!main.matches("[0-9]{1,30}"))
+        throw new IllegalArgumentException("首次保存请填写 Cookie、client-user 和 main-user-id");
       String value=cookie;
       if(value.isBlank()) {
         if(!state.containsKey("credential"))throw new IllegalArgumentException("首次启用请填写 Cookie");
@@ -90,12 +101,44 @@ public class BidServerSyncService {
         catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请重新填写 Cookie");}
       }
       BidMonitorApiController.validateCookieUser(value,user);
-      state.put("credential",cipher.encrypt(owner,value));
+      if(!cookie.isBlank()){
+        state.put("credential",cipher.encrypt(owner,value));
+        state.put("credentialRevision",UUID.randomUUID().toString());
+      }
+      state.putIfAbsent("credentialRevision",UUID.randomUUID().toString());
       state.put("clientUser",user);state.put("mainUserId",main);
-      state.put("minutes",minutes);state.put("createdDays",days);
-      queue(state);
+      state.put("minutes",10);state.put("createdDays",4);
+      // Manual querying must not postpone an already enabled schedule or invalidate its worker.
+      if(!querying||!cookie.isBlank()||!Boolean.TRUE.equals(state.get("enabled"))){
+        queue(state);
+        if(querying){state.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);state.put("state","ready");}
+      }
     });
-    return view(owner,saved);
+    var response=view(owner,saved);
+    if(querying)response.put("queryRevision",saved.get("credentialRevision"));
+    return response;
+  }
+
+  Map<String,Object> queryPage(long owner,Map<String,Object> input)throws Exception{
+    var state=store.get(owner);
+    requireQueryRevision(state,text(input,"queryRevision"));
+    String cookie;
+    try{cookie=cipher.decrypt(owner,text(state,"credential"));}
+    catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
+    var request=new LinkedHashMap<String,Object>();
+    for(String key:List.of("startDate","endDate","createdStart","createdEnd","keyword","page","total"))
+      if(input.containsKey(key))request.put(key,input.get(key));
+    request.put("cookie",cookie);request.put("clientUser",state.get("clientUser"));request.put("mainUserId",state.get("mainUserId"));
+    if(!allowed(owner))throw new IllegalStateException("permission");
+    var result=upstream.page(request);
+    requireQueryRevision(store.get(owner),text(input,"queryRevision"));
+    if(!allowed(owner))throw new IllegalStateException("permission");
+    return result;
+  }
+
+  private static void requireQueryRevision(Map<String,Object> state,String revision){
+    if(!state.containsKey("credential")||revision.isBlank()||!revision.equals(state.get("credentialRevision")))
+      throw new IllegalArgumentException("查询期间凭据已变更或清除，请重新查询");
   }
 
   Map<String,Object> command(long owner,String action) throws Exception {
@@ -106,7 +149,7 @@ public class BidServerSyncService {
       } else {
         state.put("token",UUID.randomUUID().toString());state.put("enabled",false);
         state.put("dueAt",0L);state.put("state","stopped");state.put("error","");
-        if(action.equals("forget"))state.remove("credential");
+        if(action.equals("forget")){state.remove("credential");state.remove("credentialRevision");}
       }
     });
     return view(owner,saved);
@@ -145,7 +188,9 @@ public class BidServerSyncService {
       });
       if(!token.equals(state.get("token")))return;
       if(!allowed(owner))throw new IllegalStateException("permission");
-      String cookie=cipher.decrypt(owner,text(state,"credential"));
+      String cookie;
+      try{cookie=cipher.decrypt(owner,text(state,"credential"));}
+      catch(Exception error){throw new IllegalStateException("credential");}
       var snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,current)->{
         if(!current(current,token))throw new CancellationException();
         if(!allowed(owner))throw new IllegalStateException("permission");
@@ -160,14 +205,16 @@ public class BidServerSyncService {
         var validated=BidSnapshotController.validate(snapshot);
         snapshots.write(connection,owner,validated);
         current.put("lastSuccess",validated.get("updatedAt"));current.put("state","ready");
-        current.put("error","");current.put("dueAt",System.currentTimeMillis()+((Number)current.get("minutes")).longValue()*60000L);
+        current.put("minutes",10);current.put("error","");current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
       });
     } catch(Exception error) {
       try {
         store.update(owner,(connection,current)->{
           if(!current(current,token))return;
-          current.put("enabled",false);current.put("dueAt",0L);current.put("state","paused");
-          current.put("error",failure(error));
+          boolean pause=requiresAttention(error);
+          current.put("enabled",!pause);current.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
+          current.put("state",pause?"paused":"retrying");
+          current.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
         });
       } catch(Exception ignored){LOG.warn("Bid server sync could not save failure status for user {}",owner);}
     }
@@ -224,6 +271,7 @@ public class BidServerSyncService {
 
   static String failure(Exception error) {
     if("permission".equals(error.getMessage()))return "网站账户已停用或工具权限已撤销，同步已暂停";
+    if("credential".equals(error.getMessage()))return "保存的凭据无法解密，请更新登录凭据后重新启用";
     // Do not persist upstream bodies, cookies, or exception stacks in user-visible status.
     String message=Objects.toString(error.getMessage(),"");
     var code=java.util.regex.Pattern.compile("code=([0-9-]{1,10})").matcher(message);
@@ -231,9 +279,12 @@ public class BidServerSyncService {
         +"，已暂停并保留旧快照。请核对有效登录凭据、接口权限及网络后重新启用；不会绕过验证。";
   }
 
-  private static String text(Map<String,Object> data,String key){return Objects.toString(data.get(key),"").trim();}
-  private static int option(Map<String,Object> data,String key,Set<Integer> allowed){
-    int value=Integer.parseInt(text(data,key));if(!allowed.contains(value))throw new IllegalArgumentException("同步间隔或创建范围无效");return value;
+  static boolean requiresAttention(Exception error){
+    String message=Objects.toString(error.getMessage(),"");
+    return message.equals("permission")||message.equals("credential")||message.contains("code=")
+        ||message.contains("HTTP 401")||message.contains("HTTP 403")||message.contains("返回的不是 JSON");
   }
+
+  private static String text(Map<String,Object> data,String key){return Objects.toString(data.get(key),"").trim();}
   @PreDestroy public void close(){workers.shutdownNow();}
 }

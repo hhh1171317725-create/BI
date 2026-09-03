@@ -62,6 +62,51 @@ class BidServerSyncServiceTest {
     Files.delete(dir.resolve("bid-monitor.key"));
     assertThrows(Exception.class,()->cipher.decrypt(7,first));assertFalse(Files.exists(dir.resolve("bid-monitor.key")));
   }
+  @Test void manualQuerySavesOnceAndReusesCredentialsWithoutPostponingSchedule()throws Exception{
+    long before=System.currentTimeMillis();
+    var prepared=service.prepareQuery(7,input());var saved=store.get(7);
+    assertEquals(10,prepared.get("minutes"));assertEquals(true,prepared.get("enabled"));
+    assertEquals("ready",prepared.get("state"));assertFalse(prepared.toString().contains("private-test-cookie"));
+    long due=((Number)saved.get("dueAt")).longValue();assertTrue(due>=before+600000);
+    assertTrue(due<=System.currentTimeMillis()+600000);
+    service.run(7);verifyNoInteractions(upstream);
+    var reused=service.prepareQuery(7,Map.of("cookie","","clientUser","","mainUserId",""));
+    assertEquals(prepared.get("queryRevision"),reused.get("queryRevision"));
+    assertEquals(due,store.get(7).get("dueAt"));assertEquals(saved.get("token"),store.get(7).get("token"));
+    assertThrows(IllegalArgumentException.class,()->service.prepareQuery(8,Map.of()));
+  }
+  @Test void queryUsesOwnedStoredIdentityAndRejectsStaleOrForeignRevisions()throws Exception{
+    var prepared=service.prepareQuery(7,input());
+    var query=new LinkedHashMap<String,Object>(Map.of("queryRevision",prepared.get("queryRevision"),"page",1,
+        "cookie","forged","clientUser","999","mainUserId","999","startDate","2026-09-03"));
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      Map<String,Object> request=call.getArgument(0);
+      assertEquals(input().get("cookie"),request.get("cookie"));assertEquals("123",request.get("clientUser"));
+      assertEquals("456",request.get("mainUserId"));assertEquals(1,request.get("page"));
+      assertFalse(request.containsKey("queryRevision"));return Map.of("total",1,"rows",List.of());
+    });
+    assertEquals(1,service.queryPage(7,query).get("total"));
+    assertThrows(IllegalArgumentException.class,()->service.queryPage(8,query));
+    assertThrows(IllegalArgumentException.class,()->service.queryPage(7,Map.of("queryRevision","stale")));
+    verify(upstream,times(1)).page(anyMap());
+    service.prepareQuery(7,input());assertThrows(IllegalArgumentException.class,()->service.queryPage(7,query));
+    service.command(7,"forget");assertFalse(store.get(7).containsKey("credentialRevision"));
+  }
+  @Test void queryRejectsAccountChangedDuringNetworkRequest()throws Exception{
+    var prepared=service.prepareQuery(7,input());
+    when(upstream.page(anyMap())).thenAnswer(call->{service.prepareQuery(7,input());return Map.of("rows",List.of());});
+    assertThrows(IllegalArgumentException.class,()->service.queryPage(7,Map.of("queryRevision",prepared.get("queryRevision"))));
+  }
+  @Test void transientFailureKeepsCredentialsAndRetriesInTenMinutes()throws Exception{
+    service.start(7,input());
+    when(upstream.page(anyMap())).thenThrow(new java.io.IOException("private-test-cookie"));
+    service.run(7);var status=service.status(7);
+    assertEquals("retrying",status.get("state"));assertEquals(true,status.get("enabled"));
+    assertEquals(true,status.get("configured"));assertFalse(status.toString().contains("private-test-cookie"));
+    assertTrue(((Number)status.get("dueAt")).longValue()>System.currentTimeMillis()+590000);
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
+    service.run(7);verify(upstream,times(1)).page(anyMap());
+  }
   @Test void readsAllFourPagesAndKeepsIdsAndMetrics()throws Exception{
     var pages=new ArrayList<Integer>();
     when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);if(page>1)assertEquals(350L,request.get("total"));return Map.of("total",350,"rows",rows((page-1)*100,page==4?50:100));});
@@ -159,6 +204,11 @@ class BidServerSyncServiceTest {
     when(mockService.allowed(7)).thenReturn(true);
     assertThrows(ResponseStatusException.class,()->controller.start(Map.of("expectedUserId","8"),request));
     verify(mockService,never()).start(anyLong(),anyMap());
+    assertThrows(ResponseStatusException.class,()->controller.prepareQuery(Map.of("expectedUserId","8"),request));
+    assertThrows(ResponseStatusException.class,()->controller.page(Map.of("expectedUserId","8"),request));
+    verify(mockService,never()).prepareQuery(anyLong(),anyMap());verify(mockService,never()).queryPage(anyLong(),anyMap());
+    controller.prepareQuery(Map.of("expectedUserId","7"),request);verify(mockService).prepareQuery(eq(7L),anyMap());
+    controller.page(Map.of("expectedUserId","7"),request);verify(mockService).queryPage(eq(7L),anyMap());
     controller.status(request);verify(mockService).status(7);
     controller.command("stop",Map.of("expectedUserId","7","userId","8"),request);verify(mockService).command(7,"stop");
   }

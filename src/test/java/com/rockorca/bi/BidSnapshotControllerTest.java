@@ -23,6 +23,15 @@ class BidSnapshotControllerTest {
     assertFalse(saved.containsKey("cookie"));assertEquals("7676449794404745237",saved.get("media_account_id"));
   }
 
+  @Test void optimizerIsOptionalAndRetainedWithoutAcceptingObjects() {
+    var item=row();item.put("user_name","optimizer-A");
+    var saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(item))).get("rows")).getFirst();
+    assertEquals("optimizer-A",saved.get("user_name"));
+    item.remove("user_name");assertDoesNotThrow(()->BidSnapshotController.validate(input(List.of(item))));
+    item.put("user_name",Map.of("cookie","must-not-save"));
+    assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(item))));
+  }
+
   @Test void retainsCreationScopeAndRejectsInvalidRanges() {
     var data=new HashMap<>(input(List.of(row())));
     var date=LocalDate.now(ReportService.BEIJING);

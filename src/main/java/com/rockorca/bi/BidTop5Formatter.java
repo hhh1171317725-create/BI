@@ -12,8 +12,12 @@ final class BidTop5Formatter {
   }
   static String money(BigDecimal value){return value.setScale(2,RoundingMode.HALF_UP).toPlainString();}
   static String clip(Object value,int max){
-    String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}]"," ");
+    String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]"," ");
     return text.codePointCount(0,text.length())>max?text.substring(0,text.offsetByCodePoints(0,max))+"…":text;
+  }
+  static String field(Object value){
+    String text=clip(value,1000).strip();
+    return text.isBlank()?"--":text;
   }
   static Map<String,String> metrics(Map<?,?> row,BigDecimal price){
     var cost=number(row.get("stat_cost"));var conv=number(row.get("convert_cnt"));
@@ -52,7 +56,10 @@ final class BidTop5Formatter {
         text.append("\n").append(++index).append(". 消耗 ").append(money(number(row.get("stat_cost"))))
             .append(" | 回传 ").append(metrics.get("ratio"))
             .append(" | 出价 ").append(money(number(row.get("cpa_bid"))))
-            .append(" | 出价利润 ").append(metrics.get("rate"));
+            .append(" | 出价利润 ").append(metrics.get("rate"))
+            .append(" | 优化师 ").append(field(row.get("user_name")))
+            .append(" | 账户ID ").append(field(row.get("media_account_id")))
+            .append(" | 计划ID ").append(field(row.get("promotion_id")));
       }
       result.add(Map.of("task",task,"text",text.toString()));
     }

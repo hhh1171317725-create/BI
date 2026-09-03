@@ -251,7 +251,7 @@ public class BidServerSyncService {
       for(Object item:batch) {
         if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("incomplete");
         var row=new LinkedHashMap<String,Object>();
-        for(String key:List.of("promotion_id","promotion_name","media_account_id","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
+        for(String key:List.of("promotion_id","promotion_name","media_account_id","user_name","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
         for(String key:List.of("promotion_id","media_account_id")){
           Object id=row.get(key);
           if(id instanceof Float||id instanceof Double)throw new IllegalArgumentException("incomplete");

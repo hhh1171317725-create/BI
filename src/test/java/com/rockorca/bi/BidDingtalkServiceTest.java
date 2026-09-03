@@ -116,11 +116,23 @@ class BidDingtalkServiceTest {
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
     String text=messages.getFirst().get("text");
     assertEquals(6,text.lines().count());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
-    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润 50.00%",text.lines().skip(1).findFirst().orElseThrow());
+    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润 50.00% | 优化师 -- | 账户ID 7676449794404745237 | 计划ID 8",text.lines().skip(1).findFirst().orElseThrow());
     for(int i=0;i<5;i++)assertTrue(text.lines().skip(i+1).findFirst().orElseThrow().startsWith((i+1)+". 消耗 "+(800-i*100)+".00"));
     assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertFalse(text.contains("9000.00"));
-    assertFalse(text.contains("计划 ID"));assertFalse(text.contains("ROI"));assertFalse(text.contains("账户"));
+    assertFalse(text.contains("ROI"));assertTrue(text.contains("账户ID"));assertTrue(text.contains("计划ID"));
     assertEquals(2,messages.get(1).get("text").lines().count());assertTrue(messages.get(1).get("text").contains("消耗 9000.00"));
+  }
+  @Test void formatterRetainsOptimizerAndExactIdsOnOneLine(){
+    var row=row("7681075475582042163","account-A",150);
+    row.put("user_name","张三\r\n运营\u2028A\u2029B");
+    var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(row));
+    String text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
+    assertEquals(2,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
+    assertTrue(text.contains("优化师 张三  运营 A B"));
+    assertTrue(text.contains("账户ID 7676449794404745237 | 计划ID 7681075475582042163"));
+    row.put("user_name"," ");row.remove("media_account_id");
+    text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
+    assertTrue(text.contains("优化师 -- | 账户ID --"));
   }
   @Test void formatterFinancialRulesMatchBoundaryAndZeroCases(){
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));

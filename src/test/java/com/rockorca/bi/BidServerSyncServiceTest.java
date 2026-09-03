@@ -40,7 +40,7 @@ class BidServerSyncServiceTest {
   private List<Map<String,Object>> rows(int offset,int size){
     var rows=new ArrayList<Map<String,Object>>();
     for(int i=0;i<size;i++)rows.add(new LinkedHashMap<>(Map.of("promotion_id","768107547558"+(offset+i),"promotion_name","plan","media_account_id","123",
-        "advertiser_nick","account","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop")));
+        "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop")));
     return rows;
   }
   @Test void encryptsAtRestAndReturnsOnlySafeStatus()throws Exception{
@@ -115,6 +115,7 @@ class BidServerSyncServiceTest {
     assertEquals("spend_desc_top_400",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
+    assertEquals("optimizer-A",row.get("user_name"));assertEquals("123",row.get("media_account_id"));
   }
   @Test void creationWindowIncludesTodayAndThreePriorDates(){
     assertEquals(java.time.LocalDate.parse("2026-09-01"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-04")));

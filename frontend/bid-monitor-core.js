@@ -34,11 +34,37 @@
     const price=number(matches[0].price),task=String(matches[0].name||'').trim(),valid=Boolean(task)&&price>0&&price<=1000000;
     return{task,price:valid?price:null,pricingStatus:valid?'priced':'price-missing'};
   }
+  function cashMetrics(row,price){
+    const valid=n=>Number.isFinite(n)&&n>=0;
+    const finite=n=>Number.isFinite(n)?n:null;
+    const commission=valid(row.registrations)&&price>0?finite(row.registrations*price):null;
+    const bidCost=valid(row.bid)&&valid(row.conversions)?finite(row.bid*row.conversions):null;
+    const breakEvenBid=commission>0&&row.conversions>0?finite(commission/row.conversions):null;
+    let grant=null,cashCost=null;
+    if(valid(row.cost)&&valid(row.conversions)&&bidCost!==null){
+      const threshold=1.2*bidCost;
+      // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
+      const tolerance=Number.EPSILON*Math.max(Math.abs(row.cost),Math.abs(threshold))*8;
+      const eligible=row.conversions>6&&row.cost-threshold>tolerance;
+      grant=eligible?row.cost-bidCost:0;
+      cashCost=eligible?bidCost:row.cost;
+    }
+    return{commission,bidCost,breakEvenBid,grant,cashCost,
+      roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
+      bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
+  }
+  function summarizeCash(rows){
+    const total=key=>rows.length&&rows.every(r=>Number.isFinite(r[key]))?rows.reduce((sum,r)=>sum+r[key],0):null;
+    const commission=total('commission'),cashCost=total('cashCost'),bidCost=total('bidCost');
+    const roi=commission!==null&&cashCost>0?commission/cashCost:null;
+    const bidProfitRate=commission>0&&bidCost!==null&&rows.every(r=>Number.isFinite(r.bidProfitRate))?(commission-bidCost)/commission:null;
+    return{roi:Number.isFinite(roi)?roi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
+  }
   function analyzeTask(row,rules,margin,minSample,current){
     const task=taskFor(row,rules);
     const result=analyze(row,task.price||1,margin,minSample,current);
     if(task.price===null){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.pricingStatus;}
-    return{...result,...task};
+    return{...result,...task,...cashMetrics(row,task.price)};
   }
-  const api={normalize,analyze,taskFor,analyzeTask};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

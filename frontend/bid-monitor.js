@@ -9,6 +9,7 @@ const names={'task-missing':'未匹配任务','task-conflict':'多个任务匹�
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>v===null||v===undefined?'--':Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtRoi=v=>v===null||v===undefined||!Number.isFinite(v)?'--':v.toFixed(3);
+const fmtPercent=v=>Number.isFinite(v)?fmt(v*100)+'%':'--';
 function message(text,bad=false){$('#message').textContent=text;$('#message').className=bad?'error':'';}
 async function api(path,options={}){
   const response=await fetch(path,options);if(response.status===401){location.replace('/login');throw Error('请先登录');}
@@ -31,16 +32,15 @@ function render(){
   if([...$('#taskFilter').options].some(o=>o.value===chosen))$('#taskFilter').value=chosen;
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value,key=$('#sort').value;
   visible=analyzed.filter(r=>(!selected||(selected==='__unmatched'?!r.task:r.task===taskRules[Number(selected.slice(5))]?.name))&&
-    (!q||[r.id,r.name,r.account,r.accountId,r.task].join(' ').toLowerCase().includes(q))&&(filter==='all'||(filter==='available'?r.bidRoi!==null:r.bidRoi===null)))
+    (!q||[r.id,r.name,r.account,r.accountId,r.task].join(' ').toLowerCase().includes(q))&&(filter==='all'||(filter==='available'?r.roi!==null:r.roi===null)))
     .sort((a,b)=>(b[key]??-Infinity)-(a[key]??-Infinity));
-  const total=key=>visible.length&&visible.every(r=>r[key]!==null)?visible.reduce((n,r)=>n+r[key],0):null;
-  const revenue=total('revenue'),projectedCost=total('projectedCost');
-  const roi=revenue!==null&&projectedCost>0?revenue/projectedCost:null;
-  $('#metrics').innerHTML='<div class="metric"><span>预估 ROI（倍）</span><strong>'+fmtRoi(roi)+'</strong></div>';
+  const summary=B.summarizeCash(visible);
+  $('#metrics').innerHTML=[['ROI（倍）',fmtRoi(summary.roi)],['出价利润率',fmtPercent(summary.bidProfitRate)]]
+    .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
   $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划已匹配结算价${unpriced?'；未匹配或冲突的计划不计算 ROI':''}`:'';
   const size=Number($('#pageSize').value),pages=Math.max(1,Math.ceil(visible.length/size));page=Math.min(page,pages);
-  $('#rows').innerHTML=visible.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.price)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td title="${r.bidRoi===null?esc(r.bid===0?'当前出价为零':names[r.status]||'无法计算'):''}" class="${r.bidRoi===null?'':r.bidRoi<1?'bad':'good'}">${fmtRoi(r.bidRoi)}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">没有符合条件的计划</td></tr>';
+  $('#rows').innerHTML=visible.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.price)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td title="${esc('佣金：'+fmt(r.commission)+'；规则赠款：'+fmt(r.grant)+'；现金消耗：'+fmt(r.cashCost))}" class="${r.roi===null?'':r.roi<1?'bad':'good'}">${fmtRoi(r.roi)}</td><td title="盈亏线出价：${fmt(r.breakEvenBid)}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td></tr>`).join('')||'<tr><td colspan="11" class="empty">没有符合条件的计划</td></tr>';
   $('#count').textContent=`${visible.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!visible.length;
 }
 $('#fetch').onclick=async()=>{
@@ -73,8 +73,8 @@ for(const id of ['startDate','endDate','createdStart','createdEnd'])$('#'+id).on
 $('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};
 $('#export').onclick=()=>{
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
-  const rows=[['计划ID','计划名称','账户ID','账户名称','任务','结算单价','统计开始','统计结束','实际消耗','转化数','注册数','回传比例','当前出价','预估ROI'],
-    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.task,r.price,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,fmtRoi(r.bidRoi)])];
+  const rows=[['计划ID','计划名称','账户ID','账户名称','任务','结算单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','规则赠款','现金消耗','ROI','盈亏线出价','出价利润率'],
+    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.task,r.price,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.grant,r.cashCost,fmtRoi(r.roi),r.breakEvenBid,fmtPercent(r.bidProfitRate)])];
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`出价监测_${range.start}_${range.end}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 (async()=>{try{const session=await api('/api/session');if(!session.authenticated){location.replace('/login');return;}const permissions=await api('/api/tool-visibility');if(permissions.bidMonitor!==true){location.replace('/tools');return;}document.body.classList.add('ready');render();}catch(error){document.body.classList.add('ready');message(error.message,true);}})();

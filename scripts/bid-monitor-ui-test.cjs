@@ -53,14 +53,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
-  assert.equal(await page.locator('#rows tr td').count(),10);
-  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'0.703');
+  assert.equal(await page.locator('#rows tr td').count(),11);
+  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'21.078');
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'-42.33%');
+  assert.equal(await page.locator('#rows tr td').nth(10).getAttribute('title'),'盈亏线出价：143.33');
   await page.locator('#search').fill('');await page.locator('#taskFilter').selectOption('task:1');assert.equal(await page.locator('#count').textContent(),'52 条');
   await page.locator('#taskFilter').selectOption('');
-  assert.equal(await page.locator('#metrics .metric').count(),1);assert.match(await page.locator('#metrics').textContent(),/1.128/);
+  assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('#metrics').textContent(),/33.828/);
   assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
-  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/"0.703"/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
+  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/"21.078"/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-mobile.png'),fullPage:true});
   assert.equal(await page.locator('#syncDetect').count(),0);
@@ -91,9 +93,21 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#cookie').inputValue(),'');assert.equal(await page.locator('#clientUser').inputValue(),'123');
   await page.locator('#fetch').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');
   assert.equal(preparedQueries.at(-1).cookie,'');
+  await page.evaluate(()=>receive([
+   {promotion_id:'grant',promotion_name:'grant plan',media_account_name:'客户-A',stat_cost:150,convert_cnt:10,active_register:20,cpa_bid:10},
+   {promotion_id:'no-grant',promotion_name:'six conversions',media_account_name:'客户-B',stat_cost:600,convert_cnt:6,active_register:10,cpa_bid:10}
+  ],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
+  assert.equal(await page.locator('#metrics strong').first().textContent(),'1.043');
+  assert.equal(await page.locator('#metrics strong').nth(1).textContent(),'78.08%');
+  await page.locator('#search').fill('grant plan');
+  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'4.300');
+  assert.match(await page.locator('#rows tr td').nth(9).getAttribute('title'),/规则赠款：50.00；现金消耗：100.00/);
+  await page.locator('#search').fill('');await page.locator('#sort').selectOption('roi');
+  assert.match(await page.locator('#rows tr').first().textContent(),/grant plan/);
   await page.evaluate(()=>receive([{promotion_id:'zero',media_account_name:'客户-A',stat_cost:1,convert_cnt:0,active_register:20,cpa_bid:5}],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
-  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'--');
-  assert.equal(await page.locator('#metrics strong').textContent(),'--');
-  assert.deepEqual(errors,[]);console.log('UI PASS: ROI-only (3 decimals), export, task prices, mobile width, top-400, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
+  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'430.000');
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'--');
+  assert.equal(await page.locator('#metrics strong').first().textContent(),'430.000');
+  assert.deepEqual(errors,[]);console.log('UI PASS: cash ROI (3 decimals) and bid profit rate, export, task prices, mobile width, top-400, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

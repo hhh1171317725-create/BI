@@ -46,11 +46,11 @@ class BidDingtalkServiceTest {
     assertEquals(false,service.settings(8).get("configured"));assertEquals(123L,store.get(7).get("dueAt"));
     var reused=input();reused.put("webhook","");reused.put("secret","");reused.put("revision",result.get("revision"));
     service.save(7,reused);service.send(7,false);
-    verify(robot,times(2)).send(eq(input().get("webhook").toString()),eq(input().get("secret").toString()),eq("TOP5"),anyString());
+    verify(robot,times(1)).send(eq(input().get("webhook").toString()),eq(input().get("secret").toString()),eq("TOP5"),anyString());
   }
   @Test void previewUsesOwnedSnapshotWithoutSending()throws Exception{
     service.save(7,input());var preview=service.preview(7);
-    assertEquals(2,((List<?>)preview.get("messages")).size());verifyNoInteractions(robot);
+    assertEquals(1,((List<?>)preview.get("messages")).size());verifyNoInteractions(robot);
     assertTrue(preview.get("warning").toString().contains("缺少优化师"));
     var updated=new LinkedHashMap<>(snapshot());var plan=row("1","account-A",150);plan.put("user_name","optimizer-A");updated.put("rows",List.of(plan));
     when(snapshots.readOwned(7)).thenReturn(updated);
@@ -64,7 +64,7 @@ class BidDingtalkServiceTest {
     assertEquals(Instant.parse("2026-09-04T10:00:00Z").toEpochMilli(),result.get("dueAt"));
     service.close();var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
     service=new BidDingtalkService(store,new BidCredentialCipher(config),snapshots,sync,robot,mapper,clock);
-    service.send(7,true);verify(robot,times(2)).send(anyString(),anyString(),anyString(),anyString());
+    service.send(7,true);verify(robot,times(1)).send(anyString(),anyString(),anyString(),anyString());
   }
   @Test void staleSnapshotOrRevokedPermissionNeverSends()throws Exception{
     service.save(7,input());when(snapshots.readOwned(7)).thenReturn(Map.of("date","2026-09-02","updatedAt",clock.instant().toString()));
@@ -72,24 +72,24 @@ class BidDingtalkServiceTest {
     clock.now=clock.now.plusSeconds(301);when(sync.allowed(7)).thenReturn(false);
     assertEquals("failed",service.send(7,false).get("state"));verifyNoInteractions(robot);
   }
-  @Test void partialFailureIsRecordedAndNeverAutomaticallyRetried()throws Exception{
+  @Test void failedCombinedMessageIsNeverAutomaticallyRetried()throws Exception{
     service.save(7,input());clock.now=Instant.parse("2026-09-03T10:00:00Z");
-    doNothing().doThrow(new IllegalArgumentException("发送结果未确认")).when(robot).send(anyString(),anyString(),anyString(),anyString());
-    var result=service.send(7,true);assertEquals("failed",result.get("state"));assertTrue(result.get("lastResult").toString().startsWith("已发送 1 个任务"));
+    doThrow(new IllegalArgumentException("发送结果未确认")).when(robot).send(anyString(),anyString(),anyString(),anyString());
+    var result=service.send(7,true);assertEquals("failed",result.get("state"));assertTrue(result.get("lastResult").toString().startsWith("已发送 0 条消息"));
     service.send(7,true);assertThrows(IllegalArgumentException.class,()->service.send(7,false));
-    verify(robot,times(2)).send(anyString(),anyString(),anyString(),anyString());
+    verify(robot,times(1)).send(anyString(),anyString(),anyString(),anyString());
   }
-  @Test void clearingConfigurationStopsRemainingTasks()throws Exception{
+  @Test void clearingConfigurationBeforeSendPreventsDelivery()throws Exception{
     service.save(7,input());
-    doAnswer(call->{service.forget(7);return null;}).when(robot).send(anyString(),anyString(),anyString(),anyString());
-    service.send(7,false);verify(robot,times(1)).send(anyString(),anyString(),anyString(),anyString());
+    when(snapshots.readOwned(7)).thenAnswer(call->{service.forget(7);return snapshot();});
+    service.send(7,false);verifyNoInteractions(robot);
     assertEquals(false,service.settings(7).get("configured"));assertEquals(0L,service.settings(7).get("dueAt"));
   }
-  @Test void changedTaskPricesStopRemainingMessages()throws Exception{
+  @Test void changedTaskPricesBeforeSendPreventDelivery()throws Exception{
     service.save(7,input());
-    doAnswer(call->{store.update(7,(connection,state)->state.put("pricingRevision","p2"));return null;}).when(robot).send(anyString(),anyString(),anyString(),anyString());
+    when(snapshots.readOwned(7)).thenAnswer(call->{store.update(7,(connection,state)->state.put("pricingRevision","p2"));return snapshot();});
     var result=service.send(7,false);assertEquals("failed",result.get("state"));
-    verify(robot,times(1)).send(anyString(),anyString(),anyString(),anyString());
+    verifyNoInteractions(robot);
   }
   @Test void springCanConstructScheduledServiceWithoutUsingLiveDatabase(){
     try(var context=new org.springframework.context.annotation.AnnotationConfigApplicationContext()){
@@ -119,12 +119,12 @@ class BidDingtalkServiceTest {
     var snapshot=new LinkedHashMap<>(snapshot());snapshot.put("rows",rows);
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
     String text=messages.getFirst().get("text");
-    assertEquals(6,text.lines().count());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
-    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润 50.00% | 优化师 -- | 账户ID 7676449794404745237 | 计划ID 8",text.lines().skip(1).findFirst().orElseThrow());
-    for(int i=0;i<5;i++)assertTrue(text.lines().skip(i+1).findFirst().orElseThrow().startsWith((i+1)+". 消耗 "+(800-i*100)+".00"));
-    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertFalse(text.contains("9000.00"));
+    assertEquals(1,messages.size());assertEquals(7,text.lines().count());assertEquals("任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID",text.lines().findFirst().orElseThrow());
+    assertEquals("taskA | 1 | 800.00 | 50.00% | 10.00 | 50.00% | -- | 7676449794404745237 | 8",text.lines().skip(1).findFirst().orElseThrow());
+    for(int i=0;i<5;i++)assertTrue(text.lines().skip(i+1).findFirst().orElseThrow().startsWith("taskA | "+(i+1)+" | "+(800-i*100)+".00"));
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertTrue(text.contains("taskB | 1 | 9000.00"));
     assertFalse(text.contains("ROI"));assertTrue(text.contains("账户ID"));assertTrue(text.contains("计划ID"));
-    assertEquals(2,messages.get(1).get("text").lines().count());assertTrue(messages.get(1).get("text").contains("消耗 9000.00"));
+    assertEquals(1,text.lines().filter(line->line.contains("账户ID")).count());
   }
   @Test void formatterRetainsOptimizerAndExactIdsOnOneLine(){
     var row=row("7681075475582042163","account-A",150);
@@ -132,11 +132,11 @@ class BidDingtalkServiceTest {
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(row));
     String text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
     assertEquals(2,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
-    assertTrue(text.contains("优化师 张三  运营 A B"));
-    assertTrue(text.contains("账户ID 7676449794404745237 | 计划ID 7681075475582042163"));
+    assertTrue(text.contains(" | 张三  运营 A B | "));
+    assertTrue(text.contains(" | 7676449794404745237 | 7681075475582042163"));
     row.put("user_name"," ");row.remove("media_account_id");
     text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
-    assertTrue(text.contains("优化师 -- | 账户ID --"));
+    assertTrue(text.contains(" | -- | -- | 7681075475582042163"));
   }
   @Test void formatterFinancialRulesMatchBoundaryAndZeroCases(){
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));
@@ -147,6 +147,30 @@ class BidDingtalkServiceTest {
     row.put("convert_cnt",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("line"));
     assertEquals("0.00%",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
     row.put("active_register",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
+  }
+  @Test void threeTasksSendExactlyOneMessageWithOneHeader()throws Exception{
+    var threeRules=new ArrayList<>(rules());threeRules.add(Map.of("name","taskC","keyword","account-C","price","30"));
+    store.update(7,(connection,state)->state.put("taskRules",threeRules));
+    var input=input();input.put("tasks",List.of("taskA","taskB","taskC"));service.save(7,input);
+    var plans=new ArrayList<Map<String,Object>>();
+    for(String task:List.of("A","B","C"))for(int i=1;i<=7;i++)plans.add(row(task+i,"account-"+task,i*100));
+    var data=new LinkedHashMap<>(snapshot());data.put("rows",plans);when(snapshots.readOwned(7)).thenReturn(data);
+    var preview=service.preview(7);var messages=(List<?>)preview.get("messages");assertEquals(1,messages.size());
+    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(16,text.lines().count());
+    assertTrue(text.lines().findFirst().orElseThrow().startsWith("任务 | 排名 | 消耗"));assertTrue(text.contains("[TOP5]"));
+    for(String task:List.of("taskA","taskB","taskC"))assertEquals(5,text.lines().filter(line->line.startsWith(task+" | ")).count());
+    service.send(7,false);verify(robot,times(1)).send(anyString(),anyString(),eq("TOP5"),eq(text));
+    assertEquals("已发送 1 条消息，包含 3 个任务",service.settings(7).get("lastResult"));
+  }
+  @Test void combinedMessageRetainsEmptyTasksAndSanitizesColumnSeparators(){
+    var plan=row("1","account-A",150);plan.put("user_name","张|三");
+    var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(plan));
+    String text=BidTop5Formatter.messages(data,rules(),List.of("taskA","taskB")).getFirst().get("text");
+    assertEquals(3,text.lines().count());assertTrue(text.contains("taskB | -- | 无匹配计划"));
+    for(String line:text.lines().toList())assertEquals(9,line.split("\\|",-1).length);
+    assertEquals(text,DingtalkRobotClient.content("",text));
+    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(3,withKeyword.lines().count());
+    assertEquals(withKeyword,DingtalkRobotClient.content("TOP5",withKeyword));
   }
   @Test void robotRejectsForeignDestinationsAndMissingSuccessCode()throws Exception{
     var client=new DingtalkRobotClient(mapper);

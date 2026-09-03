@@ -28,7 +28,7 @@ $('#dingFields').addEventListener('input',()=>{dingDirty=true;dingStatus('推送
 async function dingAction(action){
   if(dingBusy||!dingOwner)return;
   if(action!=='save'&&action!=='forget'&&dingDirty){dingStatus('请先保存推送配置',true);return;}
-  if(action==='send'&&!confirm('将向已保存的钉钉群发送所选任务的 TOP5，每个任务一条消息。请确认任务和群机器人无误；手动发送可能与当天定时消息重复。'))return;
+  if(action==='send'&&!confirm('将所选任务各自的 TOP5 合并为一条消息发送到钉钉群。请确认任务和群机器人无误；手动发送可能与当天定时消息重复。'))return;
   if(action==='forget'&&!confirm('停止定时推送并清除当前网站账户的机器人凭据？'))return;
   let payload={expectedUserId:dingOwner};
   if(action==='save')Object.assign(payload,{revision:dingConfig.revision,pricingRevision:dingConfig.pricingRevision,

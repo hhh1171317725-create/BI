@@ -33,9 +33,15 @@ public class DingtalkRobotClient {
     return URI.create(webhook+"&timestamp="+timestamp+"&sign="+URLEncoder.encode(sign,StandardCharsets.UTF_8));
   }
 
+  static String content(String keyword,String text){
+    if(keyword.isBlank()||text.contains(keyword))return text;
+    int end=text.indexOf('\n');
+    return end<0?text+" ["+keyword+"]":text.substring(0,end)+" ["+keyword+"]"+text.substring(end);
+  }
+
   void send(String webhook,String secret,String keyword,String text)throws Exception{
     validate(webhook,secret);
-    String content=keyword.isBlank()?text:keyword+"\n"+text;
+    String content=content(keyword,text);
     if(content.getBytes(StandardCharsets.UTF_8).length>18000)throw new IllegalArgumentException("推送内容过长，请缩短任务名称");
     HttpResponse<String> response;
     try{

@@ -22,8 +22,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     if(action==='dingtalk'){
      assert.equal(input.pricingRevision,pricingRevision);assert.equal(input.time,'18:00');assert.deepEqual(input.tasks,['任务A']);
      ding={...ding,configured:true,enabled:input.enabled,time:input.time,tasks:input.tasks,keyword:input.keyword,revision:'d1',state:'saved'};
-    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:'【任务 TOP5】\n任务：任务A\n范围：已采集消耗前400条'}]}});return;}
-    else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 / 1 个任务'};}
+    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:'任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID [TOP5]\n任务A | 1 | 100.00 | 15.00% | 10.00 | 50.00% | 张三 | 900 | 10000'}]}});return;}
+    else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 条消息，包含 1 个任务'};}
    }
    await route.fulfill({json:{...ding,availableTasks:savedRules.map(r=>r.name),pricingRevision}});
   });
@@ -69,8 +69,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#dingSave').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('机器人已加密保存'));
   assert.equal(await page.locator('#dingWebhook').inputValue(),'');assert.equal(ding.enabled,true);
   await page.locator('#dingPreviewButton').click();await page.locator('#dingPreview').waitFor({state:'visible'});
-  assert.match(await page.locator('#dingPreview').textContent(),/任务 TOP5/);assert.equal(dingSent,0);
-  await page.locator('#dingSend').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('已发送 1 / 1'));
+  assert.match(await page.locator('#dingPreview').textContent(),/^任务 \| 排名 \| 消耗/);assert.equal(dingSent,0);
+  await page.locator('#dingSend').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('已发送 1 条消息'));
   assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);

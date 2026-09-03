@@ -12,7 +12,7 @@ final class BidTop5Formatter {
   }
   static String money(BigDecimal value){return value.setScale(2,RoundingMode.HALF_UP).toPlainString();}
   static String clip(Object value,int max){
-    String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]"," ");
+    String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}|]"," ");
     return text.codePointCount(0,text.length())>max?text.substring(0,text.offsetByCodePoints(0,max))+"…":text;
   }
   static String field(Object value){
@@ -35,7 +35,8 @@ final class BidTop5Formatter {
 
   static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks){
     if(!(snapshot.get("rows") instanceof List<?> rows))throw new IllegalArgumentException("没有可推送的快照");
-    var result=new ArrayList<Map<String,String>>();
+    StringBuilder text=new StringBuilder("任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID");
+    boolean missingOptimizer=false;
     for(String task:tasks){
       var rule=rules.stream().filter(r->task.equals(r.get("name"))).findFirst()
           .orElseThrow(()->new IllegalArgumentException("已选任务不存在，请重新选择并保存"));
@@ -48,21 +49,20 @@ final class BidTop5Formatter {
       }
       selected.sort(Comparator.<Map<?,?>,BigDecimal>comparing(r->number(r.get("stat_cost"))).reversed()
           .thenComparing(r->Objects.toString(r.get("promotion_id"),"")));
-      StringBuilder text=new StringBuilder("【").append(clip(task,80)).append(" TOP5】");
-      if(selected.isEmpty())text.append("\n当前采集范围内无匹配计划");
+      if(selected.isEmpty())text.append("\n").append(clip(task,80)).append(" | -- | 无匹配计划 | -- | -- | -- | -- | -- | --");
       int index=0;
       for(var row:selected.stream().limit(5).toList()){
         var metrics=metrics(row,number(rule.get("price")));
-        text.append("\n").append(++index).append(". 消耗 ").append(money(number(row.get("stat_cost"))))
-            .append(" | 回传 ").append(metrics.get("ratio"))
-            .append(" | 出价 ").append(money(number(row.get("cpa_bid"))))
-            .append(" | 出价利润 ").append(metrics.get("rate"))
-            .append(" | 优化师 ").append(field(row.get("user_name")))
-            .append(" | 账户ID ").append(field(row.get("media_account_id")))
-            .append(" | 计划ID ").append(field(row.get("promotion_id")));
+        String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
+        text.append("\n").append(clip(task,80)).append(" | ").append(++index).append(" | ").append(money(number(row.get("stat_cost"))))
+            .append(" | ").append(metrics.get("ratio"))
+            .append(" | ").append(money(number(row.get("cpa_bid"))))
+            .append(" | ").append(metrics.get("rate"))
+            .append(" | ").append(optimizer)
+            .append(" | ").append(field(row.get("media_account_id")))
+            .append(" | ").append(field(row.get("promotion_id")));
       }
-      result.add(Map.of("task",task,"text",text.toString()));
     }
-    return result;
+    return List.of(Map.of("text",text.toString(),"missingOptimizer",Boolean.toString(missingOptimizer)));
   }
 }

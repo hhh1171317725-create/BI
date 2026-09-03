@@ -111,11 +111,15 @@ public class BidDingtalkService {
     if(!sync.allowed(owner))throw new IllegalArgumentException("网站账户已停用或无出价监测权限");
     if(tasks(state).isEmpty())throw new IllegalArgumentException("请先选择任务并保存推送配置");
     var snapshot=snapshots.readOwned(owner);fresh(snapshot,clock.instant());
-    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state));
+    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state)).stream().map(message->{
+      var result=new LinkedHashMap<>(message);
+      result.put("text",DingtalkRobotClient.content(text(state,"dingKeyword"),message.get("text")));
+      return (Map<String,String>)result;
+    }).toList();
   }
   Map<String,Object> preview(long owner)throws Exception{
     var state=store.get(owner);var messages=prepare(owner,state);
-    boolean missing=messages.stream().anyMatch(m->m.get("text").contains(" | 优化师 -- |"));
+    boolean missing=messages.stream().anyMatch(m->Boolean.parseBoolean(m.get("missingOptimizer")));
     return Map.of("userId",Long.toString(owner),"messages",messages,"warning",missing?
         "预览中有计划缺少优化师。请点击服务器定时查询的立即同步，等待同步成功后重新预览；普通列表查询不会立即更新推送快照。":"");
   }
@@ -153,13 +157,13 @@ public class BidDingtalkService {
         checkCurrent(owner,token,text(claimed,"pricingRevision"));
         robot.send(credentials.get("webhook"),credentials.getOrDefault("secret",""),text(claimed,"dingKeyword"),message.get("text"));
         int count=++delivered;
-        store.update(owner,(connection,state)->{if(token.equals(state.get("dingToken")))state.put("dingResult","已发送 "+count+" / "+messages.size()+" 个任务");});
+        store.update(owner,(connection,state)->{if(token.equals(state.get("dingToken")))state.put("dingResult","已发送 "+count+" 条消息，包含 "+tasks(claimed).size()+" 个任务");});
       }
       store.update(owner,(connection,state)->{if(token.equals(state.get("dingToken")))state.put("dingState","sent");});
     }catch(Exception error){
       String detail=error instanceof IllegalArgumentException?error.getMessage():"读取配置或发送结果未确认，请检查服务器及群消息";
       int count=delivered;
-      store.update(owner,(connection,state)->{if(token.equals(state.get("dingToken"))){state.put("dingState","failed");state.put("dingResult","已发送 "+count+" 个任务；"+detail+"。本轮不会自动补发");}});
+      store.update(owner,(connection,state)->{if(token.equals(state.get("dingToken"))){state.put("dingState","failed");state.put("dingResult","已发送 "+count+" 条消息；"+detail+"。本轮不会自动补发");}});
     }
     return settings(owner);
   }

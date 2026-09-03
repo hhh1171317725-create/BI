@@ -114,10 +114,13 @@ class BidDingtalkServiceTest {
     rows.add(row("99","account-A-account-B",9999));rows.add(row("100","account-B",9000));
     var snapshot=new LinkedHashMap<>(snapshot());snapshot.put("rows",rows);
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
-    String text=messages.getFirst().get("text");assertTrue(text.indexOf("plan-8")<text.indexOf("plan-7"));assertTrue(text.contains("plan-4"));
-    assertFalse(text.contains("plan-3"));assertFalse(text.contains("plan-99"));assertFalse(text.contains("plan-100"));
-    assertTrue(messages.get(1).get("text").contains("plan-100"));
-    assertTrue(text.contains("已采集消耗前400条"));
+    String text=messages.getFirst().get("text");
+    assertEquals(6,text.lines().count());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
+    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润 50.00%",text.lines().skip(1).findFirst().orElseThrow());
+    for(int i=0;i<5;i++)assertTrue(text.lines().skip(i+1).findFirst().orElseThrow().startsWith((i+1)+". 消耗 "+(800-i*100)+".00"));
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertFalse(text.contains("9000.00"));
+    assertFalse(text.contains("计划 ID"));assertFalse(text.contains("ROI"));assertFalse(text.contains("账户"));
+    assertEquals(2,messages.get(1).get("text").lines().count());assertTrue(messages.get(1).get("text").contains("消耗 9000.00"));
   }
   @Test void formatterFinancialRulesMatchBoundaryAndZeroCases(){
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));
@@ -126,6 +129,8 @@ class BidDingtalkServiceTest {
     row.put("stat_cost",150);row.put("convert_cnt",6);assertEquals("0.00",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("grant"));
     row.put("stat_cost",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("roi"));
     row.put("convert_cnt",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("line"));
+    assertEquals("0.00%",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
+    row.put("active_register",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
   }
   @Test void robotRejectsForeignDestinationsAndMissingSuccessCode()throws Exception{
     var client=new DingtalkRobotClient(mapper);

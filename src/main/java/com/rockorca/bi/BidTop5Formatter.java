@@ -25,7 +25,8 @@ final class BidTop5Formatter {
     String roi=cash.signum()>0?commission.divide(cash,3,RoundingMode.HALF_UP).toPlainString():"--";
     String line=commission.signum()>0&&conv.signum()>0?commission.divide(conv,2,RoundingMode.HALF_UP).toPlainString():"--";
     String rate=commission.signum()>0&&conv.signum()>0?commission.subtract(bidCost).multiply(BigDecimal.valueOf(100)).divide(commission,2,RoundingMode.HALF_UP).toPlainString()+"%":"--";
-    return Map.of("roi",roi,"line",line,"rate",rate,"cash",money(cash),"grant",money(grant),"commission",money(commission));
+    String ratio=reg.signum()>0?conv.multiply(BigDecimal.valueOf(100)).divide(reg,2,RoundingMode.HALF_UP).toPlainString()+"%":"--";
+    return Map.of("roi",roi,"line",line,"rate",rate,"ratio",ratio,"cash",money(cash),"grant",money(grant),"commission",money(commission));
   }
 
   static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks){
@@ -43,24 +44,16 @@ final class BidTop5Formatter {
       }
       selected.sort(Comparator.<Map<?,?>,BigDecimal>comparing(r->number(r.get("stat_cost"))).reversed()
           .thenComparing(r->Objects.toString(r.get("promotion_id"),"")));
-      StringBuilder text=new StringBuilder("【任务 TOP5】\n任务：").append(clip(task,80))
-          .append("\n统计日期：").append(snapshot.get("date"))
-          .append("\n快照时间：").append(java.time.Instant.parse(snapshot.get("updatedAt").toString()).atZone(ReportService.BEIJING).format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")))
-          .append("（北京时间）\n范围：已采集消耗前400条，任务内按总消耗降序\n匹配计划：").append(selected.size()).append(" 条\n");
-      if(selected.isEmpty())text.append("\n当前采集范围内无匹配计划（不代表全平台无数据）\n");
+      StringBuilder text=new StringBuilder("【").append(clip(task,80)).append(" TOP5】");
+      if(selected.isEmpty())text.append("\n当前采集范围内无匹配计划");
       int index=0;
       for(var row:selected.stream().limit(5).toList()){
         var metrics=metrics(row,number(rule.get("price")));
-        text.append("\n").append(++index).append(". ").append(clip(row.get("promotion_name"),80))
-            .append("\n计划 ID：").append(clip(row.get("promotion_id"),40))
-            .append("\n账户：").append(clip(row.get("media_account_name"),80)).append("\n账户 ID：").append(clip(row.get("media_account_id"),40))
-            .append("\n总消耗：").append(money(number(row.get("stat_cost")))).append(" | 现金消耗：").append(metrics.get("cash"))
-            .append("\n注册数：").append(number(row.get("active_register")).stripTrailingZeros().toPlainString()).append(" | 转化数：").append(number(row.get("convert_cnt")).stripTrailingZeros().toPlainString())
-            .append("\n佣金：").append(metrics.get("commission")).append(" | 规则赠款：").append(metrics.get("grant"))
-            .append("\n当前出价：").append(money(number(row.get("cpa_bid")))).append(" | 盈亏线出价：").append(metrics.get("line"))
-            .append("\nROI：").append(metrics.get("roi")).append(" | 出价利润率：").append(metrics.get("rate")).append("\n");
+        text.append("\n").append(++index).append(". 消耗 ").append(money(number(row.get("stat_cost"))))
+            .append(" | 回传 ").append(metrics.get("ratio"))
+            .append(" | 出价 ").append(money(number(row.get("cpa_bid"))))
+            .append(" | 出价利润 ").append(metrics.get("rate"));
       }
-      text.append("\n金额单位：元；赠款按配置规则估算。任务关键词冲突的计划不计入排名。");
       result.add(Map.of("task",task,"text",text.toString()));
     }
     return result;

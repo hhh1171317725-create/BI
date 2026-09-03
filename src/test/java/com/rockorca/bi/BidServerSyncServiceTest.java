@@ -97,6 +97,39 @@ class BidServerSyncServiceTest {
     when(upstream.page(anyMap())).thenAnswer(call->{service.prepareQuery(7,input());return Map.of("rows",List.of());});
     assertThrows(IllegalArgumentException.class,()->service.queryPage(7,Map.of("queryRevision",prepared.get("queryRevision"))));
   }
+  @Test void currentQueryPersistsOptimizerForReloadAndRobot()throws Exception{
+    var prepared=service.prepareQuery(7,input());
+    var mapper=new tools.jackson.databind.ObjectMapper();var persisted=new java.util.concurrent.atomic.AtomicReference<String>();
+    doAnswer(call->{assertEquals(7L,(long)call.getArgument(1));persisted.set(mapper.writeValueAsString(call.getArgument(2)));return null;})
+        .when(snapshots).write(any(),eq(7L),anyMap());
+    when(snapshots.readOwned(7)).thenAnswer(call->mapper.readValue(persisted.get(),new tools.jackson.core.type.TypeReference<Map<String,Object>>(){}));
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",rows(0,1)));
+    var result=service.querySnapshot(7,Map.of("queryRevision",prepared.get("queryRevision")));
+    assertEquals("7",result.get("userId"));assertEquals(mapper.writeValueAsString(result.get("snapshot")),mapper.writeValueAsString(snapshots.readOwned(7)));
+    assertTrue(persisted.get().contains("optimizer-A"));assertFalse(persisted.get().contains("must-drop"));
+    assertEquals(((Map<?,?>)result.get("snapshot")).get("updatedAt"),service.status(7).get("lastSuccess"));
+    assertTrue(((Number)store.get(7).get("dueAt")).longValue()>System.currentTimeMillis()+590000);
+    var pricing=service.savePricing(7,Map.of("revision","","rules",List.of(Map.of("name","task","keyword","account","price","10"))));
+    var robot=mock(DingtalkRobotClient.class);
+    var ding=new BidDingtalkService(store,cipher,snapshots,service,robot,mapper);
+    try{
+      ding.save(7,Map.of("revision","","pricingRevision",pricing.get("revision"),"tasks",List.of("task"),"time","18:00",
+          "enabled",true,"webhook","https://oapi.dingtalk.com/robot/send?access_token=test-token-only","secret","","keyword","TOP5"));
+      var preview=ding.preview(7);assertEquals("",preview.get("warning"));
+      String text=((Map<?,?>)((List<?>)preview.get("messages")).getFirst()).get("text").toString();
+      assertTrue(text.contains("optimizer-A"));ding.send(7,false);
+      verify(robot).send(anyString(),anyString(),eq("TOP5"),eq(text));
+    }finally{ding.close();}
+  }
+  @Test void manualSnapshotNeverCommitsPartialOrRevokedResults()throws Exception{
+    var prepared=service.prepareQuery(7,input());var query=Map.<String,Object>of("queryRevision",prepared.get("queryRevision"));
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(8,query));
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",400,"rows",rows(0,1)));
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(7,query));
+    when(upstream.page(anyMap())).thenAnswer(call->{service.command(7,"stop");return Map.of("total",1,"rows",rows(0,1));});
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(7,query));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
+  }
   @Test void transientFailureKeepsCredentialsAndRetriesInTenMinutes()throws Exception{
     service.start(7,input());
     when(upstream.page(anyMap())).thenThrow(new java.io.IOException("private-test-cookie"));
@@ -106,6 +139,14 @@ class BidServerSyncServiceTest {
     assertTrue(((Number)status.get("dueAt")).longValue()>System.currentTimeMillis()+590000);
     verify(snapshots,never()).write(any(),anyLong(),anyMap());
     service.run(7);verify(upstream,times(1)).page(anyMap());
+  }
+  @Test void currentQueryRejectsNewerSnapshotAndChangedCredentials()throws Exception{
+    var prepared=service.prepareQuery(7,input());var query=Map.<String,Object>of("queryRevision",prepared.get("queryRevision"));
+    when(upstream.page(anyMap())).thenAnswer(call->{store.update(7,(connection,state)->state.put("lastSuccess","newer"));return Map.of("total",1,"rows",rows(0,1));});
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(7,query));
+    when(upstream.page(anyMap())).thenAnswer(call->{service.prepareQuery(7,input());return Map.of("total",1,"rows",rows(0,1));});
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(7,query));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
   }
   @Test void readsAllFourPagesAndKeepsIdsAndMetrics()throws Exception{
     var pages=new ArrayList<Integer>();
@@ -207,6 +248,7 @@ class BidServerSyncServiceTest {
     verify(mockService,never()).start(anyLong(),anyMap());
     assertThrows(ResponseStatusException.class,()->controller.prepareQuery(Map.of("expectedUserId","8"),request));
     assertThrows(ResponseStatusException.class,()->controller.page(Map.of("expectedUserId","8"),request));
+    assertThrows(ResponseStatusException.class,()->controller.querySnapshot(Map.of("expectedUserId","8"),request));
     verify(mockService,never()).prepareQuery(anyLong(),anyMap());verify(mockService,never()).queryPage(anyLong(),anyMap());
     controller.prepareQuery(Map.of("expectedUserId","7"),request);verify(mockService).prepareQuery(eq(7L),anyMap());
     controller.page(Map.of("expectedUserId","7"),request);verify(mockService).queryPage(eq(7L),anyMap());

@@ -48,6 +48,16 @@ $('#fetch').onclick=async()=>{
     const selected=dates(),payload={startDate:selected.start,endDate:selected.end,createdStart:$('#createdStart').value,createdEnd:$('#createdEnd').value};
     const prepared=await syncPrepareQuery(abort.signal);
     payload.expectedUserId=prepared.userId;payload.queryRevision=prepared.queryRevision;
+    const current=today(),start=new Date(current+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-3);
+    const live=selected.start===current&&selected.end===current&&payload.createdStart===start.toISOString().slice(0,10)&&payload.createdEnd===current;
+    if(live){
+      message('正在读取并保存消耗前 400 条，完成后列表与机器人使用同一份快照…');
+      const data=await api('/api/bid-monitor/server-sync/query-snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
+      syncIdentity(data.userId);
+      if(!data.snapshot?.updatedAt||!Array.isArray(data.snapshot.rows))throw Error('服务器未确认快照保存成功，请重新查询');
+      receive(data.snapshot.rows,'已保存同步快照 '+new Date(data.snapshot.updatedAt).toLocaleString('zh-CN'),{start:data.snapshot.date,end:data.snapshot.date},true);
+      syncStamp=data.snapshot.updatedAt;return;
+    }
     let all=[],total=null;const ids=new Set();
     for(let p=1;p<=4;p++){
       message(`正在读取第 ${p} 页，已读取 ${all.length}${total===null?'':' / '+Math.min(400,total)} 条`);
@@ -60,8 +70,6 @@ $('#fetch').onclick=async()=>{
       all.push(...data.rows);if(all.length>=Math.min(400,total))break;
     }
     if(all.length!==Math.min(400,total))throw Error('消耗前 400 条读取不完整，保留原有结果');
-    const current=today(),start=new Date(current+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-3);
-    const live=selected.start===current&&selected.end===current&&payload.createdStart===start.toISOString().slice(0,10)&&payload.createdEnd===current;
     receive(all,'创量查询 · 消耗降序前 400 条 '+new Date().toLocaleTimeString('zh-CN')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
   }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);}finally{setBusy(false);}
 };

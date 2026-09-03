@@ -141,6 +141,36 @@ public class BidServerSyncService {
       throw new IllegalArgumentException("查询期间凭据已变更或清除，请重新查询");
   }
 
+  Map<String,Object> querySnapshot(long owner,Map<String,Object> input)throws Exception{
+    var state=store.get(owner);String revision=text(input,"queryRevision"),token=text(state,"token");
+    requireQueryRevision(state,revision);
+    if(!allowed(owner))throw new IllegalStateException("permission");
+    if(!current(state,token))throw new IllegalArgumentException("同步已停止，请重新启用查询");
+    String cookie;
+    try{cookie=cipher.decrypt(owner,text(state,"credential"));}
+    catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
+    var snapshot=collect(state,cookie,(done,total)->{
+      var latest=store.get(owner);requireQueryRevision(latest,revision);
+      if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+        throw new IllegalArgumentException("同步状态已变更，请重新查询");
+    });
+    snapshots.initialize();
+    var saved=new LinkedHashMap<String,Object>();
+    store.update(owner,(connection,latest)->{
+      requireQueryRevision(latest,revision);
+      if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+        throw new IllegalArgumentException("同步状态已变更，请重新查询");
+      var validated=BidSnapshotController.validate(snapshot);
+      snapshots.write(connection,owner,validated);
+      saved.putAll(validated);
+      // Retire overlapping queries/workers before publishing this complete snapshot.
+      latest.put("token",UUID.randomUUID().toString());latest.put("lastSuccess",validated.get("updatedAt"));
+      latest.put("state","ready");latest.put("error","");latest.put("progress","");
+      latest.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
+    });
+    return Map.of("userId",Long.toString(owner),"snapshot",saved);
+  }
+
   Map<String,Object> command(long owner,String action) throws Exception {
     var saved=store.update(owner,(connection,state)->{
       if(action.equals("run")) {

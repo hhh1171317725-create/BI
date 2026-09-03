@@ -121,7 +121,7 @@ public class BidDingtalkService {
     var state=store.get(owner);var messages=prepare(owner,state);
     boolean missing=messages.stream().anyMatch(m->Boolean.parseBoolean(m.get("missingOptimizer")));
     return Map.of("userId",Long.toString(owner),"messages",messages,"warning",missing?
-        "预览中有计划缺少优化师。请点击服务器定时查询的立即同步，等待同步成功后重新预览；普通列表查询不会立即更新推送快照。":"");
+        "预览中有计划缺少优化师。请查询当天数据或点击立即同步，等待快照保存成功后重新预览；历史日期查询不会覆盖当天推送快照。":"");
   }
   private void checkCurrent(long owner,String token,String pricingRevision)throws Exception{
     var state=store.get(owner);

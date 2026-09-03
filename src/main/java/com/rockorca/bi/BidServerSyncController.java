@@ -35,6 +35,9 @@ public class BidServerSyncController {
   @PostMapping("/page") public Map<String,Object> page(@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
     return service.queryPage(owner(request,input),input);
   }
+  @PostMapping("/query-snapshot") public Map<String,Object> querySnapshot(@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
+    return service.querySnapshot(owner(request,input),input);
+  }
   @PostMapping("/{action:run|stop|forget}") public Map<String,Object> command(@PathVariable String action,@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
     return service.command(owner(request,input),action);
   }

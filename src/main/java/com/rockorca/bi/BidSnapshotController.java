@@ -126,9 +126,10 @@ public class BidSnapshotController {
     Map<String, Object> snapshot = new LinkedHashMap<>(Map.of("date", date, "rows", clean, "updatedAt", Instant.now().toString()));
     if (input.containsKey("selection")) {
       boolean all="created_window_all".equals(input.get("selection"));
-      if (!all&&!"spend_desc_top_200".equals(input.get("selection"))) throw new IllegalArgumentException("采集范围无效");
+      boolean top400="spend_desc_top_400".equals(input.get("selection"));
+      if (!all&&!top400&&!"spend_desc_top_200".equals(input.get("selection"))) throw new IllegalArgumentException("采集范围无效");
       long total=Long.parseLong(String.valueOf(input.get("upstreamTotal")));
-      if (total<0 || rows.size()!=(all?total:Math.min(200L,total))) throw new IllegalArgumentException("计划数据不完整");
+      if (total<0 || rows.size()!=(all?total:Math.min(top400?400L:200L,total))) throw new IllegalArgumentException("计划数据不完整");
       snapshot.put("selection", input.get("selection"));snapshot.put("upstreamTotal",total);
     }
     if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {

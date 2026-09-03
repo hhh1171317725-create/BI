@@ -191,13 +191,13 @@ public class BidServerSyncService {
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
     var rows=new ArrayList<Map<String,Object>>();long total=-1;var ids=new HashSet<String>();
-    for(int page=1;page<=10000;page++) {
-      progress.update(rows.size(),total);
+    for(int page=1;page<=4;page++) {
+      progress.update(rows.size(),total<0?-1:Math.min(400,total));
       input.put("page",page);
       if(total>=0)input.put("total",total);
       var result=upstream.page(input);
       long count=Long.parseLong(String.valueOf(result.get("total")));
-      if(count<0||count>1000000||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
+      if(count<0||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
       total=count;
       if(!(result.get("rows") instanceof List<?> batch)||batch.size()!=Math.min(100,Math.max(0,total-(page-1)*100L)))
         throw new IllegalArgumentException("incomplete");
@@ -215,10 +215,10 @@ public class BidServerSyncService {
         if(!ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))throw new IllegalArgumentException("incomplete");
         rows.add(row);
       }
-      progress.update(rows.size(),total);
-      if(rows.size()>=total)break;
+      progress.update(rows.size(),Math.min(400,total));
+      if(rows.size()>=Math.min(400,total))break;
     }
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
+    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","spend_desc_top_400",
         "upstreamTotal",total,"createdStart",start,"createdEnd",today.toString()));
   }
 

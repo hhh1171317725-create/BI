@@ -67,7 +67,7 @@ class BidServerSyncServiceTest {
     when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);if(page>1)assertEquals(350L,request.get("total"));return Map.of("total",350,"rows",rows((page-1)*100,page==4?50:100));});
     var snapshot=service.collect(input(),input().get("cookie").toString());
     assertEquals(List.of(1,2,3,4),pages);assertEquals(350,((List<?>)snapshot.get("rows")).size());
-    assertEquals("created_window_all",snapshot.get("selection"));
+    assertEquals("spend_desc_top_400",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
   }
@@ -75,6 +75,17 @@ class BidServerSyncServiceTest {
     assertEquals(java.time.LocalDate.parse("2026-09-01"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-04")));
     assertEquals(java.time.LocalDate.parse("2026-08-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-01")));
     assertEquals(java.time.LocalDate.parse("2025-12-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-01-01")));
+  }
+  @Test void largeTotalStopsAtFourPagesAndProgressTargetsFourHundred()throws Exception{
+    var pages=new ArrayList<Integer>();var progress=new ArrayList<Long>();
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int p=(Integer)((Map<?,?>)call.getArgument(0)).get("page");pages.add(p);
+      return Map.of("total",335367,"rows",rows((p-1)*100,100));
+    });
+    var snapshot=service.collect(input(),"cookie",(done,total)->progress.add(total));
+    assertEquals(List.of(1,2,3,4),pages);assertEquals(400,((List<?>)snapshot.get("rows")).size());
+    assertEquals(335367L,snapshot.get("upstreamTotal"));assertEquals("spend_desc_top_400",snapshot.get("selection"));
+    assertEquals(400L,progress.getLast());
   }
   @Test void pricingIsOwnerScopedAndDoesNotChangeRunningJobToken()throws Exception{
     service.start(7,input());String token=store.get(7).get("token").toString();

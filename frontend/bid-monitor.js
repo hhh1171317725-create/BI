@@ -53,18 +53,18 @@ $('#fetch').onclick=async()=>{
     const selected=dates(),payload={startDate:selected.start,endDate:selected.end,cookie:$('#cookie').value.trim(),clientUser:$('#clientUser').value.trim(),mainUserId:$('#mainUserId').value.trim(),createdStart:$('#createdStart').value,createdEnd:$('#createdEnd').value};
     if(!payload.cookie)throw Error('请填写 Cookie；服务器同步可使用已保存凭据');
     let all=[],total=null;const ids=new Set();
-    for(let p=1;p<=10000;p++){
-      message(`正在读取第 ${p} 页，已读取 ${all.length}${total===null?'':' / '+total} 条`);
+    for(let p=1;p<=4;p++){
+      message(`正在读取第 ${p} 页，已读取 ${all.length}${total===null?'':' / '+Math.min(400,total)} 条`);
       const data=await api('/api/bid-monitor/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,page:p,total}),signal:abort.signal});
       const n=Number(data.total);
-      if(data.total==null||!Number.isSafeInteger(n)||n<0||n>1000000)throw Error('接口总条数异常或超出安全范围，未截断结果');
+      if(data.total==null||!Number.isSafeInteger(n)||n<0)throw Error('接口总条数异常');
       if(total!==null&&total!==n)throw Error('分页期间计划总数变化，请重试');total=n;
-      if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,total-all.length)))throw Error('分页数据不完整，保留原有结果');
+      if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,Math.min(400,total)-all.length)))throw Error('分页数据不完整，保留原有结果');
       for(const row of data.rows){const r=B.normalize(row),id=`${r.accountId}:${r.id}`;if(!r.id||ids.has(id))throw Error('分页出现缺失或重复计划，保留原有结果');ids.add(id);}
-      all.push(...data.rows);if(all.length>=total)break;
+      all.push(...data.rows);if(all.length>=Math.min(400,total))break;
     }
-    if(all.length!==total)throw Error('尚未读取全部计划，保留原有结果');
-    receive(all,'创量全量查询 '+new Date().toLocaleTimeString('zh-CN')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected);
+    if(all.length!==Math.min(400,total))throw Error('消耗前 400 条读取不完整，保留原有结果');
+    receive(all,'创量查询 · 消耗降序前 400 条 '+new Date().toLocaleTimeString('zh-CN')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected);
   }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);}finally{setBusy(false);}
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();

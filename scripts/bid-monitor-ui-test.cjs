@@ -29,7 +29,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    await route.fulfill({json:syncStatus});
   });
   const queriedPages=[];
-  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:350,rows:Array.from({length:p===4?50:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
+  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html`);await page.locator('body.ready').waitFor();
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.waitForFunction(()=>!document.querySelector('#pricingFields').disabled);
   for(const [name,keyword,price] of [['任务A','客户-A','21.5'],['任务B','客户-B','30']]){
@@ -62,8 +62,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#syncLoad').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='2 条');
   assert.match(await page.locator('#source').textContent(),/2026-09-03/);
   await page.locator('#cookie').fill('test-session');await page.locator('#fetch').click();
-  await page.waitForFunction(()=>document.querySelector('#count').textContent==='350 条');assert.deepEqual(queriedPages,[1,2,3,4]);
-  assert.match(await page.locator('#source').textContent(),/全量查询/);
-  assert.deepEqual(errors,[]);console.log('UI PASS: import, formulas, search, pagination, export, mobile width, full pagination, per-task prices, projected profit/ROI, sync start/stop/load, no script errors');
+  await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');assert.deepEqual(queriedPages,[1,2,3,4]);
+  assert.match(await page.locator('#source').textContent(),/消耗降序前 400 条/);
+  assert.deepEqual(errors,[]);console.log('UI PASS: import, formulas, search, pagination, export, mobile width, top-400 pagination, per-task prices, projected profit/ROI, sync start/stop/load, no script errors');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

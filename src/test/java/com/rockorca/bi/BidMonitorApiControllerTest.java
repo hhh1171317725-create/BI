@@ -16,7 +16,7 @@ class BidMonitorApiControllerTest {
     assertTrue(BidMonitorApiController.requestId().matches("[0-9]{14}[0-9a-f]{32}ff"));
   }
   @Test void rejectsUnsafePageBeforeNetwork() {
-    assertThrows(IllegalArgumentException.class,()->controller.page(Map.of("startDate","2026-09-03","endDate","2026-09-03","page",10001)));
+    assertThrows(IllegalArgumentException.class,()->controller.page(Map.of("startDate","2026-09-03","endDate","2026-09-03","page",5)));
   }
 
   @Test void readsTotalFromActualPageInfo() {

@@ -39,7 +39,7 @@ async function dingAction(action){
   try{
     const data=await api('/api/bid-monitor/dingtalk'+(action==='save'?'':'/'+action),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(action==='send'?240000:20000)});
     if(data.userId!==dingOwner){location.reload();throw Error('网站账户已切换');}
-    if(action==='preview'){$('#dingPreview').textContent=data.messages.map(m=>m.text).join('\n\n--------------------\n\n');$('#dingPreview').hidden=false;dingStatus('预览已生成，尚未发送到群');}
+    if(action==='preview'){$('#dingPreview').textContent=data.messages.map(m=>m.text).join('\n\n--------------------\n\n');$('#dingPreview').hidden=false;dingStatus(data.warning||'预览已生成，尚未发送到群',Boolean(data.warning));}
     else{dingShow(data,action==='save'||action==='forget');$('#dingPreview').hidden=true;}
   }catch(error){dingStatus(action==='send'?'发送未完成或结果未确认，请先检查群消息。'+error.message:error.message,true);}
   finally{dingBusy=false;$('#dingFields').disabled=false;}

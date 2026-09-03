@@ -51,6 +51,10 @@ class BidDingtalkServiceTest {
   @Test void previewUsesOwnedSnapshotWithoutSending()throws Exception{
     service.save(7,input());var preview=service.preview(7);
     assertEquals(2,((List<?>)preview.get("messages")).size());verifyNoInteractions(robot);
+    assertTrue(preview.get("warning").toString().contains("缺少优化师"));
+    var updated=new LinkedHashMap<>(snapshot());var plan=row("1","account-A",150);plan.put("user_name","optimizer-A");updated.put("rows",List.of(plan));
+    when(snapshots.readOwned(7)).thenReturn(updated);
+    assertEquals("",service.preview(7).get("warning"));
     assertThrows(IllegalArgumentException.class,()->service.preview(8));verify(snapshots,never()).readOwned(8);
   }
   @Test void dailyClaimSurvivesRestartAndDoesNotDuplicate()throws Exception{

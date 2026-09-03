@@ -3,6 +3,13 @@ const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
+test('retains optimizer from upstream, snapshots and Excel without inventing missing names',()=>{
+ assert.equal(normalize({user_name:'张三'}).optimizer,'张三');
+ assert.equal(normalize({'优化师':'李四'}).optimizer,'李四');
+ assert.equal(normalize({}).optimizer,'');
+ const r=normalize({promotion_id:'7681075475582042163',media_account_id:'7676449794404745237',user_name:'张三'});
+ assert.equal(r.id,'7681075475582042163');assert.equal(r.accountId,'7676449794404745237');
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

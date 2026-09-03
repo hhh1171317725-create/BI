@@ -48,8 +48,11 @@ public class BidServerSyncStore {
         }
         var state=read(connection,owner,true);
         action.apply(connection,state);
+        String payload=mapper.writeValueAsString(state);
+        if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>60000)
+          throw new IllegalArgumentException("配置内容过大，请缩短任务名称或账户关键词");
         try (var statement=connection.prepareStatement("UPDATE bid_monitor_server_sync SET payload=?,due_at=? WHERE user_id=?")) {
-          statement.setString(1,mapper.writeValueAsString(state));
+          statement.setString(1,payload);
           statement.setLong(2,((Number)state.getOrDefault("dueAt",0L)).longValue());
           statement.setLong(3,owner);statement.executeUpdate();
         }

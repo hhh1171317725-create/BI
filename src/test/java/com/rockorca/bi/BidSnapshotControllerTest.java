@@ -47,6 +47,13 @@ class BidSnapshotControllerTest {
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(bad))));
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(Map.of("date","2000-01-01","rows",List.of(row()))));
   }
+  @Test void allSelectionRequiresEveryRowBeyondTwoHundred(){
+    var rows=new ArrayList<Map<String,Object>>();
+    for(int i=0;i<250;i++){var r=row();r.put("promotion_id",String.valueOf(i));rows.add(r);}
+    var data=new HashMap<>(input(rows));data.put("selection","created_window_all");data.put("upstreamTotal",250);
+    assertEquals(250,((List<?>)BidSnapshotController.validate(data).get("rows")).size());
+    rows.removeLast();assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
+  }
   @Test void rejectsSwitchedWebsiteUserBeforeDatabaseWrite() {
     var sessions=mock(SessionService.class);var reports=mock(ReportRepository.class);
     var request=new MockHttpServletRequest();

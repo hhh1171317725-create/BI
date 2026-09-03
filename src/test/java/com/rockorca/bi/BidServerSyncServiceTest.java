@@ -62,13 +62,41 @@ class BidServerSyncServiceTest {
     Files.delete(dir.resolve("bid-monitor.key"));
     assertThrows(Exception.class,()->cipher.decrypt(7,first));assertFalse(Files.exists(dir.resolve("bid-monitor.key")));
   }
-  @Test void readsExactlyTwoPagesAndKeepsIdsAndMetrics()throws Exception{
+  @Test void readsAllFourPagesAndKeepsIdsAndMetrics()throws Exception{
     var pages=new ArrayList<Integer>();
-    when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);return Map.of("total",335367,"rows",rows((page-1)*100,100));});
+    when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);if(page>1)assertEquals(350L,request.get("total"));return Map.of("total",350,"rows",rows((page-1)*100,page==4?50:100));});
     var snapshot=service.collect(input(),input().get("cookie").toString());
-    assertEquals(List.of(1,2),pages);assertEquals(200,((List<?>)snapshot.get("rows")).size());
+    assertEquals(List.of(1,2,3,4),pages);assertEquals(350,((List<?>)snapshot.get("rows")).size());
+    assertEquals("created_window_all",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
+  }
+  @Test void creationWindowIncludesTodayAndThreePriorDates(){
+    assertEquals(java.time.LocalDate.parse("2026-09-01"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-04")));
+    assertEquals(java.time.LocalDate.parse("2026-08-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-01")));
+    assertEquals(java.time.LocalDate.parse("2025-12-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-01-01")));
+  }
+  @Test void pricingIsOwnerScopedAndDoesNotChangeRunningJobToken()throws Exception{
+    service.start(7,input());String token=store.get(7).get("token").toString();
+    var rules=List.of(Map.of("name","taskA","keyword","account-A","price","21.5"));
+    var result=service.savePricing(7,Map.of("revision","","rules",rules));
+    assertEquals(rules,result.get("rules"));assertEquals(List.of(),service.pricing(8).get("rules"));
+    assertEquals(token,store.get(7).get("token"));assertFalse(result.containsKey("credential"));
+    assertThrows(ResponseStatusException.class,()->service.savePricing(7,Map.of("revision","","rules",List.of())));
+    assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(rules.getFirst(),rules.getFirst())));
+    assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","","price",1))));
+    assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",0))));
+  }
+  @Test void renewsLeaseDuringLongCollectionAndCanStopBeforeNextPage()throws Exception{
+    service.start(7,input());var pages=new ArrayList<Integer>();
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int p=(Integer)((Map<?,?>)call.getArgument(0)).get("page");pages.add(p);
+      assertTrue(((Number)store.get(7).get("dueAt")).longValue()>System.currentTimeMillis()+170000);
+      if(p==2)service.command(7,"stop");
+      return Map.of("total",350,"rows",rows((p-1)*100,100));
+    });
+    service.run(7);assertEquals(List.of(1,2),pages);verify(snapshots,never()).write(any(),anyLong(),anyMap());
+    assertEquals("stopped",service.status(7).get("state"));
   }
   @Test void smallDatasetNeedsOnePageAndIncompleteDataNeverPasses()throws Exception{
     when(upstream.page(anyMap())).thenReturn(Map.of("total",42,"rows",rows(0,42)));

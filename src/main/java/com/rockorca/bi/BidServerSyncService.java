@@ -27,19 +27,55 @@ public class BidServerSyncService {
 
   Map<String,Object> status(long owner) throws Exception { return view(owner,store.get(owner)); }
 
+  Map<String,Object> pricing(long owner)throws Exception{return pricingView(owner,store.get(owner));}
+
+  private static Map<String,Object> pricingView(long owner,Map<String,Object> state){
+    return Map.of("userId",Long.toString(owner),"rules",state.getOrDefault("taskRules",List.of()),
+        "revision",state.getOrDefault("pricingRevision",""));
+  }
+
+  Map<String,Object> savePricing(long owner,Map<String,Object> input)throws Exception{
+    var rules=validateRules(input.get("rules"));
+    return pricingView(owner,store.update(owner,(connection,state)->{
+      if(!text(input,"revision").equals(text(state,"pricingRevision")))
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"任务价格已在其他页面修改，请重新读取");
+      state.put("taskRules",rules);state.put("pricingRevision",UUID.randomUUID().toString());
+    }));
+  }
+
+  static List<Map<String,Object>> validateRules(Object input){
+    if(!(input instanceof List<?> list)||list.size()>50)throw new IllegalArgumentException("最多配置 50 个任务");
+    var result=new ArrayList<Map<String,Object>>();var names=new HashSet<String>();var keywords=new HashSet<String>();
+    for(Object item:list){
+      if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("任务格式无效");
+      String name=Objects.toString(raw.get("name"),"").trim(),keyword=Objects.toString(raw.get("keyword"),"").trim();
+      if(name.isBlank()||name.length()>80||keyword.isBlank()||keyword.length()>80||
+          !names.add(name.toLowerCase(Locale.ROOT))||!keywords.add(keyword.toLowerCase(Locale.ROOT)))
+        throw new IllegalArgumentException("任务名及账户关键词须为 1 至 80 字，且不能重复");
+      java.math.BigDecimal price;
+      try{price=new java.math.BigDecimal(Objects.toString(raw.get("price"),""));}
+      catch(NumberFormatException error){throw new IllegalArgumentException("请填写有效结算单价");}
+      if(price.signum()<=0||price.compareTo(new java.math.BigDecimal("1000000"))>0||price.scale()>6)
+        throw new IllegalArgumentException("结算单价须大于 0、不超过 1000000，最多 6 位小数");
+      result.add(Map.of("name",name,"keyword",keyword,"price",price.toPlainString()));
+    }
+    return result;
+  }
+
   static Map<String,Object> view(long owner,Map<String,Object> state) {
     var output=new LinkedHashMap<String,Object>();
     output.put("userId",Long.toString(owner));
     output.put("configured",state.containsKey("credential"));
     output.put("enabled",Boolean.TRUE.equals(state.get("enabled")));
-    for (String key:List.of("clientUser","mainUserId","minutes","createdDays","state","error","lastSuccess","dueAt"))
+    for (String key:List.of("clientUser","mainUserId","minutes","state","error","lastSuccess","dueAt","progress"))
       if (state.containsKey(key)) output.put(key,state.get(key));
+    output.put("createdDays",4);
     return output;
   }
 
   Map<String,Object> start(long owner,Map<String,Object> input) throws Exception {
     int minutes=option(input,"minutes",Set.of(5,10,15,30,60));
-    int days=option(input,"createdDays",Set.of(7,14,30,90));
+    int days=4;
     String user=text(input,"clientUser"),main=text(input,"mainUserId");
     if (!user.matches("[0-9]{1,30}")||!main.matches("[0-9]{1,30}")) throw new IllegalArgumentException("请填写有效的 client-user 和 main-user-id");
     String cookie=BidMonitorApiController.normalizeCookie(text(input,"cookie"));
@@ -78,7 +114,7 @@ public class BidServerSyncService {
 
   private static void queue(Map<String,Object> state) {
     state.put("token",UUID.randomUUID().toString());state.put("enabled",true);
-    state.put("dueAt",System.currentTimeMillis());state.put("state","waiting");state.put("error","");
+    state.put("dueAt",System.currentTimeMillis());state.put("state","waiting");state.put("error","");state.put("progress","");
   }
 
   boolean allowed(long owner) {
@@ -110,7 +146,12 @@ public class BidServerSyncService {
       if(!token.equals(state.get("token")))return;
       if(!allowed(owner))throw new IllegalStateException("permission");
       String cookie=cipher.decrypt(owner,text(state,"credential"));
-      var snapshot=collect(state,cookie);
+      var snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,current)->{
+        if(!current(current,token))throw new CancellationException();
+        if(!allowed(owner))throw new IllegalStateException("permission");
+        current.put("dueAt",System.currentTimeMillis()+180000L);
+        current.put("progress","已读取 "+done+(total<0?"":" / "+total)+" 条");
+      }));
       snapshots.initialize();
       store.update(owner,(connection,current)->{
         if(!current(current,token))return;
@@ -137,17 +178,26 @@ public class BidServerSyncService {
   }
 
   Map<String,Object> collect(Map<String,Object> state,String cookie) throws Exception {
+    return collect(state,cookie,(done,total)->{});
+  }
+
+  @FunctionalInterface interface Progress { void update(int done,long total)throws Exception; }
+  static LocalDate creationStart(LocalDate today){return today.minusDays(3);}
+
+  Map<String,Object> collect(Map<String,Object> state,String cookie,Progress progress) throws Exception {
     LocalDate today=LocalDate.now(ReportService.BEIJING);
-    String start=today.minusDays(((Number)state.get("createdDays")).intValue()-1L).toString();
+    String start=creationStart(today).toString();
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
-    var rows=new ArrayList<Map<String,Object>>();long total=-1;
-    for(int page=1;page<=2;page++) {
+    var rows=new ArrayList<Map<String,Object>>();long total=-1;var ids=new HashSet<String>();
+    for(int page=1;page<=10000;page++) {
+      progress.update(rows.size(),total);
       input.put("page",page);
+      if(total>=0)input.put("total",total);
       var result=upstream.page(input);
       long count=Long.parseLong(String.valueOf(result.get("total")));
-      if(count<0||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
+      if(count<0||count>1000000||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
       total=count;
       if(!(result.get("rows") instanceof List<?> batch)||batch.size()!=Math.min(100,Math.max(0,total-(page-1)*100L)))
         throw new IllegalArgumentException("incomplete");
@@ -162,11 +212,13 @@ public class BidServerSyncService {
         }
         Object name=raw.get("media_account_name");
         row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);
+        if(!ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))throw new IllegalArgumentException("incomplete");
         rows.add(row);
       }
-      if(rows.size()>=Math.min(200,total))break;
+      progress.update(rows.size(),total);
+      if(rows.size()>=total)break;
     }
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","spend_desc_top_200",
+    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
         "upstreamTotal",total,"createdStart",start,"createdEnd",today.toString()));
   }
 

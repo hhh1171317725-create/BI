@@ -16,20 +16,35 @@ public class BidSnapshotController {
   private final SessionService sessions;
   private final ReportRepository reports;
   private final ObjectMapper mapper;
+  private final BidServerSyncStore serverSync;
   private volatile boolean initialized;
   private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
       "media_account_id", "media_account_name", "stat_cost", "convert_cnt", "active_register", "cpa_bid");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
-    this.sessions = sessions; this.reports = reports; this.mapper = mapper;
+    this(sessions,reports,mapper,null);
   }
 
-  private synchronized void initialize() throws Exception {
+  @org.springframework.beans.factory.annotation.Autowired
+  public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper, BidServerSyncStore serverSync) {
+    this.sessions = sessions; this.reports = reports; this.mapper = mapper; this.serverSync=serverSync;
+  }
+
+  synchronized void initialize() throws Exception {
     if (initialized) return;
     try (var connection = reports.openConnection(); var statement = connection.createStatement()) {
       statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_snapshots (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload MEDIUMTEXT NOT NULL) ENGINE=InnoDB");
     }
     initialized = true;
+  }
+
+  void write(java.sql.Connection connection, long owner, Map<String, Object> snapshot) throws Exception {
+    String payload = mapper.writeValueAsString(snapshot);
+    if (payload.length() > 4_000_000) throw new IllegalArgumentException("数据过大，最多 4 MB 字符");
+    try (var statement = connection.prepareStatement(
+        "INSERT INTO bid_monitor_snapshots(user_id,payload) VALUES (?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload)")) {
+      statement.setLong(1, owner); statement.setString(2, payload); statement.executeUpdate();
+    }
   }
 
   private long user(HttpServletRequest request) {
@@ -66,9 +81,14 @@ public class BidSnapshotController {
     String payload = mapper.writeValueAsString(snapshot);
     if (payload.length() > 4_000_000) throw new IllegalArgumentException("数据过大，最多 4 MB 字符");
     initialize();
-    try (var connection = reports.openConnection(); var statement = connection.prepareStatement(
-        "INSERT INTO bid_monitor_snapshots(user_id,payload) VALUES (?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload)")) {
-      statement.setLong(1, owner); statement.setString(2, payload); statement.executeUpdate();
+    if(serverSync!=null){
+      serverSync.update(owner,(connection,state)->{
+        if(Boolean.TRUE.equals(state.get("enabled")))
+          throw new ResponseStatusException(HttpStatus.CONFLICT,"服务器同步已启用，请停止旧插件同步");
+        write(connection,owner,snapshot);
+      });
+    }else{
+      try(var connection=reports.openConnection()){write(connection,owner,snapshot);}
     }
     return Map.of("updatedAt", snapshot.get("updatedAt"), "count", ((List<?>)snapshot.get("rows")).size());
   }

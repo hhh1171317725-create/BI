@@ -20,10 +20,17 @@ async function bidWebsiteRequest(origin, path, payload) {
     return {data:await response.json()};
   } catch { return {error:'网站接口无法访问，请检查部署和网络'}; }
 }
+function bidChuangliangIdentity() {
+  if (location.origin!=='https://cl.mobgi.com') return {error:'请打开已登录的创量页面'};
+  const user=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('userId='))?.slice(7);
+  if (!user || !/^\d{1,30}$/.test(user)) return {error:'无法从创量页面读取 userId，不能据此判断登录失效。请确认创量页面能正常查询，再刷新创量页面重试'};
+  return {data:{clientUser:user}};
+}
 async function bidChuangliangPage(body, clientUser, mainUserId) {
   if (location.origin!=='https://cl.mobgi.com') return {error:'创量页面已关闭或切换'};
   const currentUser=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('userId='))?.slice(7);
-  if (currentUser!==clientUser) return {error:'创量用户与 client-user 不一致或登录已失效，请核对后重新启用'};
+  if (!currentUser) return {error:'创量页面没有可读取的 userId，尚未发出查询请求。请确认创量页面正常登录并刷新后重试'};
+  if (currentUser!==clientUser) return {error:`当前创量用户为 ${currentUser}，但 client-user 填写为 ${clientUser}。请点击“读取当前创量用户”，核对 main-user-id 后重新启用`};
   try {
     const response=await fetch('https://cli1.mobgi.com/Toutiao/Promotion/getList', {
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json;charset=UTF-8',
@@ -36,7 +43,14 @@ async function bidChuangliangPage(body, clientUser, mainUserId) {
   } catch { return {error:'创量浏览器请求失败，可能是网络、跨域限制或登录验证，请先确认创量页面可正常查询'}; }
 }
 async function bidExecute(tabId,func,args) {
-  const result=await chrome.scripting.executeScript({target:{tabId},world:'MAIN',func,args});
+  let timer;
+  let result;
+  try {
+    result=await Promise.race([
+      chrome.scripting.executeScript({target:{tabId},world:'MAIN',func,args}),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('页面超过 25 秒没有响应，请打开对应标签页，确认未休眠、未出现登录验证后重试')),25000);})
+    ]);
+  } finally { clearTimeout(timer); }
   const value=result[0]?.result;
   if (!value || value.error) throw Error(value?.error || '浏览器未返回结果');
   return value.data;
@@ -45,13 +59,18 @@ async function bidLive(config) {
   const current=await bidRead();
   if (!current?.enabled || current.generation!==config.generation) throw Error('同步已停止或配置已改变');
 }
+async function bidProgress(config,progress) {
+  const current=await bidRead();
+  if (!current?.enabled || current.generation!==config.generation) throw Error('同步已停止或配置已改变');
+  await bidWrite({...current,progress,heartbeat:Date.now()});
+}
 async function bidRun() {
   if (bidRunning) return;
   const config=await bidRead();
   if (!config?.enabled) return;
   bidRunning=true;
   try {
-    await bidWrite({...config,state:'running',error:'',startedAt:Date.now()});
+    await bidWrite({...config,state:'running',error:'',startedAt:Date.now(),heartbeat:Date.now(),progress:'正在检查网站登录'});
     const tabs=await chrome.tabs.query({url:config.origin+'/*'});
     const bi=tabs.find(tab=>['/bid-monitor','/bid-monitor.html'].includes(new URL(tab.url).pathname));
     if (!bi) throw Error('请保持网站出价监测页面打开，再重新启用同步');
@@ -65,6 +84,7 @@ async function bidRun() {
     for (let page=1;page<=200;page++) {
       await bidLive(config);
       if (Date.now()>deadline) throw Error('本轮采集超过 4 分钟，未覆盖旧数据，请缩小数据量或使用导出报表');
+      await bidProgress(config,`正在读取创量第 ${page} 页，已读取 ${state.rows.length}${state.total===null?'':' / '+state.total} 条`);
       const data=await bidExecute(cl.id,bidChuangliangPage,[BidSyncCore.body(day,page),config.clientUser,config.mainUserId]);
       complete=BidSyncCore.append(state,BidSyncCore.parse(data));
       if (complete) break;
@@ -72,9 +92,10 @@ async function bidRun() {
     if (!complete || !state.rows.length) throw Error('没有完整计划数据，保留上次结果');
     if (day!==BidSyncCore.date()) throw Error('采集跨日，未保存混合日期的数据，请重新启用');
     await bidLive(config);
+    await bidProgress(config,`已读取 ${state.rows.length} 条，正在保存到网站`);
     const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,rows:state.rows}]);
     await bidLive(config);
-    await bidWrite({...config,state:'ready',lastSuccess:saved.updatedAt,count:saved.count,error:''});
+    await bidWrite({...config,state:'ready',lastSuccess:saved.updatedAt,count:saved.count,error:'',progress:`本轮成功同步 ${saved.count} 条计划`,heartbeat:Date.now()});
   } catch (error) {
     const current=await bidRead();
     if (current?.generation===config.generation && current.enabled) {
@@ -104,7 +125,12 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if (!/^\d+$/.test(userId)) throw Error('网站未返回用户身份，请更新服务器');
     let config=await bidRead();
     const own=config?.origin===url.origin && config.userId===userId;
-    if (message.command==='stop') {
+    if (message.command==='detect') {
+      const tabs=await chrome.tabs.query({url:'https://cl.mobgi.com/*'});
+      if (!tabs.length) throw Error('请在同一 Chrome 用户资料中打开已登录的创量页面');
+      const tab=tabs.find(item=>item.active)||tabs[0];
+      return {version:chrome.runtime.getManifest().version,...await bidExecute(tab.id,bidChuangliangIdentity,[])};
+    } else if (message.command==='stop') {
       // Stopping a shared browser scheduler never exposes the prior user's data.
       if (config) await bidWrite({...config,enabled:false,state:'stopped',generation:crypto.randomUUID()});
       await chrome.alarms.clear(BID_ALARM);
@@ -121,8 +147,14 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     } else if (message.command!=='status') throw Error('未知操作');
     config=await bidRead();
     if (config?.origin!==url.origin || config?.userId!==userId) return {version:chrome.runtime.getManifest().version,state:'stopped',enabled:false};
+    if (message.command==='status' && config.enabled && config.state==='running' && !bidRunning) {
+      config={...config,enabled:false,state:'paused',error:'上次同步被浏览器中断，请保持页面打开后重新启用'};
+      await bidWrite(config);
+      await chrome.alarms.clear(BID_ALARM);
+    }
     return {version:chrome.runtime.getManifest().version,enabled:config.enabled,state:config.state,
-      error:config.error||'',lastSuccess:config.lastSuccess||null,count:config.count,minutes:config.minutes};
+      error:config.error||'',lastSuccess:config.lastSuccess||null,count:config.count,minutes:config.minutes,
+      progress:config.progress||'',heartbeat:config.heartbeat||null};
   })().then(reply).catch(error=>reply({error:error.message}));
   return true;
 });

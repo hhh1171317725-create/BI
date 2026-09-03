@@ -19,6 +19,29 @@ final class BidTop5Formatter {
     String text=clip(value,1000).strip();
     return text.isBlank()?"--":text;
   }
+  static int columnWidth(String text){
+    return text.codePoints().map(c->{
+      if(Character.getType(c)==Character.NON_SPACING_MARK||Character.getType(c)==Character.FORMAT)return 0;
+      var script=Character.UnicodeScript.of(c);
+      return script==Character.UnicodeScript.HAN||script==Character.UnicodeScript.HANGUL
+          ||script==Character.UnicodeScript.HIRAGANA||script==Character.UnicodeScript.KATAKANA
+          ||(c>=0xff01&&c<=0xff60)||(c>=0x1f300&&c<=0x1faff)?2:1;
+    }).sum();
+  }
+  static String alignedTable(List<List<String>> rows){
+    int[] widths=new int[rows.getFirst().size()];
+    for(var row:rows)for(int i=0;i<widths.length;i++)widths[i]=Math.max(widths[i],columnWidth(row.get(i)));
+    var lines=new ArrayList<String>();
+    for(int r=0;r<rows.size();r++){
+      var cells=new ArrayList<String>();
+      for(int i=0;i<widths.length;i++){
+        String value=rows.get(r).get(i),pad=" ".repeat(widths[i]-columnWidth(value));
+        cells.add(r>0&&i>=1&&i<=5?pad+value:value+pad);
+      }
+      lines.add(String.join(" | ",cells).stripTrailing());
+    }
+    return String.join("\n",lines);
+  }
   static Map<String,String> metrics(Map<?,?> row,BigDecimal price){
     var cost=number(row.get("stat_cost"));var conv=number(row.get("convert_cnt"));
     var reg=number(row.get("active_register"));var bid=number(row.get("cpa_bid"));
@@ -35,7 +58,8 @@ final class BidTop5Formatter {
 
   static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks){
     if(!(snapshot.get("rows") instanceof List<?> rows))throw new IllegalArgumentException("没有可推送的快照");
-    StringBuilder text=new StringBuilder("任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID");
+    var table=new ArrayList<List<String>>();
+    table.add(List.of("任务","排名","消耗","回传比例","出价","出价利润率","优化师","账户ID","计划ID"));
     boolean missingOptimizer=false;
     for(String task:tasks){
       var rule=rules.stream().filter(r->task.equals(r.get("name"))).findFirst()
@@ -49,20 +73,16 @@ final class BidTop5Formatter {
       }
       selected.sort(Comparator.<Map<?,?>,BigDecimal>comparing(r->number(r.get("stat_cost"))).reversed()
           .thenComparing(r->Objects.toString(r.get("promotion_id"),"")));
-      if(selected.isEmpty())text.append("\n").append(clip(task,80)).append(" | -- | 无匹配计划 | -- | -- | -- | -- | -- | --");
+      if(selected.isEmpty())table.add(List.of(clip(task,80),"--","无匹配计划","--","--","--","--","--","--"));
       int index=0;
       for(var row:selected.stream().limit(5).toList()){
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
-        text.append("\n").append(clip(task,80)).append(" | ").append(++index).append(" | ").append(money(number(row.get("stat_cost"))))
-            .append(" | ").append(metrics.get("ratio"))
-            .append(" | ").append(money(number(row.get("cpa_bid"))))
-            .append(" | ").append(metrics.get("rate"))
-            .append(" | ").append(optimizer)
-            .append(" | ").append(field(row.get("media_account_id")))
-            .append(" | ").append(field(row.get("promotion_id")));
+        table.add(List.of(clip(task,80),Integer.toString(++index),money(number(row.get("stat_cost"))),
+            metrics.get("ratio"),money(number(row.get("cpa_bid"))),metrics.get("rate"),optimizer,
+            field(row.get("media_account_id")),field(row.get("promotion_id"))));
       }
     }
-    return List.of(Map.of("text",text.toString(),"missingOptimizer",Boolean.toString(missingOptimizer)));
+    return List.of(Map.of("text",alignedTable(table),"missingOptimizer",Boolean.toString(missingOptimizer)));
   }
 }

@@ -23,7 +23,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     if(action==='dingtalk'){
      assert.equal(input.pricingRevision,pricingRevision);assert.equal(input.time,'18:00');assert.deepEqual(input.tasks,['任务A']);
      ding={...ding,configured:true,enabled:input.enabled,time:input.time,tasks:input.tasks,keyword:input.keyword,revision:'d1',state:'saved'};
-    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:'任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID [TOP5]\n任务A | 1 | 100.00 | 15.00% | 10.00 | 50.00% | 张三 | 900 | 10000'}]}});return;}
+    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:"任务   | 排名 | 消耗    | 回传比例 | 出价  | 出价利润率 | 优化师 | 账户ID      | 计划ID\nHS     |    1 | 5952.87 |    5.99% | 22.00 |     12.10% | 张三   | 12510232599 | 7680247482655588371\n增量HS |    1 | 1367.00 |    7.29% |  5.83 |     14.95% | 李四   | 1259455386  | 7680973376249348115\n增量   |    1 |  812.70 |    4.97% |  8.50 |     15.59% | Alex   | 1262877343  | 7680918024302924918"}]}});return;}
     else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 条消息，包含 1 个任务'};}
    }
    await route.fulfill({json:{...ding,availableTasks:savedRules.map(r=>r.name),pricingRevision}});
@@ -76,7 +76,14 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#dingSave').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('机器人已加密保存'));
   assert.equal(await page.locator('#dingWebhook').inputValue(),'');assert.equal(ding.enabled,true);
   await page.locator('#dingPreviewButton').click();await page.locator('#dingPreview').waitFor({state:'visible'});
-  assert.match(await page.locator('#dingPreview').textContent(),/^任务 \| 排名 \| 消耗/);assert.equal(dingSent,0);
+  assert.match(await page.locator('#dingPreview').textContent(),/^任务\s+\| 排名\s+\| 消耗/);assert.equal(dingSent,0);
+  assert.equal(await page.locator('#dingPreview').evaluate(el=>getComputedStyle(el).whiteSpace),'pre');
+  await page.locator('#dingPreview').screenshot({path:path.resolve(__dirname,'../.runtime/ding-aligned-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.equal(await page.locator('#dingPreview').evaluate(el=>el.scrollWidth>el.clientWidth),true);
+  await page.locator('#dingPreview').screenshot({path:path.resolve(__dirname,'../.runtime/ding-aligned-mobile.png')});
+  await page.setViewportSize({width:1440,height:1000});
   await page.locator('#dingSend').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('已发送 1 条消息'));
   assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});

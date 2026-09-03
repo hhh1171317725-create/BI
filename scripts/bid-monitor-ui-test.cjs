@@ -53,10 +53,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
-  assert.equal(await page.locator('#rows tr td').count(),11);
-  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'21.078');
-  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'-42.33%');
-  assert.equal(await page.locator('#rows tr td').nth(10).getAttribute('title'),'盈亏线出价：143.33');
+  assert.equal(await page.locator('#rows tr td').count(),12);
+  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'143.33');
+  assert.equal(await page.locator('.table-wrap:not(.pricing-table) th').nth(9).textContent(),'盈亏线出价');
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'21.078');
+  assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'-42.33%');
+  assert.equal(await page.locator('#rows tr td').nth(11).getAttribute('title'),'盈亏线出价：143.33');
   await page.locator('#search').fill('');await page.locator('#taskFilter').selectOption('task:1');assert.equal(await page.locator('#count').textContent(),'52 条');
   await page.locator('#taskFilter').selectOption('');
   assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('#metrics').textContent(),/33.828/);
@@ -100,13 +102,14 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#metrics strong').first().textContent(),'1.043');
   assert.equal(await page.locator('#metrics strong').nth(1).textContent(),'78.08%');
   await page.locator('#search').fill('grant plan');
-  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'4.300');
-  assert.match(await page.locator('#rows tr td').nth(9).getAttribute('title'),/规则赠款：50.00；现金消耗：100.00/);
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'4.300');
+  assert.match(await page.locator('#rows tr td').nth(10).getAttribute('title'),/规则赠款：50.00；现金消耗：100.00/);
   await page.locator('#search').fill('');await page.locator('#sort').selectOption('roi');
   assert.match(await page.locator('#rows tr').first().textContent(),/grant plan/);
   await page.evaluate(()=>receive([{promotion_id:'zero',media_account_name:'客户-A',stat_cost:1,convert_cnt:0,active_register:20,cpa_bid:5}],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
-  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'430.000');
-  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'--');
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'430.000');
+  assert.equal(await page.locator('#rows tr td').nth(9).textContent(),'--');
+  assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'--');
   assert.equal(await page.locator('#metrics strong').first().textContent(),'430.000');
   assert.deepEqual(errors,[]);console.log('UI PASS: cash ROI (3 decimals) and bid profit rate, export, task prices, mobile width, top-400, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}

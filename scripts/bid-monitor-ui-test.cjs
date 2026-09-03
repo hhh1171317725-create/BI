@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../frontend');
-const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',media_account_id:String(900+i%2),stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i}));
+const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i}));
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.join(root,path.basename(new URL(req.url,'http://localhost').pathname));if(!fs.existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -94,6 +94,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'143.33');
   assert.equal(await page.locator('.table-wrap:not(.pricing-table) th').nth(10).textContent(),'盈亏线出价');
   assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
+  assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');
   await page.locator('#search').fill('李四');assert.equal(await page.locator('#count').textContent(),'52 条');
   await page.locator('#search').fill('测试计划 104');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'-42.33%');
@@ -103,7 +104,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#metrics .metric').count(),1);assert.doesNotMatch(await page.locator('main').textContent(),/ROI/);
   assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
-  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.doesNotMatch(csv,/ROI/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
+  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.doesNotMatch(csv,/ROI/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-mobile.png'),fullPage:true});
   assert.equal(await page.locator('#syncDetect').count(),0);
@@ -131,9 +132,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#fetch').click();await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
   await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'400 条');
   assert.equal(snapshotQueries,1);assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
+  assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');
   await page.reload();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');
-  assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');await page.waitForFunction(()=>document.querySelector('#credentialStatus').textContent==='已加密保存');
+  assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
+  assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');await page.waitForFunction(()=>document.querySelector('#credentialStatus').textContent==='已加密保存');
   assert.equal(await page.locator('#cookie').inputValue(),'');assert.equal(await page.locator('#clientUser').inputValue(),'123');
   await page.locator('#fetch').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');
   assert.equal(preparedQueries.at(-1).cookie,'');

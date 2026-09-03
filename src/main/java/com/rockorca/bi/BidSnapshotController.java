@@ -19,7 +19,7 @@ public class BidSnapshotController {
   private final BidServerSyncStore serverSync;
   private volatile boolean initialized;
   private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
-      "media_account_id", "media_account_name", "user_name", "stat_cost", "convert_cnt", "active_register", "cpa_bid");
+      "media_account_id", "advertiser_id", "media_account_name", "user_name", "stat_cost", "convert_cnt", "active_register", "cpa_bid");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
     this(sessions,reports,mapper,null);
@@ -114,6 +114,7 @@ public class BidSnapshotController {
         if (value != null && value.toString().length() > 1000) throw new IllegalArgumentException("计划字段过长");
         record.put(field, value);
       }
+      record.put("advertiser_id",BidMonitorApiController.idText(record.get("advertiser_id")));
       Object id = record.get("promotion_id");
       if (id == null || !id.toString().matches("[0-9]+")
           || !ids.add(record.get("media_account_id") + ":" + id))

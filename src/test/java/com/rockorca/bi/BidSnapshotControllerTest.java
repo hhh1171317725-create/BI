@@ -22,6 +22,14 @@ class BidSnapshotControllerTest {
     var saved=(Map<?,?>)((List<?>)result.get("rows")).getFirst();
     assertFalse(saved.containsKey("cookie"));assertEquals("7676449794404745237",saved.get("media_account_id"));
   }
+  @Test void keepsPlatformAndInternalIdsSeparateWithoutLegacyFallback(){
+    var row=row();row.put("media_account_id","12601552720");row.put("advertiser_id",1866402186668232L);
+    var saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(row))).get("rows")).getFirst();
+    assertEquals("1866402186668232",saved.get("advertiser_id"));assertEquals("12601552720",saved.get("media_account_id"));
+    row.remove("advertiser_id");saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(row))).get("rows")).getFirst();
+    assertNull(saved.get("advertiser_id"));
+    row.put("advertiser_id",1866402186668232d);assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(row))));
+  }
 
   @Test void optimizerIsOptionalAndRetainedWithoutAcceptingObjects() {
     var item=row();item.put("user_name","optimizer-A");

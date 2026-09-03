@@ -60,7 +60,7 @@ final class BidTop5Formatter {
     if(!(snapshot.get("rows") instanceof List<?> rows))throw new IllegalArgumentException("没有可推送的快照");
     var table=new ArrayList<List<String>>();
     table.add(List.of("任务","排名","消耗","回传比例","出价","出价利润率","优化师","账户ID","计划ID"));
-    boolean missingOptimizer=false;
+    boolean missingOptimizer=false,missingAccountId=false;
     for(String task:tasks){
       var rule=rules.stream().filter(r->task.equals(r.get("name"))).findFirst()
           .orElseThrow(()->new IllegalArgumentException("已选任务不存在，请重新选择并保存"));
@@ -78,11 +78,12 @@ final class BidTop5Formatter {
       for(var row:selected.stream().limit(5).toList()){
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
+        String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
         table.add(List.of(clip(task,80),Integer.toString(++index),money(number(row.get("stat_cost"))),
             metrics.get("ratio"),money(number(row.get("cpa_bid"))),metrics.get("rate"),optimizer,
-            field(row.get("media_account_id")),field(row.get("promotion_id"))));
+            accountId,field(row.get("promotion_id"))));
       }
     }
-    return List.of(Map.of("text",alignedTable(table),"missingOptimizer",Boolean.toString(missingOptimizer)));
+    return List.of(Map.of("text",alignedTable(table),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
   }
 }

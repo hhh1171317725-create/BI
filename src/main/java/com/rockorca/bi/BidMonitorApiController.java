@@ -88,6 +88,7 @@ public class BidMonitorApiController {
       if (!(item instanceof Map<?, ?> map)) throw new IllegalArgumentException("计划数据格式异常");
       Map<String, Object> row = new LinkedHashMap<>();
       map.forEach((key, value) -> row.put(String.valueOf(key), value));
+      for(String key:List.of("advertiser_id","media_account_id","promotion_id"))row.put(key,idText(row.get(key)));
       rows.add(row);
     }
     Map<String, Object> output = new LinkedHashMap<>();
@@ -100,6 +101,13 @@ public class BidMonitorApiController {
   static String requestId() {
     return ZonedDateTime.now(ReportService.BEIJING).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
         + UUID.randomUUID().toString().replace("-", "") + "ff";
+  }
+
+  static String idText(Object value){
+    if(value==null||value.toString().isBlank())return null;
+    if(value instanceof Float||value instanceof Double||!value.toString().matches("[0-9]+"))
+      throw new IllegalArgumentException("账户或计划 ID 格式异常，请重新同步");
+    return value.toString();
   }
 
   static Object totalCount(Map<?, ?> container, Map<?, ?> result) {

@@ -39,8 +39,11 @@ class BidServerSyncServiceTest {
   private Map<String,Object> input(){return new LinkedHashMap<>(Map.of("cookie","userId=123; chuangliang_session=private-test-cookie", "clientUser","123","mainUserId","456","minutes",10,"createdDays",7));}
   private List<Map<String,Object>> rows(int offset,int size){
     var rows=new ArrayList<Map<String,Object>>();
-    for(int i=0;i<size;i++)rows.add(new LinkedHashMap<>(Map.of("promotion_id","768107547558"+(offset+i),"promotion_name","plan","media_account_id","123",
-        "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop")));
+    for(int i=0;i<size;i++){
+      var row=new LinkedHashMap<String,Object>(Map.of("promotion_id","768107547558"+(offset+i),"promotion_name","plan","media_account_id","123",
+          "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop"));
+      row.put("advertiser_id","1866402186668232");rows.add(row);
+    }
     return rows;
   }
   @Test void encryptsAtRestAndReturnsOnlySafeStatus()throws Exception{
@@ -117,7 +120,7 @@ class BidServerSyncServiceTest {
           "enabled",true,"webhook","https://oapi.dingtalk.com/robot/send?access_token=test-token-only","secret","","keyword","TOP5"));
       var preview=ding.preview(7);assertEquals("",preview.get("warning"));
       String text=((Map<?,?>)((List<?>)preview.get("messages")).getFirst()).get("text").toString();
-      assertTrue(text.contains("optimizer-A"));ding.send(7,false);
+      assertTrue(text.contains("optimizer-A"));assertTrue(text.contains("1866402186668232"));ding.send(7,false);
       verify(robot).send(anyString(),anyString(),eq("TOP5"),eq(text));
     }finally{ding.close();}
   }
@@ -157,6 +160,7 @@ class BidServerSyncServiceTest {
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
     assertEquals("optimizer-A",row.get("user_name"));assertEquals("123",row.get("media_account_id"));
+    assertEquals("1866402186668232",row.get("advertiser_id"));
   }
   @Test void creationWindowIncludesTodayAndThreePriorDates(){
     assertEquals(java.time.LocalDate.parse("2026-09-01"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-04")));

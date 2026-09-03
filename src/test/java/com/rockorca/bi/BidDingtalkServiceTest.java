@@ -30,7 +30,7 @@ class BidDingtalkServiceTest {
   List<Map<String,Object>> rules(){return List.of(Map.of("name","taskA","keyword","account-A","price","10"),Map.of("name","taskB","keyword","account-B","price","20"));}
   Map<String,Object> input(){return new LinkedHashMap<>(Map.of("revision","","pricingRevision","p1","tasks",List.of("taskA","taskB"),"time","18:00","enabled",true,
       "webhook","https://oapi.dingtalk.com/robot/send?access_token=test-token-only","secret","SECtestsecret123","keyword","TOP5"));}
-  Map<String,Object> row(String id,String account,int cost){return new LinkedHashMap<>(Map.of("promotion_id",id,"promotion_name","plan-"+id,"media_account_id","7676449794404745237","media_account_name",account,"stat_cost",cost,"convert_cnt",10,"active_register",20,"cpa_bid",10));}
+  Map<String,Object> row(String id,String account,int cost){return new LinkedHashMap<>(Map.of("promotion_id",id,"promotion_name","plan-"+id,"media_account_id","12601552720","advertiser_id","7676449794404745237","media_account_name",account,"stat_cost",cost,"convert_cnt",10,"active_register",20,"cpa_bid",10));}
   Map<String,Object> snapshot(){return Map.of("date","2026-09-03","updatedAt",clock.instant().minusSeconds(60).toString(),"selection","spend_desc_top_400","rows",List.of(row("1","account-A",150),row("2","account-B",120)));}
   @BeforeEach void setup()throws Exception{
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
@@ -135,7 +135,7 @@ class BidDingtalkServiceTest {
     assertEquals(2,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
     assertTrue(text.contains(" | 张三  运营 A B | "));
     assertTrue(text.contains(" | 7676449794404745237 | 7681075475582042163"));
-    row.put("user_name"," ");row.remove("media_account_id");
+    row.put("user_name"," ");row.remove("advertiser_id");
     text=compact(BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text"));
     assertTrue(text.contains(" | -- | -- | 7681075475582042163"));
   }

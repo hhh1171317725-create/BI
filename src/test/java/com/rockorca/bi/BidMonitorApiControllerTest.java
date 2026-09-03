@@ -15,6 +15,12 @@ class BidMonitorApiControllerTest {
   @Test void requestIdMatchesSuccessfulUpstreamFormat() {
     assertTrue(BidMonitorApiController.requestId().matches("[0-9]{14}[0-9a-f]{32}ff"));
   }
+  @Test void idsRemainExactStringsBeforeCrossingBrowserJsonBoundary(){
+    assertEquals("1866402186668232",BidMonitorApiController.idText(1866402186668232L));
+    assertEquals("7680747160631230500",BidMonitorApiController.idText(7680747160631230500L));
+    assertNull(BidMonitorApiController.idText(null));
+    assertThrows(IllegalArgumentException.class,()->BidMonitorApiController.idText(7680747160631230500d));
+  }
   @Test void rejectsUnsafePageBeforeNetwork() {
     assertThrows(IllegalArgumentException.class,()->controller.page(Map.of("startDate","2026-09-03","endDate","2026-09-03","page",5)));
   }

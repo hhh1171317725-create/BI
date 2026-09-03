@@ -12,7 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 class BidDingtalkServiceTest {
-  static String compact(String text){return text.replaceAll(" *\\| *"," | ");}
   @TempDir Path dir;
   final BidServerSyncServiceTest.MemoryStore store=new BidServerSyncServiceTest.MemoryStore();
   final BidSnapshotController snapshots=mock(BidSnapshotController.class);
@@ -119,25 +118,25 @@ class BidDingtalkServiceTest {
     rows.add(row("99","account-A-account-B",9999));rows.add(row("100","account-B",9000));
     var snapshot=new LinkedHashMap<>(snapshot());snapshot.put("rows",rows);
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
-    String text=compact(messages.getFirst().get("text"));
-    assertEquals(1,messages.size());assertEquals(7,text.lines().count());assertEquals("任务 | 排名 | 消耗 | 回传比例 | 出价 | 出价利润率 | 优化师 | 账户ID | 计划ID",text.lines().findFirst().orElseThrow());
-    assertEquals("taskA | 1 | 800.00 | 50.00% | 10.00 | 50.00% | -- | 7676449794404745237 | 8",text.lines().skip(1).findFirst().orElseThrow());
-    for(int i=0;i<5;i++)assertTrue(text.lines().skip(i+1).findFirst().orElseThrow().startsWith("taskA | "+(i+1)+" | "+(800-i*100)+".00"));
-    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertTrue(text.contains("taskB | 1 | 9000.00"));
+    String text=messages.getFirst().get("text");
+    assertEquals(1,messages.size());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
+    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润率 50.00%",text.lines().skip(1).findFirst().orElseThrow());
+    for(int i=0;i<5;i++)assertTrue(text.lines().filter(line->line.matches("[1-5]\\. .*")).skip(i).findFirst().orElseThrow().startsWith((i+1)+". 消耗 "+(800-i*100)+".00"));
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertTrue(text.contains("【taskB TOP5】\n1. 消耗 9000.00"));
     assertFalse(text.contains("ROI"));assertTrue(text.contains("账户ID"));assertTrue(text.contains("计划ID"));
-    assertEquals(1,text.lines().filter(line->line.contains("账户ID")).count());
+    assertEquals(6,text.lines().filter(line->line.contains("账户ID")).count());
   }
-  @Test void formatterRetainsOptimizerAndExactIdsOnOneLine(){
+  @Test void formatterSeparatesMetricsFromCopyableExactIds(){
     var row=row("7681075475582042163","account-A",150);
     row.put("user_name","张三\r\n运营\u2028A\u2029B");
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(row));
-    String text=compact(BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text"));
-    assertEquals(2,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
-    assertTrue(text.contains(" | 张三  运营 A B | "));
-    assertTrue(text.contains(" | 7676449794404745237 | 7681075475582042163"));
+    String text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
+    assertEquals(3,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
+    assertTrue(text.contains("优化师 张三  运营 A B | "));
+    assertTrue(text.contains("账户ID 7676449794404745237 | 计划ID 7681075475582042163"));
     row.put("user_name"," ");row.remove("advertiser_id");
-    text=compact(BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text"));
-    assertTrue(text.contains(" | -- | -- | 7681075475582042163"));
+    text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
+    assertTrue(text.contains("优化师 -- | 账户ID -- | 计划ID 7681075475582042163"));
   }
   @Test void formatterFinancialRulesMatchBoundaryAndZeroCases(){
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));
@@ -149,24 +148,7 @@ class BidDingtalkServiceTest {
     assertEquals("0.00%",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
     row.put("active_register",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));
   }
-  @Test void columnsAlignAcrossChineseNamesPricesAndFullIds(){
-    var table=List.of(
-        List.of("任务","排名","消耗","回传比例","出价","出价利润率","优化师","账户ID","计划ID"),
-        List.of("HS","1","5952.87","5.99%","22.00","12.10%","张三","12510232599","7680247482655588371"),
-        List.of("增量HS","2","12.00","15.00%","5.50","-2.00%","Alex","7676449794404745237","7680747160631230500"));
-    var lines=BidTop5Formatter.alignedTable(table).lines().toList();
-    var positions=new ArrayList<Integer>();
-    for(int i=0;i<lines.getFirst().length();i++)if(lines.getFirst().charAt(i)=='|')positions.add(BidTop5Formatter.columnWidth(lines.getFirst().substring(0,i)));
-    for(String line:lines){
-      var actual=new ArrayList<Integer>();
-      for(int i=0;i<line.length();i++)if(line.charAt(i)=='|')actual.add(BidTop5Formatter.columnWidth(line.substring(0,i)));
-      assertEquals(positions,actual);
-    }
-    assertTrue(lines.get(1).endsWith("7680247482655588371"));
-    assertTrue(lines.get(2).contains("7676449794404745237"));
-    assertEquals(4,BidTop5Formatter.columnWidth("张三"));
-  }
-  @Test void threeTasksSendExactlyOneMessageWithOneHeader()throws Exception{
+  @Test void threeTasksSendExactlyOneCopyableMessageWithGroupedPlans()throws Exception{
     var threeRules=new ArrayList<>(rules());threeRules.add(Map.of("name","taskC","keyword","account-C","price","30"));
     store.update(7,(connection,state)->state.put("taskRules",threeRules));
     var input=input();input.put("tasks",List.of("taskA","taskB","taskC"));service.save(7,input);
@@ -174,20 +156,20 @@ class BidDingtalkServiceTest {
     for(String task:List.of("A","B","C"))for(int i=1;i<=7;i++)plans.add(row(task+i,"account-"+task,i*100));
     var data=new LinkedHashMap<>(snapshot());data.put("rows",plans);when(snapshots.readOwned(7)).thenReturn(data);
     var preview=service.preview(7);var messages=(List<?>)preview.get("messages");assertEquals(1,messages.size());
-    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(16,text.lines().count());
-    assertTrue(compact(text).lines().findFirst().orElseThrow().startsWith("任务 | 排名 | 消耗"));assertTrue(text.contains("[TOP5]"));
-    for(String task:List.of("taskA","taskB","taskC"))assertEquals(5,text.lines().filter(line->line.startsWith(task+" | ")).count());
+    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[1-5]\\. .*")).count());
+    assertTrue(text.startsWith("【taskA TOP5】"));assertEquals(15,text.lines().filter(line->line.startsWith("优化师 ")).count());
+    for(String task:List.of("taskA","taskB","taskC"))assertTrue(text.contains("【"+task+" TOP5】"));
     service.send(7,false);verify(robot,times(1)).send(anyString(),anyString(),eq("TOP5"),eq(text));
     assertEquals("已发送 1 条消息，包含 3 个任务",service.settings(7).get("lastResult"));
   }
   @Test void combinedMessageRetainsEmptyTasksAndSanitizesColumnSeparators(){
     var plan=row("1","account-A",150);plan.put("user_name","张|三");
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(plan));
-    String text=compact(BidTop5Formatter.messages(data,rules(),List.of("taskA","taskB")).getFirst().get("text"));
-    assertEquals(3,text.lines().count());assertTrue(text.contains("taskB | -- | 无匹配计划"));
-    for(String line:text.lines().toList())assertEquals(9,line.split("\\|",-1).length);
+    String text=BidTop5Formatter.messages(data,rules(),List.of("taskA","taskB")).getFirst().get("text");
+    assertEquals(6,text.lines().count());assertTrue(text.contains("【taskB TOP5】\n当前采集范围内无匹配计划"));
+    assertTrue(text.contains("优化师 张 三"));assertFalse(text.contains("张|三"));
     assertEquals(text,DingtalkRobotClient.content("",text));
-    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(3,withKeyword.lines().count());
+    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(6,withKeyword.lines().count());
     assertEquals(withKeyword,DingtalkRobotClient.content("TOP5",withKeyword));
   }
   @Test void robotRejectsForeignDestinationsAndMissingSuccessCode()throws Exception{

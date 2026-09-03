@@ -12,7 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class UserService {
   public static final List<String> TOOL_KEYS = List.of(
       "todo", "terminal", "accountVault", "adpfluxHelper", "mailDingtalk",
-      "chat", "deeplink", "deeplinkAccount", "jdImages");
+      "chat", "deeplink", "deeplinkAccount", "jdImages", "bidMonitor");
   private final UserRepository users;
   private final PasswordHasher passwords;
   private final RuntimeConfig config;

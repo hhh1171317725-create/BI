@@ -57,6 +57,7 @@ public class ToolPermissionInterceptor implements HandlerInterceptor {
     result.put("/api/jd-deeplink", "deeplink");
     result.put("/api/jd-account-deeplink", "deeplinkAccount");
     result.put("/api/jd-images", "jdImages");
+    result.put("/api/bid-monitor", "bidMonitor");
     return result;
   }
 }

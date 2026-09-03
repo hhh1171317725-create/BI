@@ -41,6 +41,16 @@ class ToolPermissionInterceptorTest {
   }
 
   @Test
+  void blocksBidMonitorWithoutPermission() throws Exception {
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bid-monitor/page");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+    when(sessions.currentUser(request)).thenReturn(operator);
+    when(users.canUseTool(operator, "bidMonitor")).thenReturn(false);
+    assertFalse(interceptor.preHandle(request, response, new Object()));
+    assertEquals(403, response.getStatus());
+  }
+
+  @Test
   void allowsAuthorizedToolApi() throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/chat/messages");
     MockHttpServletResponse response = new MockHttpServletResponse();

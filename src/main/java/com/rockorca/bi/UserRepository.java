@@ -334,6 +334,7 @@ public class UserRepository {
     visibility.put("deeplink", true);
     visibility.put("deeplinkAccount", true);
     visibility.put("jdImages", true);
+    visibility.put("bidMonitor", true);
     return visibility;
   }
 }

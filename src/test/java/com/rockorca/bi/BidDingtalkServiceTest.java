@@ -158,6 +158,7 @@ class BidDingtalkServiceTest {
     var preview=service.preview(7);var messages=(List<?>)preview.get("messages");assertEquals(1,messages.size());
     String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[1-5]\\. .*")).count());
     assertTrue(text.startsWith("【taskA TOP5】"));assertEquals(15,text.lines().filter(line->line.startsWith("优化师 ")).count());
+    assertEquals(33,text.lines().count());assertFalse(text.lines().anyMatch(String::isBlank));
     for(String task:List.of("taskA","taskB","taskC"))assertTrue(text.contains("【"+task+" TOP5】"));
     service.send(7,false);verify(robot,times(1)).send(anyString(),anyString(),eq("TOP5"),eq(text));
     assertEquals("已发送 1 条消息，包含 3 个任务",service.settings(7).get("lastResult"));
@@ -166,10 +167,10 @@ class BidDingtalkServiceTest {
     var plan=row("1","account-A",150);plan.put("user_name","张|三");
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(plan));
     String text=BidTop5Formatter.messages(data,rules(),List.of("taskA","taskB")).getFirst().get("text");
-    assertEquals(6,text.lines().count());assertTrue(text.contains("【taskB TOP5】\n当前采集范围内无匹配计划"));
+    assertEquals(5,text.lines().count());assertTrue(text.contains("【taskB TOP5】\n当前采集范围内无匹配计划"));
     assertTrue(text.contains("优化师 张 三"));assertFalse(text.contains("张|三"));
     assertEquals(text,DingtalkRobotClient.content("",text));
-    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(6,withKeyword.lines().count());
+    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(5,withKeyword.lines().count());
     assertEquals(withKeyword,DingtalkRobotClient.content("TOP5",withKeyword));
   }
   @Test void robotRejectsForeignDestinationsAndMissingSuccessCode()throws Exception{

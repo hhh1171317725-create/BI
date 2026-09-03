@@ -60,8 +60,8 @@ final class BidTop5Formatter {
             +" | 出价 "+money(number(row.get("cpa_bid")))+" | 出价利润率 "+metrics.get("rate")
             +"\n优化师 "+optimizer+" | 账户ID "+accountId+" | 计划ID "+field(row.get("promotion_id")));
       }
-      groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n\n",entries));
+      groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));
     }
-    return List.of(Map.of("text",String.join("\n\n",groups),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
+    return List.of(Map.of("text",String.join("\n",groups),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
   }
 }

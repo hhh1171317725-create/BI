@@ -9,7 +9,7 @@ window.addEventListener('message',event=>{
 });
 function syncCommand(command){return new Promise((resolve,reject)=>{
   const requestId=crypto.randomUUID();
-  const timer=setTimeout(()=>{syncRequests.delete(requestId);reject(Error('插件未及时返回状态，请更新到 1.9.3 并刷新页面；确认网站登录及网络正常'));},30000);
+  const timer=setTimeout(()=>{syncRequests.delete(requestId);reject(Error('插件未及时返回状态，请更新到 1.9.4 并刷新页面；确认网站登录及网络正常'));},30000);
   syncRequests.set(requestId,{resolve,timer});
   window.postMessage({source:'bi-bid-page',requestId,command,minutes:Number($('#syncMinutes').value),createdDays:Number($('#syncCreatedDays').value),
     clientUser:$('#clientUser').value.trim(),mainUserId:$('#mainUserId').value.trim()},location.origin);
@@ -21,6 +21,7 @@ async function syncLoad(manual=false){
   if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return;}
   if(!manual && (snapshot.updatedAt===syncStamp || (raw.length && !source.startsWith('浏览器同步'))))return;
   receive(snapshot.rows,'浏览器同步 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
+    (snapshot.selection==='spend_desc_top_200'?' · 消耗降序前 200 条（实际 '+snapshot.rows.length+' 条）':' · 历史快照')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date});
   syncStamp=snapshot.updatedAt;
   if(manual)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
@@ -32,7 +33,7 @@ function syncShow(result){
   const last=result.lastSuccess?'；最近成功：'+new Date(result.lastSuccess).toLocaleString('zh-CN'):'';
   syncText(result.error?result.error+last:
     (names[result.state]||'未开启定时同步')+(result.progress?'；'+result.progress:'')+last+
-    (result.enabled?'；间隔 '+result.minutes+' 分钟；最近 '+(result.createdDays??7)+' 天创建的计划':''),Boolean(result.error));
+    (result.enabled?'；间隔 '+result.minutes+' 分钟；最近 '+(result.createdDays??7)+' 天创建的计划，消耗前 200 条':''),Boolean(result.error));
 }
 async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;
@@ -62,7 +63,7 @@ $('#syncDetect').onclick=async()=>{
   syncText('正在读取已打开的创量页面用户…');
   try{
     const result=await syncCommand('detect');if(result.error)throw Error(result.error);
-    if(!/^\d{1,30}$/.test(result.clientUser||''))throw Error('插件未返回用户 ID，请更新到 1.9.3');
+    if(!/^\d{1,30}$/.test(result.clientUser||''))throw Error('插件未返回用户 ID，请更新到 1.9.4');
     $('#clientUser').value=result.clientUser;
     $('#clientUser').closest('details').open=true;
     syncText('已填写当前创量用户 '+result.clientUser+'；请核对同一账户的 main-user-id，然后启用同步');

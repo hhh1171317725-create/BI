@@ -5,10 +5,11 @@ const vm=require('node:vm');
 const crypto=require('node:crypto');
 const core=require('../browser-extension/ad-tools-helper/bid-sync-core.js');
 const script=fs.readFileSync(require.resolve('../browser-extension/ad-tools-helper/bid-sync.js'),'utf8');
-function setup({reject=false,switched=false,saved=null}={}) {
+function setup({reject=false,switched=false,saved=null,total=1}={}) {
  let listener,alarmListener,storage=saved,uploads=[],alarm=null;
  const cookieReads=[];
- const rows=[{promotion_id:'123',media_account_id:'999',stat_cost:10,convert_cnt:2,active_register:4,cpa_bid:5}];
+ const rows=Array.from({length:Math.min(200,total)},(_,i)=>({promotion_id:String(123+i),media_account_id:'999',stat_cost:200-i,convert_cnt:2,active_register:4,cpa_bid:5}));
+ const pages=[];
  const origin='https://www.huanghaha.fun';
  const chrome={
   cookies:{getAllCookieStores:async()=>[{id:'profile-store',tabIds:[1,2]}],get:async details=>{
@@ -16,7 +17,7 @@ function setup({reject=false,switched=false,saved=null}={}) {
   }},
   storage:{local:{get:async()=>({bidSync:storage}),set:async obj=>{storage=obj.bidSync;}}},
   alarms:{get:async()=>alarm,create:async(name,options)=>{alarm={name,...options};},clear:async()=>{alarm=null;},onAlarm:{addListener:fn=>{alarmListener=fn;}}},
-  runtime:{getManifest:()=>({version:'1.9.3'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
+  runtime:{getManifest:()=>({version:'1.9.4'}),onStartup:{addListener(){}},onInstalled:{addListener(){}},onMessage:{addListener:fn=>{listener=fn;}}},
   tabs:{query:async({url})=>url.includes('cl.mobgi')?[{id:2,url:'https://cl.mobgi.com/'}]:[{id:1,url:origin+'/bid-monitor.html'}]},
   scripting:{executeScript:async({func,args})=>{
    if(func.name==='bidWebsiteRequest') {
@@ -25,14 +26,16 @@ function setup({reject=false,switched=false,saved=null}={}) {
    }
    assert.match(args[3],/^\d{14}[0-9a-f]{32}ff$/);
    assert.deepEqual(JSON.parse(args[0].conditions).deep_bid_type,[]);
-   return [{result:{data:reject?{code:-1}:{code:0,data:{list:rows,page_info:{total_count:1}}}}}];
+   assert.equal(args[0].sort_field,'stat_cost');assert.equal(args[0].sort_direction,'desc');
+   pages.push(args[0].page);
+   return [{result:{data:reject?{code:-1}:{code:0,data:{list:rows.slice((args[0].page-1)*100,args[0].page*100),page_info:{total_count:total}}}}}];
   }}
  };
  const context={chrome,crypto,URL,Date,Intl,Set,Error,setTimeout,clearTimeout,BidSyncCore:core};
  vm.runInNewContext(script,context);
  const sender={url:origin+'/bid-monitor.html',tab:{id:1},frameId:0};
  return {context,send:(command,customSender=sender)=>new Promise(resolve=>listener({type:'bid-sync',command,minutes:10,clientUser:'123',mainUserId:'456'},customSender,resolve)),
-  fire:()=>alarmListener({name:'bi-bid-sync'}),get:()=>({storage,uploads,alarm,cookieReads}),
+  fire:()=>alarmListener({name:'bi-bid-sync'}),get:()=>({storage,uploads,alarm,cookieReads,pages}),
   settle:async()=>{for(let i=0;i<100;i++){await new Promise(r=>setImmediate(r));if(storage?.state==='ready'||storage?.state==='paused')return;}throw Error('Worker did not settle');}};
 }
 test('start uploads complete snapshot and alarm updates again without duplicates',async()=>{
@@ -41,6 +44,15 @@ test('start uploads complete snapshot and alarm updates again without duplicates
  assert.equal(app.get().alarm.periodInMinutes,10);assert.equal(app.get().storage.enabled,true);
  app.fire();await app.settle();assert.equal(app.get().uploads.length,2);
  await app.send('stop');app.fire();await new Promise(r=>setImmediate(r));assert.equal(app.get().uploads.length,2);assert.equal(app.get().alarm,null);
+});
+test('scheduled sync reads only first two pages even with 335367 matches',async()=>{
+ const app=setup({total:335367});await app.send('start');await app.settle();
+ assert.deepEqual(app.get().pages,[1,2]);const [upload]=app.get().uploads;
+ assert.equal(upload.rows.length,200);assert.equal(upload.selection,'spend_desc_top_200');assert.equal(upload.upstreamTotal,335367);
+});
+test('scheduled sync stops after one page when total is below 100',async()=>{
+ const app=setup({total:42});await app.send('start');await app.settle();
+ assert.deepEqual(app.get().pages,[1]);assert.equal(app.get().uploads[0].rows.length,42);
 });
 test('upstream access rejection pauses without uploading or scheduling retries',async()=>{
  const app=setup({reject:true});await app.send('start');await app.settle();

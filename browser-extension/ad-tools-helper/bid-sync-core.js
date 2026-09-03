@@ -12,13 +12,14 @@ const BidSyncCore = (() => {
     return {createdStart:start.toISOString().slice(0,10),createdEnd:day};
   }
   function body(day, page, days=7, total=null) {
+    if (!Number.isInteger(page) || page<1 || page>2) throw Error('仅查询消耗前 200 条，最多 2 页');
     const conditions = {search_field:'promotion_name', search_keyword:'', search_type:'like'};
     for (const key of ['cl_project_id','cl_app_id','user_id','media_account_id','companys','project_id','scene_type','strategy_id','learning_phase','external_action','deep_external_action','deep_bid_type','material_id']) conditions[key]=[];
     for (const key of ['landing_type','delivery_mode','status_first','ad_type','star_delivery_type','star_task_id','app_type','combinatorial_id','status','status_second']) conditions[key]='';
     const range=createdRange(day,days);
     conditions.cdt_start_date=range.createdStart+' 00:00:00';conditions.cdt_end_date=range.createdEnd+' 23:59:59';
     return {conditions:JSON.stringify(conditions),start_date:day,end_date:day,page,page_size:100,
-      sort_field:'promotion_id',sort_direction:'desc',data_type:'list',
+      sort_field:'stat_cost',sort_direction:'desc',data_type:'list',
       ...(total===null?{}:{total_count:total,total_page:Math.ceil(total/100)}),
       select_kpi_fields:['stat_cost','convert_cnt','conversion_cost','active_register','active_register_cost','cpa_bid','promotion_create_time','account_info','conversion_rate','show_cnt','cpm_platform','click_cnt','ctr','cpc_platform','active_register_rate']};
   }
@@ -31,7 +32,7 @@ const BidSyncCore = (() => {
     const container = result.data && !Array.isArray(result.data) ? result.data : result;
     const rows = Array.isArray(result.data) ? result.data : container.list ?? container.rows;
     const total = Number(container.page_info?.total_count ?? container.total_count ?? result.total_count ?? container.total);
-    if (!Array.isArray(rows) || !Number.isSafeInteger(total) || total < 0 || total > 20000)
+    if (!Array.isArray(rows) || rows.length>100 || !Number.isSafeInteger(total) || total < 0)
       throw Error('创量响应列表或总数不符合预期，已暂停，请提供脱敏成功响应');
     return {rows: rows.map(row => {
       const info = row.account_info || {};
@@ -55,13 +56,14 @@ const BidSyncCore = (() => {
   function append(state, chunk) {
     if (state.total !== null && state.total !== chunk.total) throw Error('分页期间总数变化，请稍后重新启用同步');
     state.total=chunk.total;
+    const target=Math.min(200,state.total);
     for (const row of chunk.rows) {
       const key=row.media_account_id+':'+row.promotion_id;
       if (state.ids.has(key)) throw Error('分页出现重复计划，未覆盖上次数据');
       state.ids.add(key); state.rows.push(row);
     }
-    if (state.rows.length>state.total || (!chunk.rows.length && state.rows.length<state.total)) throw Error('分页数据不完整');
-    return state.rows.length===state.total;
+    if (state.rows.length>target || (!chunk.rows.length && state.rows.length<target)) throw Error('消耗前 200 条数据不完整');
+    return state.rows.length===target;
   }
   return {date,requestId,createdRange,body,parse,append};
 })();

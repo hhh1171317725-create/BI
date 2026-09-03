@@ -36,7 +36,7 @@ public class BidMonitorApiController {
     if (start.isAfter(end) || start.plusDays(92).isBefore(end))
       throw new IllegalArgumentException("查询日期范围必须为 1 至 93 天");
     int page = Integer.parseInt(text(input, "page"));
-    if (page < 1 || page > 200) throw new IllegalArgumentException("分页超出限制（最多 200 页）");
+    if (page < 1 || page > 2) throw new IllegalArgumentException("仅查询消耗前 200 条（最多 2 页）");
     String cookie = normalizeCookie(text(input, "cookie"));
     String user = text(input, "clientUser"), main = text(input, "mainUserId");
     if (cookie.isBlank() || !user.matches("[0-9]+") || !main.matches("[0-9]+"))
@@ -59,7 +59,7 @@ public class BidMonitorApiController {
     body.put("conditions", mapper.writeValueAsString(conditions));
     body.put("start_date", start.toString()); body.put("end_date", end.toString());
     body.put("page", page); body.put("page_size", 100);
-    body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
+    body.put("sort_field", "stat_cost"); body.put("sort_direction", "desc"); body.put("data_type", "list");
     body.put("select_kpi_fields", List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate"));
     HttpRequest request = HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
         .timeout(Duration.ofSeconds(40)).header("Content-Type", "application/json;charset=UTF-8")

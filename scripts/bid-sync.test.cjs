@@ -8,8 +8,21 @@ test('uses current date and serialized conditions without copied cookies',()=>{
  assert.deepEqual(JSON.parse(body.conditions).media_account_id,[]);assert.ok(!JSON.stringify(body).includes('cookie'));
  assert.deepEqual(JSON.parse(body.conditions).deep_bid_type,[]);
  assert.equal(JSON.parse(body.conditions).cdt_start_date,'2026-08-28 00:00:00');
- assert.equal(body.sort_field,'promotion_id');
+ assert.equal(body.sort_field,'stat_cost');assert.equal(body.sort_direction,'desc');
  const next=core.body('2026-09-03',2,7,4656);assert.equal(next.total_count,4656);assert.equal(next.total_page,47);
+});
+test('large upstream total still stops at exactly 200 rows',()=>{
+ const state={rows:[],ids:new Set(),total:null};
+ const chunk=(start)=>core.parse(response(Array.from({length:100},(_,i)=>({...row,promotion_id:String(start+i)})),335367));
+ assert.equal(core.append(state,chunk(1)),false);assert.equal(core.append(state,chunk(101)),true);
+ assert.equal(state.rows.length,200);assert.throws(()=>core.body('2026-09-03',3));
+});
+test('fewer than 200 reads actual count and premature end remains an error',()=>{
+ const state={rows:[],ids:new Set(),total:null};
+ assert.equal(core.append(state,core.parse(response([row],1))),true);
+ const partial={rows:[],ids:new Set(),total:null};
+ assert.equal(core.append(partial,core.parse(response([row],150))),false);
+ assert.throws(()=>core.append(partial,core.parse(response([],150))));
 });
 test('request ID matches verified upstream format including ff suffix',()=>{
  const id=core.requestId(new Date('2026-09-03T04:54:23Z'));

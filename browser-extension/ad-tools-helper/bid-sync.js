@@ -22,7 +22,7 @@ async function bidWebsiteRequest(origin, path, payload) {
 }
 async function bidChuangliangIdentity(tab) {
   if (new URL(tab.url).origin!=='https://cl.mobgi.com') throw Error('请打开已登录的创量页面');
-  if (!chrome.cookies?.get) throw Error('缺少 Cookie 读取权限，请重新加载插件 1.9.3 并允许新增权限');
+  if (!chrome.cookies?.get) throw Error('缺少 Cookie 读取权限，请重新加载插件 1.9.4 并允许新增权限');
   const stores=await chrome.cookies.getAllCookieStores();
   const store=stores.find(item=>item.tabIds.includes(tab.id));
   if (!store) throw Error('无法确定创量标签页的 Cookie 存储，请在同一 Chrome 用户资料中重新打开创量');
@@ -109,10 +109,10 @@ async function bidRun() {
     const cl=clTabs.find(tab=>tab.active)||clTabs[0];
     const state={rows:[],ids:new Set(),total:null}, day=BidSyncCore.date(), deadline=Date.now()+240000;
     let complete=false;
-    for (let page=1;page<=200;page++) {
+    for (let page=1;page<=2;page++) {
       await bidLive(config);
       if (Date.now()>deadline) throw Error('本轮采集超过 4 分钟，未覆盖旧数据，请缩小数据量或使用导出报表');
-      await bidProgress(config,`正在读取创量第 ${page} 页，已读取 ${state.rows.length}${state.total===null?'':' / '+state.total} 条`);
+      await bidProgress(config,`正在读取消耗前 200 条，第 ${page}/2 页，已读取 ${state.rows.length}${state.total===null?'':' / '+Math.min(200,state.total)} 条`);
       const data=await bidQueryPage(config,cl,[BidSyncCore.body(day,page,config.createdDays??7,state.total),config.clientUser,config.mainUserId,BidSyncCore.requestId()],deadline);
       complete=BidSyncCore.append(state,BidSyncCore.parse(data));
       if (complete) break;
@@ -122,9 +122,9 @@ async function bidRun() {
     await bidLive(config);
     await bidVerifyChuangliangUser(cl,config.clientUser);
     await bidProgress(config,`已读取 ${state.rows.length} 条，正在保存到网站`);
-    const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,...BidSyncCore.createdRange(day,config.createdDays??7),rows:state.rows}]);
+    const saved=await bidExecute(bi.id,bidWebsiteRequest,[config.origin,'', {expectedUserId:config.userId,date:day,...BidSyncCore.createdRange(day,config.createdDays??7),selection:'spend_desc_top_200',upstreamTotal:state.total,rows:state.rows}]);
     await bidLive(config);
-    await bidWrite({...config,state:'ready',lastSuccess:saved.updatedAt,count:saved.count,error:'',progress:`本轮成功同步 ${saved.count} 条计划`,heartbeat:Date.now()});
+    await bidWrite({...config,state:'ready',lastSuccess:saved.updatedAt,count:saved.count,error:'',progress:`本轮成功同步消耗排名前 ${saved.count} 条计划`,heartbeat:Date.now()});
   } catch (error) {
     const current=await bidRead();
     if (current?.generation===config.generation && current.enabled) {

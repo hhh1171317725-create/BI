@@ -31,6 +31,15 @@ class BidSnapshotControllerTest {
     data.put("createdStart",date.minusDays(100).toString());
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
   }
+
+  @Test void topSpendSnapshotRetainsScopeAndDoesNotRequireAllUpstreamRows() {
+    var rows=new ArrayList<Map<String,Object>>();
+    for(int i=0;i<200;i++){var item=row();item.put("promotion_id",String.valueOf(i));rows.add(item);}
+    var data=new HashMap<>(input(rows));data.put("selection","spend_desc_top_200");data.put("upstreamTotal",335367);
+    var saved=BidSnapshotController.validate(data);assertEquals("spend_desc_top_200",saved.get("selection"));assertEquals(335367L,saved.get("upstreamTotal"));
+    rows.removeLast();assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
+    data.put("upstreamTotal",199);assertDoesNotThrow(()->BidSnapshotController.validate(data));
+  }
   @Test void rejectsEmptyDuplicateAndMissingMetrics() {
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of())));
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(row(),row()))));

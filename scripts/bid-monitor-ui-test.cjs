@@ -19,7 +19,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     window.postMessage({source:'bi-bid-extension',requestId:event.data.requestId,clientUser:'987654',enabled:event.data.command!=='stop',state:event.data.command==='start'?'running':'ready',progress:'正在读取创量第 2 页，已读取 100 条',minutes:10},location.origin);
    });
   });
-  await page.route('**/api/**',route=>{const url=route.request().url();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
+  const queriedPages=[];
+  await page.route('**/api/**',route=>{const url=route.request().url();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot:{date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)}};route.fulfill({json:data})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html`);await page.locator('body.ready').waitFor();
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.locator('#price').fill('21.5');
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
@@ -37,6 +38,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#syncStop').click();await page.waitForFunction(()=>window.syncCommands.includes('stop'));
   await page.locator('#syncLoad').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='2 条');
   assert.match(await page.locator('#source').textContent(),/2026-09-03/);
+  await page.locator('#cookie').fill('test-session');await page.locator('#fetch').click();
+  await page.waitForFunction(()=>document.querySelector('#count').textContent==='200 条');assert.deepEqual(queriedPages,[1,2]);
+  assert.match(await page.locator('#source').textContent(),/消耗降序前 200 条/);
   assert.deepEqual(errors,[]);console.log('UI PASS: import, formulas, search, pagination, export, mobile width, sync start/stop/load, no script errors');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

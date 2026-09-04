@@ -19,6 +19,23 @@ class RuntimeConfigTest {
   Path temporaryDirectory;
 
   @Test
+  void generatedSessionSecretSurvivesServiceRestart() throws Exception {
+    RuntimeConfig first = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(first, "runtimeDir", temporaryDirectory);
+    first.ensureSessionSecret();
+
+    String generated = first.get("REPORT_SESSION_SECRET", "");
+    assertTrue(generated.matches("^[0-9a-f]{64}$"));
+    assertTrue(Files.isRegularFile(temporaryDirectory.resolve("session.env")));
+
+    RuntimeConfig restarted = new RuntimeConfig(new ObjectMapper());
+    ReflectionTestUtils.setField(restarted, "runtimeDir", temporaryDirectory);
+    restarted.ensureSessionSecret();
+
+    assertEquals(generated, restarted.get("REPORT_SESSION_SECRET", ""));
+  }
+
+  @Test
   void reportVisibilityIsEnabledByDefaultAndPersisted() throws Exception {
     RuntimeConfig config = new RuntimeConfig(new ObjectMapper());
     ReflectionTestUtils.setField(config, "runtimeDir", temporaryDirectory);

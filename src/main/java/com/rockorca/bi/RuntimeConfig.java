@@ -40,8 +40,25 @@ public class RuntimeConfig {
     loadOptionalFile("adpflux.env");
     loadOptionalFile("mail-dingtalk.env");
     loadOptionalFile("report-visibility.env");
-    // 未固定密钥时每次启动都会生成新密钥，因此旧登录 Cookie 会自然失效。
-    values.computeIfAbsent("REPORT_SESSION_SECRET", ignored -> randomHex(32));
+    ensureSessionSecret();
+  }
+
+  void ensureSessionSecret() {
+    loadOptionalFile("session.env");
+    if (!get("REPORT_SESSION_SECRET", "").isBlank()) return;
+
+    String secret = randomHex(32);
+    Path path = runtimeDir.resolve("session.env");
+    try {
+      Files.createDirectories(runtimeDir);
+      saveEnvironmentFile(
+          path,
+          "# Generated once and reused so service restarts keep browser sessions valid.",
+          Map.of("REPORT_SESSION_SECRET", secret));
+      values.put("REPORT_SESSION_SECRET", secret);
+    } catch (IOException error) {
+      throw new IllegalStateException("保存登录会话密钥失败：" + error.getMessage(), error);
+    }
   }
 
   private void loadFile(String filename) {

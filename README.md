@@ -41,7 +41,7 @@
 
 ## 登录
 
-整个站点及数据接口均需要登录。用户表首次为空时，系统会将 `REPORT_USERNAME` / `REPORT_PASSWORD` 创建为首个管理员，未配置时默认用户名为 `hhh`、密码为 `123456`。之后账号以 MySQL `report_users` 表为准，密码只保存为带随机盐的 PBKDF2-SHA256 哈希。登录状态通过长期保存的签名 HttpOnly Cookie 维持；修改密码、重置密码或停用账号会使该用户的旧会话失效，修改自己的密码后当前设备会自动获得新会话。设置固定的随机 `REPORT_SESSION_SECRET` 后，普通服务重启不会使现有登录状态失效。
+整个站点及数据接口均需要登录。用户表首次为空时，系统会将 `REPORT_USERNAME` / `REPORT_PASSWORD` 创建为首个管理员，未配置时默认用户名为 `hhh`、密码为 `123456`。之后账号以 MySQL `report_users` 表为准，密码只保存为带随机盐的 PBKDF2-SHA256 哈希。登录状态通过长期保存的签名 HttpOnly Cookie 维持；修改密码、重置密码或停用账号会使该用户的旧会话失效，修改自己的密码后当前设备会自动获得新会话。未配置 `REPORT_SESSION_SECRET` 时，系统会首次生成并保存到 `.runtime/session.env`，普通服务重启不会使现有登录状态失效。
 
 ## 数据分析宠物
 

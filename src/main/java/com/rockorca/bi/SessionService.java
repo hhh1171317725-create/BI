@@ -61,10 +61,12 @@ public class SessionService {
     Object cached = request.getAttribute(REQUEST_USER_ATTRIBUTE);
     if (cached instanceof UserRepository.UserAccount user) return user;
     if (request.getCookies() == null) return null;
+    long now = System.currentTimeMillis();
     for (Cookie cookie : request.getCookies()) {
       if (!COOKIE_NAME.equals(cookie.getName())) continue;
-      UserRepository.UserAccount user = resolveToken(cookie.getValue(), System.currentTimeMillis());
-      if (user != null) request.setAttribute(REQUEST_USER_ATTRIBUTE, user);
+      UserRepository.UserAccount user = resolveToken(cookie.getValue(), now);
+      if (user == null) continue;
+      request.setAttribute(REQUEST_USER_ATTRIBUTE, user);
       return user;
     }
     return null;

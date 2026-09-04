@@ -55,6 +55,17 @@ class SessionServiceTest {
   }
 
   @Test
+  void authenticatedSkipsStaleDuplicateSessionCookies() {
+    long now = System.currentTimeMillis();
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setCookies(
+        new Cookie(SessionService.COOKIE_NAME, "stale-cookie"),
+        new Cookie(SessionService.COOKIE_NAME, sessions.createToken(user, now)));
+
+    assertTrue(sessions.authenticated(request));
+  }
+
+  @Test
   void sessionVersionAndActiveStateInvalidateOldTokens() {
     String token = sessions.createToken(user, System.currentTimeMillis());
     LocalDateTime now = LocalDateTime.of(2026, 7, 30, 12, 0);

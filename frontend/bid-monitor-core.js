@@ -40,7 +40,7 @@
     const commission=valid(row.registrations)&&price>0?finite(row.registrations*price):null;
     const bidCost=valid(row.bid)&&valid(row.conversions)?finite(row.bid*row.conversions):null;
     const breakEvenBid=commission>0&&row.conversions>0?finite(commission/row.conversions):null;
-    let grant=null,cashCost=null;
+    let grant=null,cashCost=null,estimatedCompensation=null,estimatedRoi=null;
     if(valid(row.cost)&&valid(row.conversions)&&bidCost!==null){
       const threshold=1.2*bidCost;
       // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
@@ -48,17 +48,24 @@
       const eligible=row.conversions>6&&row.cost-threshold>tolerance;
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
+      const compensationEligible=row.conversions>0&&row.cost-threshold>tolerance;
+      estimatedCompensation=compensationEligible?Math.max(0,row.cost-bidCost):0;
+      estimatedRoi=commission!==null&&row.cost>0
+        ?finite((commission+estimatedCompensation)/row.cost):null;
     }
-    return{commission,bidCost,breakEvenBid,grant,cashCost,
+    return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,
       roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
       bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
   }
   function summarizeCash(rows){
     const total=key=>rows.length&&rows.every(r=>Number.isFinite(r[key]))?rows.reduce((sum,r)=>sum+r[key],0):null;
     const commission=total('commission'),cashCost=total('cashCost'),bidCost=total('bidCost');
+    const cost=total('cost'),estimatedCompensation=total('estimatedCompensation');
     const roi=commission!==null&&cashCost>0?commission/cashCost:null;
+    const estimatedRoi=commission!==null&&estimatedCompensation!==null&&cost>0
+      ?(commission+estimatedCompensation)/cost:null;
     const bidProfitRate=commission>0&&bidCost!==null&&rows.every(r=>Number.isFinite(r.bidProfitRate))?(commission-bidCost)/commission:null;
-    return{roi:Number.isFinite(roi)?roi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
+    return{roi:Number.isFinite(roi)?roi:null,estimatedRoi:Number.isFinite(estimatedRoi)?estimatedRoi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
   }
   function analyzeTask(row,rules,margin,minSample,current){
     const task=taskFor(row,rules);

@@ -73,6 +73,17 @@ test('cash ROI deducts grant only when both strict conditions hold',()=>{
  assert.equal(cashMetrics({...base,conversions:7},10).grant,80);
  assert.equal(cashMetrics({...base,bid:.3,conversions:7,cost:2.52},10).grant,0);
 });
+test('estimated ROI adds compensation when conversion cost exceeds 1.2 times bid',()=>{
+ const base={cost:150,conversions:10,registrations:20,bid:10};
+ const eligible=cashMetrics(base,10);
+ assert.equal(eligible.commission,200);assert.equal(eligible.estimatedCompensation,50);assert.equal(eligible.estimatedRoi,250/150);
+ const boundary=cashMetrics({...base,cost:120},10);
+ assert.equal(boundary.estimatedCompensation,0);assert.equal(boundary.estimatedRoi,200/120);
+ const sixConversions=cashMetrics({...base,cost:600,conversions:6,registrations:10},10);
+ assert.equal(sixConversions.grant,0);assert.equal(sixConversions.estimatedCompensation,540);assert.equal(sixConversions.estimatedRoi,640/600);
+ assert.equal(cashMetrics({...base,cost:0},10).estimatedRoi,null);
+ assert.equal(cashMetrics(base,null).estimatedRoi,null);
+});
 test('cash ROI handles zero conversions, zero cash and missing inputs independently',()=>{
  const base={cost:150,conversions:10,registrations:20,bid:10};
  const zero=cashMetrics({...base,conversions:0},10);
@@ -89,6 +100,7 @@ test('cash summary applies grant per plan and weights ROI and bid profit by thei
  const rows=[cashMetrics({cost:150,conversions:10,registrations:20,bid:10},10),cashMetrics({cost:600,conversions:6,registrations:10,bid:10},10)];
  const total=summarizeCash(rows);
  assert.equal(total.roi,300/700);assert.equal(total.bidProfitRate,140/300);
+ assert.equal(total.estimatedRoi,(300+50+540)/750);
  assert.notEqual(total.roi,(rows[0].roi+rows[1].roi)/2);
  assert.equal(summarizeCash([]).roi,null);
  assert.equal(summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]).roi,null);

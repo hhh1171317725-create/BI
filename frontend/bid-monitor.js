@@ -9,6 +9,7 @@ const names={'task-missing':'未匹配任务','task-conflict':'多个任务匹�
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>v===null||v===undefined?'--':Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtPercent=v=>Number.isFinite(v)?fmt(v*100)+'%':'--';
+const fmtRoi=v=>Number.isFinite(v)?Number(v).toLocaleString('zh-CN',{minimumFractionDigits:3,maximumFractionDigits:3}):'--';
 function message(text,bad=false){$('#message').textContent=text;$('#message').className=bad?'error':'';}
 async function api(path,options={}){
   const response=await fetch(path,options);if(response.status===401){location.replace('/login');throw Error('请先登录');}
@@ -34,12 +35,12 @@ function render(){
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task].join(' ').toLowerCase().includes(q))&&(filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null)))
     .sort((a,b)=>(b[key]??-Infinity)-(a[key]??-Infinity));
   const summary=B.summarizeCash(visible);
-  $('#metrics').innerHTML=[['出价利润率',fmtPercent(summary.bidProfitRate)]]
+  $('#metrics').innerHTML=[['出价利润率',fmtPercent(summary.bidProfitRate)],['预估 ROI',fmtRoi(summary.estimatedRoi)]]
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
-  $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划已匹配结算价${unpriced?'；未匹配或冲突的计划不计算出价利润率':''}`:'';
+  $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划已匹配结算价${unpriced?'；未匹配或冲突的计划不计算出价利润率和预估 ROI':''}`:'';
   const size=Number($('#pageSize').value),pages=Math.max(1,Math.ceil(visible.length/size));page=Math.min(page,pages);
-  $('#rows').innerHTML=visible.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.optimizer||'--')}</td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.price)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td>${fmt(r.breakEvenBid)}</td><td title="盈亏线出价：${fmt(r.breakEvenBid)}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td></tr>`).join('')||'<tr><td colspan="12" class="empty">没有符合条件的计划</td></tr>';
+  $('#rows').innerHTML=visible.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.optimizer||'--')}</td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.price)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td title="预估赔付金额：${fmt(r.estimatedCompensation)}">${fmtRoi(r.estimatedRoi)}</td><td>${fmt(r.breakEvenBid)}</td><td title="盈亏线出价：${fmt(r.breakEvenBid)}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td></tr>`).join('')||'<tr><td colspan="13" class="empty">没有符合条件的计划</td></tr>';
   $('#count').textContent=`${visible.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!visible.length;
 }
 $('#fetch').onclick=async()=>{
@@ -80,8 +81,8 @@ for(const id of ['startDate','endDate','createdStart','createdEnd'])$('#'+id).on
 $('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};
 $('#export').onclick=()=>{
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
-  const rows=[['计划ID','计划名称','账户ID','账户名称','优化师','任务','结算单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','规则赠款','现金消耗','盈亏线出价','出价利润率'],
-    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.optimizer,r.task,r.price,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate)])];
+  const rows=[['计划ID','计划名称','账户ID','账户名称','优化师','任务','结算单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率'],
+    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.optimizer,r.task,r.price,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate)])];
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`出价监测_${range.start}_${range.end}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 (async()=>{try{const session=await api('/api/session');if(!session.authenticated){location.replace('/login');return;}const permissions=await api('/api/tool-visibility');if(permissions.bidMonitor!==true){location.replace('/tools');return;}document.body.classList.add('ready');render();}catch(error){document.body.classList.add('ready');message(error.message,true);}})();

@@ -18,8 +18,12 @@
     try {
       const response = await fetch('/api/report-visibility', {cache: 'no-store'});
       if (response.status === 401) {
-        location.replace('/login');
-        return;
+        const sessionResponse = await fetch('/api/session', {cache: 'no-store'});
+        const session = sessionResponse.ok ? await sessionResponse.json() : null;
+        if (sessionResponse.status === 401 || session?.authenticated === false) {
+          location.replace('/login');
+          return;
+        }
       }
       if (response.ok) visibility = {...visibility, ...await response.json()};
     } catch {

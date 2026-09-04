@@ -147,11 +147,7 @@ public class UserService {
     if (actor == null || !actor.active()) {
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
     }
-    if (actor.admin()) {
-      Map<String, Boolean> result = new LinkedHashMap<>();
-      TOOL_KEYS.forEach(key -> result.put(key, true));
-      return result;
-    }
+    if (actor.admin()) return allToolsVisible();
     return users.toolVisibility(actor.id());
   }
 
@@ -185,7 +181,15 @@ public class UserService {
     result.put("reportVisibility", user.admin()
         ? Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true)
         : users.reportVisibility(user.id()));
-    result.put("toolVisibility", effectiveToolVisibility(user));
+    result.put("toolVisibility", user.admin()
+        ? allToolsVisible()
+        : users.toolVisibility(user.id()));
+    return result;
+  }
+
+  private static Map<String, Boolean> allToolsVisible() {
+    Map<String, Boolean> result = new LinkedHashMap<>();
+    TOOL_KEYS.forEach(key -> result.put(key, true));
     return result;
   }
 

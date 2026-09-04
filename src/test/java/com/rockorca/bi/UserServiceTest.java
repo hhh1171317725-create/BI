@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,5 +118,22 @@ class UserServiceTest {
     assertEquals(false, result.get("terminal"));
     verify(repository).saveToolVisibility(
         org.mockito.ArgumentMatchers.eq(2L), org.mockito.ArgumentMatchers.anyMap());
+  }
+
+  @Test
+  void adminCanListInactiveOperatorsWithoutInvalidatingOwnSession() {
+    UserRepository.UserAccount inactive = new UserRepository.UserAccount(
+        member.id(), member.username(), member.passwordHash(), member.role(), false,
+        member.sessionVersion(), member.createdAt(), member.updatedAt(), member.lastLoginAt());
+    when(repository.list()).thenReturn(List.of(admin, inactive));
+    when(repository.reportVisibility(2L)).thenReturn(
+        Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true));
+    when(repository.toolVisibility(2L)).thenReturn(Map.of("todo", false));
+
+    List<Map<String, Object>> result = service.listUsers(admin);
+
+    assertEquals(2, result.size());
+    assertEquals(false, result.get(1).get("active"));
+    assertEquals(Map.of("todo", false), result.get(1).get("toolVisibility"));
   }
 }

@@ -4,7 +4,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../frontend');
-const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i}));
+const todayChina=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i}));
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.join(root,path.basename(new URL(req.url,'http://localhost').pathname));if(!fs.existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -114,7 +115,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');
   const optimizerRow=page.locator('#rows tr').filter({hasText:'张三'});assert.equal(await optimizerRow.locator('td').nth(1).textContent(),'53');
-  assert.equal(await page.locator('#tableHead th').nth(11).textContent(),'现金利润');
+  assert.equal(await optimizerRow.locator('td').nth(2).textContent(),'5');assert.equal(await optimizerRow.locator('td').nth(3).textContent(),'53');
+  assert.equal(await page.locator('#tableHead th').nth(13).textContent(),'现金利润');
+  await page.locator('#viewMode').selectOption('tasks');assert.match(await page.locator('#count').textContent(),/^2 个任务（105 条计划）$/);
+  assert.equal(await page.locator('#tableHead th').first().textContent(),'任务');assert.equal(await page.locator('#rows tr').filter({hasText:'任务A'}).locator('td').nth(1).textContent(),'53');
+  await page.locator('#viewMode').selectOption('optimizerTasks');assert.match(await page.locator('#count').textContent(),/^2 个优化师 × 任务组合（105 条计划）$/);
+  assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'优化师');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'任务');
   await page.locator('#viewMode').selectOption('plans');
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
   const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);

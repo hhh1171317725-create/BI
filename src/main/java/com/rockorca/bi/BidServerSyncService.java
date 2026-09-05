@@ -319,7 +319,7 @@ public class BidServerSyncService {
       for(Object item:batch) {
         if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("第 "+page+" 页包含格式异常的计划");
         var row=new LinkedHashMap<String,Object>();
-        for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
+        for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
         for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
           Object id=row.get(key);
           if(id instanceof Float||id instanceof Double)

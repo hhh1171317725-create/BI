@@ -32,9 +32,9 @@ class BidSnapshotControllerTest {
   }
 
   @Test void optimizerIsOptionalAndRetainedWithoutAcceptingObjects() {
-    var item=row();item.put("user_name","optimizer-A");
+    var item=row();item.put("user_name","optimizer-A");item.put("promotion_create_time","2026-09-05 08:00:00");
     var saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(item))).get("rows")).getFirst();
-    assertEquals("optimizer-A",saved.get("user_name"));
+    assertEquals("optimizer-A",saved.get("user_name"));assertEquals("2026-09-05 08:00:00",saved.get("promotion_create_time"));
     item.remove("user_name");assertDoesNotThrow(()->BidSnapshotController.validate(input(List.of(item))));
     item.put("user_name",Map.of("cookie","must-not-save"));
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(item))));

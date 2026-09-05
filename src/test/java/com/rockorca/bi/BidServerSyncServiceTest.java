@@ -42,7 +42,7 @@ class BidServerSyncServiceTest {
     for(int i=0;i<size;i++){
       var row=new LinkedHashMap<String,Object>(Map.of("promotion_id","768107547558"+(offset+i),"promotion_name","plan","media_account_id","123",
           "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop"));
-      row.put("advertiser_id","1866402186668232");rows.add(row);
+      row.put("advertiser_id","1866402186668232");row.put("promotion_create_time","2026-09-05 08:00:00");rows.add(row);
     }
     return rows;
   }
@@ -158,6 +158,7 @@ class BidServerSyncServiceTest {
     assertEquals(List.of(1,2,3,4),pages);assertEquals(350,((List<?>)snapshot.get("rows")).size());
     assertEquals("created_window_all",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
+    assertEquals("2026-09-05 08:00:00",row.get("promotion_create_time"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
     assertEquals("optimizer-A",row.get("user_name"));assertEquals("123",row.get("media_account_id"));
     assertEquals("1866402186668232",row.get("advertiser_id"));

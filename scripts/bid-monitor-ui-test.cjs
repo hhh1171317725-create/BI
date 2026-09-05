@@ -62,6 +62,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   });
   await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html`);await page.locator('body.ready').waitFor();
+  await page.evaluate(()=>syncShow({userId:'1',configured:false,enabled:true,state:'running',minutes:10,createdDays:4,progress:{done:200,total:450,startedAt:Date.now()-10000}}));
+  assert.match(await page.locator('#syncStatus').textContent(),/第 3 \/ 5 页；已读取 200 \/ 450 条；已用时 10 秒；速度 [0-9.]+ 条\/秒；预计剩余/);
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.waitForFunction(()=>!document.querySelector('#pricingFields').disabled);
   for(const [name,keyword,price] of [['任务A','客户-A','21.5'],['任务B','客户-B','30']]){
    await page.locator('#pricingAdd').click();const last=page.locator('#pricingRows tr').last();await last.locator('[data-key=name]').fill(name);await last.locator('[data-key=keyword]').fill(keyword);await last.locator('[data-key=price]').fill(price);

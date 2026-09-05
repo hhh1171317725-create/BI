@@ -149,11 +149,30 @@ public class BidServerSyncService {
     String cookie;
     try{cookie=cipher.decrypt(owner,text(state,"credential"));}
     catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
-    var snapshot=collect(state,cookie,(done,total)->{
-      var latest=store.get(owner);requireQueryRevision(latest,revision);
+    long startedAt=System.currentTimeMillis();
+    store.update(owner,(connection,latest)->{
+      requireQueryRevision(latest,revision);
       if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
         throw new IllegalArgumentException("同步状态已变更，请重新查询");
+      latest.put("state","running");latest.put("error","");
+      latest.put("progress",progressValue(0,-1,startedAt));
     });
+    Map<String,Object> snapshot;
+    try{
+      snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,latest)->{
+        requireQueryRevision(latest,revision);
+        if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+          throw new IllegalArgumentException("同步状态已变更，请重新查询");
+        latest.put("progress",progressValue(done,total,startedAt));
+      }));
+    }catch(Exception error){
+      store.update(owner,(connection,latest)->{
+        if(current(latest,token)&&revision.equals(text(latest,"credentialRevision"))){
+          latest.put("state","ready");latest.remove("progress");
+        }
+      });
+      throw error;
+    }
     snapshots.initialize();
     var saved=new LinkedHashMap<String,Object>();
     store.update(owner,(connection,latest)->{
@@ -165,7 +184,7 @@ public class BidServerSyncService {
       saved.putAll(validated);
       // Retire overlapping queries/workers before publishing this complete snapshot.
       latest.put("token",UUID.randomUUID().toString());latest.put("lastSuccess",validated.get("updatedAt"));
-      latest.put("state","ready");latest.put("error","");latest.put("progress","");
+      latest.put("state","ready");latest.put("error","");latest.remove("progress");
       latest.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
     });
     return Map.of("userId",Long.toString(owner),"snapshot",saved);
@@ -213,6 +232,7 @@ public class BidServerSyncService {
         long due=((Number)current.getOrDefault("dueAt",0L)).longValue();
         if(!Boolean.TRUE.equals(current.get("enabled"))||due<=0||due>System.currentTimeMillis())return;
         current.put("token",token);current.put("state","running");
+        current.put("progress",progressValue(0,-1,System.currentTimeMillis()));
         // A crashed process leaves a short lease; another instance can resume after expiry.
         current.put("dueAt",System.currentTimeMillis()+180000L);
       });
@@ -221,11 +241,12 @@ public class BidServerSyncService {
       String cookie;
       try{cookie=cipher.decrypt(owner,text(state,"credential"));}
       catch(Exception error){throw new IllegalStateException("credential");}
+      long startedAt=((Number)((Map<?,?>)state.get("progress")).get("startedAt")).longValue();
       var snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,current)->{
         if(!current(current,token))throw new CancellationException();
         if(!allowed(owner))throw new IllegalStateException("permission");
         current.put("dueAt",System.currentTimeMillis()+180000L);
-        current.put("progress","已读取 "+done+(total<0?"":" / "+total)+" 条");
+        current.put("progress",progressValue(done,total,startedAt));
       }));
       snapshots.initialize();
       store.update(owner,(connection,current)->{
@@ -235,7 +256,8 @@ public class BidServerSyncService {
         var validated=BidSnapshotController.validate(snapshot);
         snapshots.write(connection,owner,validated);
         current.put("lastSuccess",validated.get("updatedAt"));current.put("state","ready");
-        current.put("minutes",10);current.put("error","");current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
+        current.put("minutes",10);current.put("error","");current.remove("progress");
+        current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
       });
     } catch(Exception error) {
       try {
@@ -245,6 +267,7 @@ public class BidServerSyncService {
           current.put("enabled",!pause);current.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
           current.put("state",pause?"paused":"retrying");
           current.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
+          current.remove("progress");
         });
       } catch(Exception ignored){LOG.warn("Bid server sync could not save failure status for user {}",owner);}
     }
@@ -259,6 +282,9 @@ public class BidServerSyncService {
   }
 
   @FunctionalInterface interface Progress { void update(int done,long total)throws Exception; }
+  static Map<String,Object> progressValue(int done,long total,long startedAt){
+    return Map.of("done",done,"total",total,"startedAt",startedAt,"updatedAt",System.currentTimeMillis());
+  }
   static LocalDate creationStart(LocalDate today){return today.minusDays(3);}
 
   Map<String,Object> collect(Map<String,Object> state,String cookie,Progress progress) throws Exception {

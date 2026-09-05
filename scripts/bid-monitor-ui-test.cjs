@@ -24,7 +24,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     if(action==='dingtalk'){
      assert.equal(input.pricingRevision,pricingRevision);assert.equal(input.time,'18:00');assert.deepEqual(input.tasks,['任务A']);
      ding={...ding,configured:true,enabled:input.enabled,time:input.time,tasks:input.tasks,keyword:input.keyword,revision:'d1',state:'saved'};
-    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:"【HS TOP5】\n1. 消耗 5952.87 | 回传 5.99% | 出价 22.00 | 出价利润率 12.10%\n优化师 张三 | 账户ID 1846208955218314 | 计划ID 7680247482655588371\n【增量HS TOP5】\n1. 消耗 1367.00 | 回传 7.29% | 出价 5.83 | 出价利润率 14.95%\n优化师 李四 | 账户ID 1866402186668232 | 计划ID 7680973376249348115"}]}});return;}
+    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:"━━━【HS · TOP5】━━━\n①  ▲ +12.10%  出价利润率\n    消耗 5,952.87 ｜ 回传 5.99% ｜ 出价 22.00\n    优化师 张三 ｜ 账户 1846208955218314 ｜ 计划 7680247482655588371\n\n━━━【增量HS · TOP5】━━━\n①  ▲ +14.95%  出价利润率\n    消耗 1,367.00 ｜ 回传 7.29% ｜ 出价 5.83\n    优化师 李四 ｜ 账户 1866402186668232 ｜ 计划 7680973376249348115"}]}});return;}
     else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 条消息，包含 1 个任务'};}
    }
    await route.fulfill({json:{...ding,availableTasks:savedRules.map(r=>r.name),pricingRevision}});
@@ -79,10 +79,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#dingSave').click();await page.waitForFunction(()=>document.querySelector('#dingStatus').textContent.includes('机器人已加密保存'));
   assert.equal(await page.locator('#dingWebhook').inputValue(),'');assert.equal(ding.enabled,true);
   await page.locator('#dingPreviewButton').click();await page.locator('#dingPreview').waitFor({state:'visible'});
-  assert.match(await page.locator('#dingPreview').textContent(),/^【HS TOP5】/);assert.equal(dingSent,0);
-  assert.doesNotMatch(await page.locator('#dingPreview').textContent(),/\n[ \t]*\n/);
+  assert.match(await page.locator('#dingPreview').textContent(),/^━━━【HS · TOP5】━━━/);assert.equal(dingSent,0);
+  assert.match(await page.locator('#dingPreview').textContent(),/\n[ \t]*\n/);
   const copied=await page.locator('#dingPreview').evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);const text=selection.toString();selection.removeAllRanges();return text;});
-  assert.match(copied,/账户ID 1846208955218314/);assert.match(copied,/计划ID 7680247482655588371/);
+  assert.match(copied,/账户 1846208955218314/);assert.match(copied,/计划 7680247482655588371/);
   assert.equal(await page.locator('#dingPreview').evaluate(el=>getComputedStyle(el).whiteSpace),'pre-wrap');
   await page.locator('#dingPreview').screenshot({path:path.resolve(__dirname,'../.runtime/ding-copyable-desktop.png')});
   await page.setViewportSize({width:390,height:844});

@@ -27,6 +27,17 @@ test('aggregates every plan by optimizer with weighted metrics',()=>{
  assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,-400);
  assert.equal(result[0].estimatedRoi,(300+50+540)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
 });
+test('aggregate financial metrics use the priced subset without treating unmatched plans as zero',()=>{
+ const rules=[{name:'A',keyword:'account-a',price:10}];
+ const rows=[
+  analyzeTask({id:'1',accountId:'a',account:'account-a',optimizer:'张三',cost:150,conversions:10,registrations:20,bid:10},rules,0,20,false),
+  analyzeTask({id:'2',accountId:'b',account:'unknown',optimizer:'张三',cost:900,conversions:9,registrations:90,bid:10},rules,0,20,false)
+ ];
+ const result=aggregateOptimizers(rows)[0];
+ assert.equal(result.plans,2);assert.equal(result.priced,1);assert.equal(result.cost,1050);
+ assert.equal(result.commission,200);assert.equal(result.estimatedCompensation,50);assert.equal(result.cashCost,100);assert.equal(result.profit,100);
+ assert.equal(result.estimatedRoi,250/150);assert.equal(result.bidProfitRate,.5);
+});
 test('aggregates task and optimizer-task dimensions with new and spending plan counts',()=>{
  const rows=[
   {optimizer:'张三',task:'任务A',accountId:'a',createdAt:'2026-09-05 08:00:00',cost:10,conversions:2,registrations:4,price:10,commission:40,cashCost:10,estimatedCompensation:0,bidCost:8,bidProfitRate:.8},
@@ -129,7 +140,7 @@ test('cash summary applies grant per plan and weights ROI and bid profit by thei
  assert.equal(total.estimatedRoi,(300+50+540)/750);
  assert.notEqual(total.roi,(rows[0].roi+rows[1].roi)/2);
  assert.equal(summarizeCash([]).roi,null);
- assert.equal(summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]).roi,null);
+ const partial=summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]);assert.equal(partial.roi,null);assert.equal(partial.bidProfitRate,140/300);
 });
 test('bid profit rate compares the current bid to the break-even bid, not cash ROI',()=>{
  const base={cost:300,conversions:10,registrations:100,bid:80};

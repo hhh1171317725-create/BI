@@ -59,12 +59,14 @@
   }
   function summarizeCash(rows){
     const total=key=>rows.length&&rows.every(r=>Number.isFinite(r[key]))?rows.reduce((sum,r)=>sum+r[key],0):null;
-    const commission=total('commission'),cashCost=total('cashCost'),bidCost=total('bidCost');
+    const commission=total('commission'),cashCost=total('cashCost');
     const cost=total('cost'),estimatedCompensation=total('estimatedCompensation');
     const roi=commission!==null&&cashCost>0?commission/cashCost:null;
     const estimatedRoi=commission!==null&&estimatedCompensation!==null&&cost>0
       ?(commission+estimatedCompensation)/cost:null;
-    const bidProfitRate=commission>0&&bidCost!==null&&rows.every(r=>Number.isFinite(r.bidProfitRate))?(commission-bidCost)/commission:null;
+    const bidRows=rows.filter(r=>Number.isFinite(r.commission)&&Number.isFinite(r.bidCost)&&Number.isFinite(r.bidProfitRate));
+    const bidCommission=bidRows.reduce((sum,row)=>sum+row.commission,0),validBidCost=bidRows.reduce((sum,row)=>sum+row.bidCost,0);
+    const bidProfitRate=bidCommission>0?(bidCommission-validBidCost)/bidCommission:null;
     return{roi:Number.isFinite(roi)?roi:null,estimatedRoi:Number.isFinite(estimatedRoi)?estimatedRoi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
   }
   function analyzeTask(row,rules,margin,minSample,current){
@@ -84,15 +86,15 @@
     const sum=(rows,key)=>rows.reduce((total,row)=>total+(Number.isFinite(row[key])?row[key]:0),0);
     return [...groups.values()].map(({labels,items})=>{
       const cost=sum(items,'cost'),conversions=sum(items,'conversions'),registrations=sum(items,'registrations');
-      const cash=summarizeCash(items);
-      const commission=items.every(row=>Number.isFinite(row.commission))?sum(items,'commission'):null;
+      const pricedItems=items.filter(row=>row.price!==null),cash=summarizeCash(pricedItems);
+      const commission=pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.commission))?sum(pricedItems,'commission'):null;
       return{...labels,plans:items.length,todayPlans:items.filter(row=>statDate&&String(row.createdAt||'').slice(0,10)===statDate).length,
         spendingPlans:items.filter(row=>Number.isFinite(row.cost)&&row.cost>0).length,
         accounts:new Set(items.map(row=>row.accountId||row.account).filter(Boolean)).size,
         cost,conversions,registrations,ratio:registrations>0?conversions/registrations:null,
-        priced:items.filter(row=>row.price!==null).length,commission,
-        estimatedCompensation:items.every(row=>Number.isFinite(row.estimatedCompensation))?sum(items,'estimatedCompensation'):null,
-        cashCost:items.every(row=>Number.isFinite(row.cashCost))?sum(items,'cashCost'):null,
+        priced:pricedItems.length,commission,
+        estimatedCompensation:pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.estimatedCompensation))?sum(pricedItems,'estimatedCompensation'):null,
+        cashCost:pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.cashCost))?sum(pricedItems,'cashCost'):null,
         estimatedRoi:cash.estimatedRoi,bidProfitRate:cash.bidProfitRate};
     }).map(row=>({...row,profit:row.commission===null||row.cashCost===null?null:row.commission-row.cashCost}))
       .sort((a,b)=>b.cost-a.cost||dimensions.map(key=>a[key]).join(' ').localeCompare(dimensions.map(key=>b[key]).join(' '),'zh-CN'));

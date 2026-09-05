@@ -14,9 +14,9 @@ final class BidTop5Formatter {
   static String displayMoney(BigDecimal value){return String.format(Locale.ROOT,"%,.2f",value);}
   static String rank(int value){return new String[]{"①","②","③","④","⑤"}[value-1];}
   static String rateBadge(String rate){
-    if(rate.equals("--"))return "— --";
+    if(rate.equals("--"))return "—--";
     int sign=new BigDecimal(rate.substring(0,rate.length()-1)).signum();
-    return sign>0?"▲ +"+rate:sign<0?"▼ "+rate:"— "+rate;
+    return sign>0?"▲"+rate:sign<0?"▼"+rate:"—"+rate;
   }
   static String clip(Object value,int max){
     String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}|]"," ");
@@ -63,12 +63,12 @@ final class BidTop5Formatter {
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
-        entries.add(rank(++index)+"  "+rateBadge(metrics.get("rate"))+"  出价利润率"
-            +"\n    消耗 "+displayMoney(number(row.get("stat_cost")))+" ｜ 回传 "+metrics.get("ratio")
-            +" ｜ 出价 "+displayMoney(number(row.get("cpa_bid")))
-            +"\n    优化师 "+optimizer+" ｜ 账户 "+accountId+" ｜ 计划 "+field(row.get("promotion_id")));
+        entries.add(rank(++index)+" 利润"+rateBadge(metrics.get("rate"))
+            +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))
+            +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }
-      groups.add("━━━【"+clip(task,80)+" · TOP5】━━━\n"+String.join("\n\n",entries));
+      groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));
     }
     return List.of(Map.of("text",String.join("\n\n",groups),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
   }

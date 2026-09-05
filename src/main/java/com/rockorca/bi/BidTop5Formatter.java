@@ -58,7 +58,7 @@ final class BidTop5Formatter {
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
-        entries.add(rank(++index)+" 利润"+metrics.get("rate")
+        entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
             +"｜出价"+displayMoney(number(row.get("cpa_bid")))
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));

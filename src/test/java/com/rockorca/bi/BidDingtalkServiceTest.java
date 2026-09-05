@@ -120,10 +120,10 @@ class BidDingtalkServiceTest {
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
     String text=messages.getFirst().get("text");
     assertEquals(1,messages.size());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
-    assertEquals("① 利润50.00%｜消耗800.00｜回传50.00%｜出价10.00",text.lines().skip(1).findFirst().orElseThrow());
+    assertEquals("① 利润出价50.00%｜消耗800.00｜回传50.00%｜出价10.00",text.lines().skip(1).findFirst().orElseThrow());
     String taskA=text.substring(0,text.indexOf("\n\n【taskB TOP5】"));
-    for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,taskA.lines().filter(line->line.startsWith(rank+" 利润")).count());
-    assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("【taskB TOP5】\n① 利润75.00%｜消耗9,000.00"));
+    for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,taskA.lines().filter(line->line.startsWith(rank+" 利润出价")).count());
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("【taskB TOP5】\n① 利润出价75.00%｜消耗9,000.00"));
     assertFalse(text.contains("▲"));assertFalse(text.contains("▼"));
     assertFalse(text.contains("ROI"));assertTrue(text.contains("｜账"));assertTrue(text.contains("｜计"));
     assertEquals(6,text.lines().filter(line->line.contains("｜账")).count());
@@ -158,7 +158,7 @@ class BidDingtalkServiceTest {
     for(String task:List.of("A","B","C"))for(int i=1;i<=7;i++)plans.add(row(task+i,"account-"+task,i*100));
     var data=new LinkedHashMap<>(snapshot());data.put("rows",plans);when(snapshots.readOwned(7)).thenReturn(data);
     var preview=service.preview(7);var messages=(List<?>)preview.get("messages");assertEquals(1,messages.size());
-    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[①②③④⑤] 利润.*")).count());
+    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[①②③④⑤] 利润出价.*")).count());
     assertTrue(text.startsWith("【taskA TOP5】"));assertEquals(15,text.lines().filter(line->line.startsWith("   ")).count());
     assertTrue(text.lines().anyMatch(String::isBlank));
     for(String task:List.of("taskA","taskB","taskC"))assertTrue(text.contains("【"+task+" TOP5】"));

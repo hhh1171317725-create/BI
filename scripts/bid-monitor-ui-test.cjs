@@ -24,7 +24,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     if(action==='dingtalk'){
      assert.equal(input.pricingRevision,pricingRevision);assert.equal(input.time,'18:00');assert.deepEqual(input.tasks,['任务A']);
      ding={...ding,configured:true,enabled:input.enabled,time:input.time,tasks:input.tasks,keyword:input.keyword,revision:'d1',state:'saved'};
-    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:"【HS TOP5】\n① 利润12.10%｜消耗5,952.87｜回传5.99%｜出价22.00\n   张三｜账1846208955218314｜计7680247482655588371\n\n【增量HS TOP5】\n① 利润14.95%｜消耗1,367.00｜回传7.29%｜出价5.83\n   李四｜账1866402186668232｜计7680973376249348115"}]}});return;}
+    }else if(action==='preview'){await route.fulfill({json:{userId:'1',messages:[{task:'任务A',text:"【HS TOP5】\n① 利润出价12.10%｜消耗5,952.87｜回传5.99%｜出价22.00\n   张三｜账1846208955218314｜计7680247482655588371\n\n【增量HS TOP5】\n① 利润出价14.95%｜消耗1,367.00｜回传7.29%｜出价5.83\n   李四｜账1866402186668232｜计7680973376249348115"}]}});return;}
     else if(action==='send'){dingSent++;ding={...ding,state:'sent',lastResult:'已发送 1 条消息，包含 1 个任务'};}
    }
    await route.fulfill({json:{...ding,availableTasks:savedRules.map(r=>r.name),pricingRevision}});

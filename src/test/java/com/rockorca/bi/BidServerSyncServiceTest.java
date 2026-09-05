@@ -182,6 +182,18 @@ class BidServerSyncServiceTest {
     when(upstream.page(anyMap())).thenReturn(Map.of("total",100001,"rows",rows(0,100)));
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
   }
+  @Test void removesProviderDuplicateRowsAndStillFinishesEveryPage()throws Exception{
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      return Map.of("total",200,"rows",page==1?rows(0,100):rows(99,100));
+    });
+    var snapshot=service.collect(input(),"cookie");
+    assertEquals(199,((List<?>)snapshot.get("rows")).size());
+    assertEquals(199L,snapshot.get("upstreamTotal"));
+    assertEquals(200L,snapshot.get("sourceTotal"));
+    assertEquals(1L,snapshot.get("duplicateRows"));
+    verify(upstream,times(2)).page(anyMap());
+  }
   @Test void pricingIsOwnerScopedAndDoesNotChangeRunningJobToken()throws Exception{
     service.start(7,input());String token=store.get(7).get("token").toString();
     var rules=List.of(Map.of("name","taskA","keyword","account-A","price","21.5"));

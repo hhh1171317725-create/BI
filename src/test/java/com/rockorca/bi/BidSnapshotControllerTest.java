@@ -71,6 +71,16 @@ class BidSnapshotControllerTest {
     assertEquals(250,((List<?>)BidSnapshotController.validate(data).get("rows")).size());
     rows.removeLast();assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
   }
+  @Test void allSelectionAcceptsAuditedProviderDuplicates(){
+    var rows=new ArrayList<Map<String,Object>>();
+    for(int i=0;i<2;i++){var item=row();item.put("promotion_id",String.valueOf(i));rows.add(item);}
+    var data=new HashMap<>(input(rows));data.put("selection","created_window_all");data.put("upstreamTotal",2);
+    data.put("sourceTotal",3);data.put("duplicateRows",1);
+    var saved=BidSnapshotController.validate(data);
+    assertEquals(3L,saved.get("sourceTotal"));assertEquals(1L,saved.get("duplicateRows"));
+    data.put("duplicateRows",2);
+    assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
+  }
   @Test void topFourHundredRequiresExactSelectedCount(){
     var rows=new ArrayList<Map<String,Object>>();
     for(int i=0;i<400;i++){var r=row();r.put("promotion_id",String.valueOf(i));rows.add(r);}

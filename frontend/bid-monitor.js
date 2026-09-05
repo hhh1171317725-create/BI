@@ -65,24 +65,25 @@ $('#fetch').onclick=async()=>{
       const data=await api('/api/bid-monitor/server-sync/query-snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
       syncIdentity(data.userId);
       if(!data.snapshot?.updatedAt||!Array.isArray(data.snapshot.rows))throw Error('服务器未确认快照保存成功，请重新查询');
-      receive(data.snapshot.rows,'已保存同步快照 '+new Date(data.snapshot.updatedAt).toLocaleString('zh-CN'),{start:data.snapshot.date,end:data.snapshot.date},true);
+      receive(data.snapshot.rows,'已保存同步快照 '+new Date(data.snapshot.updatedAt).toLocaleString('zh-CN')+
+        (data.snapshot.duplicateRows?` · 已去除 ${data.snapshot.duplicateRows} 条上游重复记录`:''),{start:data.snapshot.date,end:data.snapshot.date},true);
       syncStamp=data.snapshot.updatedAt;return;
     }
-    let all=[],total=null;const ids=new Set();
-    for(let p=1;total===null||all.length<total;p++){
+    let all=[],total=null,received=0,duplicates=0;const ids=new Set();
+    for(let p=1;total===null||received<total;p++){
       if(p>1000)throw Error('计划总数超过 100000 条，请缩小计划创建日期范围');
-      message(`正在读取第 ${p} 页，已读取 ${all.length}${total===null?'':' / '+total} 条`);
+      message(`正在读取第 ${p} 页，已读取 ${received}${total===null?'':' / '+total} 条`);
       const data=await api('/api/bid-monitor/server-sync/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,page:p,total}),signal:abort.signal});
       const n=Number(data.total);
       if(data.total==null||!Number.isSafeInteger(n)||n<0)throw Error('接口总条数异常');
       if(total!==null&&total!==n)throw Error('分页期间计划总数变化，请重试');total=n;
       if(total>100000)throw Error('计划总数超过 100000 条，请缩小计划创建日期范围');
-      if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,total-all.length)))throw Error('分页数据不完整，保留原有结果');
-      for(const row of data.rows){const r=B.normalize(row),id=`${r.accountId}:${r.id}`;if(!r.id||ids.has(id))throw Error('分页出现缺失或重复计划，保留原有结果');ids.add(id);}
-      all.push(...data.rows);
+      if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,total-received)))throw Error('分页数据不完整，保留原有结果');
+      for(const row of data.rows){const r=B.normalize(row),id=`${r.accountId}:${r.id}`;if(!r.id)throw Error('分页出现计划 ID 缺失，保留原有结果');if(ids.has(id)){duplicates++;continue;}ids.add(id);all.push(row);}
+      received+=data.rows.length;
     }
-    if(all.length!==total)throw Error('全部计划读取不完整，保留原有结果');
-    receive(all,'创量查询 · 全部 '+new Date().toLocaleTimeString('zh-CN')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
+    if(received!==total)throw Error('全部计划读取不完整，保留原有结果');
+    receive(all,'创量查询 · 全部 '+new Date().toLocaleTimeString('zh-CN')+(duplicates?` · 已去除 ${duplicates} 条上游重复记录`:'')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
   }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);}finally{setBusy(false);}
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();

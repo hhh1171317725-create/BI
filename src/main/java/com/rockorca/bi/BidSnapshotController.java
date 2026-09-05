@@ -137,6 +137,13 @@ public class BidSnapshotController {
       long total=Long.parseLong(String.valueOf(input.get("upstreamTotal")));
       if (total<0 || rows.size()!=(all?total:Math.min(top400?400L:200L,total))) throw new IllegalArgumentException("计划数据不完整");
       snapshot.put("selection", input.get("selection"));snapshot.put("upstreamTotal",total);
+      if(input.containsKey("sourceTotal")){
+        long sourceTotal=Long.parseLong(String.valueOf(input.get("sourceTotal")));
+        long duplicateRows=Long.parseLong(String.valueOf(input.getOrDefault("duplicateRows",0)));
+        if(sourceTotal<total||duplicateRows<0||sourceTotal-total!=duplicateRows)
+          throw new IllegalArgumentException("上游重复计划统计无效");
+        snapshot.put("sourceTotal",sourceTotal);snapshot.put("duplicateRows",duplicateRows);
+      }
     }
     if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {
       LocalDate start = LocalDate.parse(String.valueOf(input.get("createdStart")));

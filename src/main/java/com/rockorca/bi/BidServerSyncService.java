@@ -293,11 +293,11 @@ public class BidServerSyncService {
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
-    var rows=new ArrayList<Map<String,Object>>();long total=-1;var ids=new HashSet<String>();
-    for(int page=1;total<0||rows.size()<total;page++) {
+    var rows=new ArrayList<Map<String,Object>>();long total=-1,received=0,duplicates=0;var ids=new HashSet<String>();
+    for(int page=1;total<0||received<total;page++) {
       if(page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
         throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
-      progress.update(rows.size(),total);
+      progress.update((int)received,total);
       input.put("page",page);
       if(total>=0)input.put("total",total);
       var result=upstream.page(input);
@@ -329,14 +329,15 @@ public class BidServerSyncService {
         Object name=raw.get("media_account_name");
         row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);
         String unique=row.get("media_account_id")+":"+row.get("promotion_id");
-        if(!ids.add(unique))
-          throw new IllegalArgumentException("第 "+page+" 页出现重复计划 "+unique+"，请重新查询");
+        if(!ids.add(unique)){duplicates++;continue;}
         rows.add(row);
       }
-      progress.update(rows.size(),total);
+      received+=batch.size();
+      progress.update((int)received,total);
     }
     return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
-        "upstreamTotal",total,"createdStart",start,"createdEnd",today.toString()));
+        "upstreamTotal",rows.size(),"sourceTotal",total,"duplicateRows",duplicates,
+        "createdStart",start,"createdEnd",today.toString()));
   }
 
   static String failure(Exception error) {

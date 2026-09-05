@@ -219,7 +219,10 @@ class BidServerSyncServiceTest {
   @Test void smallDatasetNeedsOnePageAndIncompleteDataNeverPasses()throws Exception{
     when(upstream.page(anyMap())).thenReturn(Map.of("total",42,"rows",rows(0,42)));
     assertEquals(42,((List<?>)service.collect(input(),"cookie").get("rows")).size());verify(upstream,times(1)).page(anyMap());
-    when(upstream.page(anyMap())).thenReturn(Map.of("total",300,"rows",rows(0,100)));
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      return Map.of("total",300,"rows",rows((page-1)*100,page==2?99:100));
+    });
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
     when(upstream.page(anyMap())).thenReturn(Map.of("total",0,"rows",List.of()));
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));

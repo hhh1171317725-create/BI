@@ -121,7 +121,8 @@ class BidDingtalkServiceTest {
     String text=messages.getFirst().get("text");
     assertEquals(1,messages.size());assertEquals("━━━【taskA · TOP5】━━━",text.lines().findFirst().orElseThrow());
     assertEquals("①  ▲ +50.00%  出价利润率",text.lines().skip(1).findFirst().orElseThrow());
-    for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,text.lines().filter(line->line.startsWith(rank+"  ")).count());
+    String taskA=text.substring(0,text.indexOf("\n\n━━━【taskB · TOP5】━━━"));
+    for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,taskA.lines().filter(line->line.startsWith(rank+"  ")).count());
     assertTrue(text.contains("消耗 800.00 ｜ 回传 50.00% ｜ 出价 10.00"));
     assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("━━━【taskB · TOP5】━━━\n①  ▲ +75.00%  出价利润率\n    消耗 9,000.00"));
     assertFalse(text.contains("ROI"));assertTrue(text.contains(" ｜ 账户 "));assertTrue(text.contains(" ｜ 计划 "));

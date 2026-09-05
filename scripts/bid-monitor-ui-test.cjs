@@ -114,6 +114,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#viewMode').selectOption('optimizers');
   assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');
+  assert.equal(await page.locator('#tableHead .sort-header').count(),16);
+  await page.locator('#tableHead .sort-header[data-sort-key="todayPlans"]').click();assert.equal(await page.locator('#tableHead th').nth(2).getAttribute('aria-sort'),'descending');
+  await page.locator('#tableHead .sort-header[data-sort-key="todayPlans"]').click();assert.equal(await page.locator('#tableHead th').nth(2).getAttribute('aria-sort'),'ascending');
   const optimizerRow=page.locator('#rows tr').filter({hasText:'张三'});assert.equal(await optimizerRow.locator('td').nth(1).textContent(),'53');
   assert.equal(await optimizerRow.locator('td').nth(2).textContent(),'5');assert.equal(await optimizerRow.locator('td').nth(3).textContent(),'53');
   assert.equal(await page.locator('#tableHead th').nth(13).textContent(),'现金利润');
@@ -122,6 +125,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#viewMode').selectOption('optimizerTasks');assert.match(await page.locator('#count').textContent(),/^2 个优化师 × 任务组合（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'优化师');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'任务');
   await page.locator('#viewMode').selectOption('plans');
+  assert.equal(await page.locator('#tableHead .sort-header').count(),13);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
   const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
@@ -170,8 +174,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(10).getAttribute('title'),'预估赔付金额：50.00');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'43.00');
   assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'--');
-  await page.locator('#search').fill('');await page.locator('#sort').selectOption('bidProfitRate');
+  await page.locator('#search').fill('');await page.locator('#tableHead .sort-header[data-sort-key="bidProfitRate"]').click();
   assert.match(await page.locator('#rows tr').first().textContent(),/six conversions/);
+  assert.equal(await page.locator('#tableHead th').nth(12).getAttribute('aria-sort'),'descending');
   await page.evaluate(()=>receive([{promotion_id:'zero',media_account_name:'客户-A',stat_cost:1,convert_cnt:0,active_register:20,cpa_bid:5}],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
   assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'430.000');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'--');

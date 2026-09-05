@@ -120,10 +120,11 @@ class BidDingtalkServiceTest {
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
     String text=messages.getFirst().get("text");
     assertEquals(1,messages.size());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
-    assertEquals("① 利润▲50.00%｜消耗800.00｜回传50.00%｜出价10.00",text.lines().skip(1).findFirst().orElseThrow());
+    assertEquals("① 利润50.00%｜消耗800.00｜回传50.00%｜出价10.00",text.lines().skip(1).findFirst().orElseThrow());
     String taskA=text.substring(0,text.indexOf("\n\n【taskB TOP5】"));
     for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,taskA.lines().filter(line->line.startsWith(rank+" 利润")).count());
-    assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("【taskB TOP5】\n① 利润▲75.00%｜消耗9,000.00"));
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("【taskB TOP5】\n① 利润75.00%｜消耗9,000.00"));
+    assertFalse(text.contains("▲"));assertFalse(text.contains("▼"));
     assertFalse(text.contains("ROI"));assertTrue(text.contains("｜账"));assertTrue(text.contains("｜计"));
     assertEquals(6,text.lines().filter(line->line.contains("｜账")).count());
   }

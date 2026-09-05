@@ -13,11 +13,6 @@ final class BidTop5Formatter {
   static String money(BigDecimal value){return value.setScale(2,RoundingMode.HALF_UP).toPlainString();}
   static String displayMoney(BigDecimal value){return String.format(Locale.ROOT,"%,.2f",value);}
   static String rank(int value){return new String[]{"①","②","③","④","⑤"}[value-1];}
-  static String rateBadge(String rate){
-    if(rate.equals("--"))return "—--";
-    int sign=new BigDecimal(rate.substring(0,rate.length()-1)).signum();
-    return sign>0?"▲"+rate:sign<0?"▼"+rate:"—"+rate;
-  }
   static String clip(Object value,int max){
     String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}|]"," ");
     return text.codePointCount(0,text.length())>max?text.substring(0,text.offsetByCodePoints(0,max))+"…":text;
@@ -63,7 +58,7 @@ final class BidTop5Formatter {
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
-        entries.add(rank(++index)+" 利润"+rateBadge(metrics.get("rate"))
+        entries.add(rank(++index)+" 利润"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
             +"｜出价"+displayMoney(number(row.get("cpa_bid")))
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));

@@ -48,7 +48,7 @@ async function syncLoad(manual=false){
   if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return;}
   if(!manual&&(snapshot.updatedAt===syncStamp||(raw.length&&!followSync)))return;
   receive(snapshot.rows,'同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
-    (snapshot.selection==='spend_desc_top_400'?' · 消耗降序前 400 条（实际 '+snapshot.rows.length+' 条）':snapshot.selection==='created_window_all'?' · 历史全量快照（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
+    (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
   syncStamp=snapshot.updatedAt;
   if(manual)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
@@ -66,11 +66,11 @@ function syncShow(result){
   $('#syncStop').disabled=syncAction||!result.enabled;
   $('#syncRun').disabled=syncAction||!result.enabled||['running','waiting'].includes(result.state);
   $('#syncForget').disabled=syncAction||!result.configured;
-  const names={waiting:'已排队',running:'正在读取消耗前 400 条',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
+  const names={waiting:'已排队',running:'正在读取全部计划',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
   const last=result.lastSuccess?'；最近成功：'+new Date(result.lastSuccess).toLocaleString('zh-CN'):'';
   const next=result.enabled&&['ready','retrying'].includes(result.state)&&result.dueAt?'；下次查询：'+new Date(result.dueAt).toLocaleString('zh-CN'):'';
   syncText(result.error?result.error+last+next:(names[result.state]||'未开启定时同步')+last+next+
-    (result.progress?'；'+result.progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的计划，消耗前 400 条':''),Boolean(result.error));
+    (result.progress?'；'+result.progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划':''),Boolean(result.error));
 }
 async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;

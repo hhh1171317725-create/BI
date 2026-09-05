@@ -73,5 +73,26 @@
     if(task.price===null){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.pricingStatus;}
     return{...result,...task,...cashMetrics(row,task.price)};
   }
-  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  function aggregateOptimizers(rows){
+    const groups=new Map();
+    for(const row of rows){
+      const optimizer=String(row.optimizer||'').trim()||'未填写';
+      if(!groups.has(optimizer))groups.set(optimizer,[]);
+      groups.get(optimizer).push(row);
+    }
+    const sum=(rows,key)=>rows.reduce((total,row)=>total+(Number.isFinite(row[key])?row[key]:0),0);
+    return [...groups].map(([optimizer,items])=>{
+      const cost=sum(items,'cost'),conversions=sum(items,'conversions'),registrations=sum(items,'registrations');
+      const cash=summarizeCash(items);
+      const commission=items.every(row=>Number.isFinite(row.commission))?sum(items,'commission'):null;
+      return{optimizer,plans:items.length,accounts:new Set(items.map(row=>row.accountId||row.account).filter(Boolean)).size,
+        cost,conversions,registrations,ratio:registrations>0?conversions/registrations:null,
+        priced:items.filter(row=>row.price!==null).length,commission,
+        estimatedCompensation:items.every(row=>Number.isFinite(row.estimatedCompensation))?sum(items,'estimatedCompensation'):null,
+        cashCost:items.every(row=>Number.isFinite(row.cashCost))?sum(items,'cashCost'):null,
+        estimatedRoi:cash.estimatedRoi,bidProfitRate:cash.bidProfitRate};
+    }).map(row=>({...row,profit:row.commission===null||row.cashCost===null?null:row.commission-row.cashCost}))
+      .sort((a,b)=>b.cost-a.cost||a.optimizer.localeCompare(b.optimizer,'zh-CN'));
+  }
+  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,aggregateOptimizers};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

@@ -268,15 +268,20 @@ public class BidServerSyncService {
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
     var rows=new ArrayList<Map<String,Object>>();long total=-1;var ids=new HashSet<String>();
-    for(int page=1;page<=4;page++) {
-      progress.update(rows.size(),total<0?-1:Math.min(400,total));
+    for(int page=1;total<0||rows.size()<total;page++) {
+      if(page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
+        throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
+      progress.update(rows.size(),total);
       input.put("page",page);
       if(total>=0)input.put("total",total);
       var result=upstream.page(input);
       long count=Long.parseLong(String.valueOf(result.get("total")));
-      if(count<0||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
+      if(count<1||count>BidMonitorApiController.MAX_PLAN_ROWS||(total>=0&&total!=count))
+        throw new IllegalArgumentException("incomplete");
       total=count;
-      if(!(result.get("rows") instanceof List<?> batch)||batch.size()!=Math.min(100,Math.max(0,total-(page-1)*100L)))
+      if(!(result.get("rows") instanceof List<?> batch)
+          ||batch.size()!=Math.min(BidMonitorApiController.PAGE_SIZE,
+              Math.max(0,total-(long)(page-1)*BidMonitorApiController.PAGE_SIZE)))
         throw new IllegalArgumentException("incomplete");
       for(Object item:batch) {
         if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("incomplete");
@@ -292,10 +297,9 @@ public class BidServerSyncService {
         if(!ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))throw new IllegalArgumentException("incomplete");
         rows.add(row);
       }
-      progress.update(rows.size(),Math.min(400,total));
-      if(rows.size()>=Math.min(400,total))break;
+      progress.update(rows.size(),total);
     }
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","spend_desc_top_400",
+    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
         "upstreamTotal",total,"createdStart",start,"createdEnd",today.toString()));
   }
 

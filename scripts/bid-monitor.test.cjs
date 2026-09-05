@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
-const {cashMetrics,summarizeCash}=require('../frontend/bid-monitor-core.js');
+const {cashMetrics,summarizeCash,aggregateOptimizers}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('account ID uses advertiser_id and never substitutes Chuangliang internal ID',()=>{
  assert.equal(normalize({advertiser_id:'1866402186668232',media_account_id:'12601552720'}).accountId,'1866402186668232');
@@ -14,6 +14,18 @@ test('retains optimizer from upstream, snapshots and Excel without inventing mis
  assert.equal(normalize({}).optimizer,'');
  const r=normalize({promotion_id:'7681075475582042163',advertiser_id:'7676449794404745237',media_account_id:'12601552720',user_name:'张三'});
  assert.equal(r.id,'7681075475582042163');assert.equal(r.accountId,'7676449794404745237');
+});
+test('aggregates every plan by optimizer with weighted metrics',()=>{
+ const rules=[{name:'A',keyword:'account',price:10}];
+ const rows=[
+  analyzeTask({...row,id:'1',accountId:'a',account:'account-a',optimizer:'张三',cost:150,conversions:10,registrations:20,bid:10},rules,0,20,false),
+  analyzeTask({...row,id:'2',accountId:'b',account:'account-b',optimizer:'张三',cost:600,conversions:6,registrations:10,bid:10},rules,0,20,false),
+  analyzeTask({...row,id:'3',accountId:'c',account:'unknown',optimizer:'',cost:5,conversions:0,registrations:0,bid:1},rules,0,20,false)
+ ];
+ const result=aggregateOptimizers(rows);
+ assert.equal(result.length,2);assert.equal(result[0].optimizer,'张三');assert.equal(result[0].plans,2);assert.equal(result[0].accounts,2);
+ assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,-400);
+ assert.equal(result[0].estimatedRoi,(300+50+540)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
 });
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);

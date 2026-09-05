@@ -22,7 +22,7 @@ class BidMonitorApiControllerTest {
     assertThrows(IllegalArgumentException.class,()->BidMonitorApiController.idText(7680747160631230500d));
   }
   @Test void rejectsUnsafePageBeforeNetwork() {
-    assertThrows(IllegalArgumentException.class,()->controller.page(Map.of("startDate","2026-09-03","endDate","2026-09-03","page",5)));
+    assertThrows(IllegalArgumentException.class,()->controller.page(Map.of("startDate","2026-09-03","endDate","2026-09-03","page",1001)));
   }
 
   @Test void readsTotalFromActualPageInfo() {

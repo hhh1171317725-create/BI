@@ -33,7 +33,8 @@ public class BidSnapshotController {
   synchronized void initialize() throws Exception {
     if (initialized) return;
     try (var connection = reports.openConnection(); var statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_snapshots (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload MEDIUMTEXT NOT NULL) ENGINE=InnoDB");
+      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_snapshots (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload LONGTEXT NOT NULL) ENGINE=InnoDB");
+      statement.execute("ALTER TABLE bid_monitor_snapshots MODIFY payload LONGTEXT NOT NULL");
     }
     initialized = true;
   }
@@ -100,7 +101,8 @@ public class BidSnapshotController {
     String date = String.valueOf(input.get("date"));
     if (!LocalDate.parse(date).equals(LocalDate.now(ReportService.BEIJING)))
       throw new IllegalArgumentException("定时同步仅保存北京时间当天数据，跨日请重新采集");
-    if (!(input.get("rows") instanceof List<?> rows) || rows.isEmpty() || rows.size() > 1000000)
+    if (!(input.get("rows") instanceof List<?> rows) || rows.isEmpty()
+        || rows.size() > BidMonitorApiController.MAX_PLAN_ROWS)
       throw new IllegalArgumentException("计划数据为空或超出安全范围，不覆盖旧快照");
     List<Map<String, Object>> clean = new ArrayList<>();
     Set<String> ids = new HashSet<>();
@@ -147,7 +149,7 @@ public class BidSnapshotController {
   }
 
   private static void checkSize(String payload){
-    if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>15000000)
-      throw new IllegalArgumentException("完整快照超过 15 MB 安全限制，未截断或覆盖旧数据");
+    if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>64_000_000)
+      throw new IllegalArgumentException("完整快照超过 64 MB 安全限制，未截断或覆盖旧数据");
   }
 }

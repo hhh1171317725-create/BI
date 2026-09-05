@@ -30,7 +30,7 @@ class BidDingtalkServiceTest {
   Map<String,Object> input(){return new LinkedHashMap<>(Map.of("revision","","pricingRevision","p1","tasks",List.of("taskA","taskB"),"time","18:00","enabled",true,
       "webhook","https://oapi.dingtalk.com/robot/send?access_token=test-token-only","secret","SECtestsecret123","keyword","TOP5"));}
   Map<String,Object> row(String id,String account,int cost){return new LinkedHashMap<>(Map.of("promotion_id",id,"promotion_name","plan-"+id,"media_account_id","12601552720","advertiser_id","7676449794404745237","media_account_name",account,"stat_cost",cost,"convert_cnt",10,"active_register",20,"cpa_bid",10));}
-  Map<String,Object> snapshot(){return Map.of("date","2026-09-03","updatedAt",clock.instant().minusSeconds(60).toString(),"selection","spend_desc_top_400","rows",List.of(row("1","account-A",150),row("2","account-B",120)));}
+  Map<String,Object> snapshot(){return Map.of("date","2026-09-03","updatedAt",clock.instant().minusSeconds(60).toString(),"selection","created_window_all","rows",List.of(row("1","account-A",150),row("2","account-B",120)));}
   @BeforeEach void setup()throws Exception{
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
     service=new BidDingtalkService(store,new BidCredentialCipher(config),snapshots,sync,robot,mapper,clock);

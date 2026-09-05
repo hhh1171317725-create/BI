@@ -42,7 +42,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    }
    if(action==='query-snapshot'){
     const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');assert.equal(input.queryRevision,'owned-revision');snapshotQueries++;
-    snapshot={date:input.startDate,updatedAt:new Date(Date.now()+snapshotQueries).toISOString(),rows:Array.from({length:400},(_,i)=>({...sample[0],promotion_id:String(i)})),selection:'spend_desc_top_400'};
+    snapshot={date:input.startDate,updatedAt:new Date(Date.now()+snapshotQueries).toISOString(),rows:Array.from({length:450},(_,i)=>({...sample[0],promotion_id:String(i)})),selection:'created_window_all'};
     syncStatus={...syncStatus,lastSuccess:snapshot.updatedAt};
     await route.fulfill({json:{userId:'1',snapshot}});return;
    }
@@ -50,7 +50,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
     const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');assert.equal(input.queryRevision,'owned-revision');
     assert.equal(input.cookie,undefined);assert.equal(input.clientUser,undefined);
     const p=input.page;queriedPages.push(p);
-    await route.fulfill({json:{total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))}});return;
+    await route.fulfill({json:{total:450,rows:Array.from({length:p===5?50:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))}});return;
    }
    if(request.method()==='POST'){
     const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');syncCommands.push(action);
@@ -108,6 +108,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#taskFilter').selectOption('');
   assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('main').textContent(),/预估 ROI/);
   assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
+  await page.locator('#viewMode').selectOption('optimizers');
+  assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
+  assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');
+  const optimizerRow=page.locator('#rows tr').filter({hasText:'张三'});assert.equal(await optimizerRow.locator('td').nth(1).textContent(),'53');
+  assert.equal(await page.locator('#tableHead th').nth(11).textContent(),'现金利润');
+  await page.locator('#viewMode').selectOption('plans');
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
   const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
@@ -124,26 +130,26 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#syncLoad').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='2 条');
   assert.match(await page.locator('#source').textContent(),/2026-09-03/);
   await page.locator('#cookie').fill('test-session');await page.locator('#fetch').click();
-  await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');assert.deepEqual(queriedPages,[1,2,3,4]);
-  assert.match(await page.locator('#source').textContent(),/消耗降序前 400 条/);
+  await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');assert.deepEqual(queriedPages,[1,2,3,4,5]);
+  assert.match(await page.locator('#source').textContent(),/创量查询 · 全部/);
   assert.equal(await page.locator('#cookie').inputValue(),'');assert.equal(preparedQueries[0].cookie,'test-session');
   await page.locator('#fetch').click();await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
-  assert.deepEqual(queriedPages,[1,2,3,4,1,2,3,4]);assert.equal(preparedQueries[1].cookie,'');
+  assert.deepEqual(queriedPages,[1,2,3,4,5,1,2,3,4,5]);assert.equal(preparedQueries[1].cookie,'');
   // Historical queries and imports are not replaced by automatic snapshot polling.
-  await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'400 条');
+  await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'450 条');
   const dates=await page.evaluate(()=>{const end=today(),d=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-3);return{end,start:d.toISOString().slice(0,10)}});
   await page.locator('#startDate').fill(dates.end);await page.locator('#endDate').fill(dates.end);
   await page.locator('#createdStart').fill(dates.start);await page.locator('#createdEnd').fill(dates.end);
   await page.locator('#fetch').click();await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
-  await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'400 条');
+  await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'450 条');
   assert.equal(snapshotQueries,1);assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
   assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');
   await page.reload();
-  await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');
+  await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
   assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
   assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');await page.waitForFunction(()=>document.querySelector('#credentialStatus').textContent==='已加密保存');
   assert.equal(await page.locator('#cookie').inputValue(),'');assert.equal(await page.locator('#clientUser').inputValue(),'123');
-  await page.locator('#fetch').click();await page.waitForFunction(()=>document.querySelector('#count').textContent==='400 条');
+  await page.locator('#fetch').click();await page.waitForFunction(()=>document.querySelector('#fetch').disabled);await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
   assert.equal(preparedQueries.at(-1).cookie,'');
   await page.evaluate(()=>receive([
    {promotion_id:'grant',promotion_name:'grant plan',media_account_name:'客户-A',stat_cost:150,convert_cnt:10,active_register:20,cpa_bid:10},
@@ -165,6 +171,6 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#metrics strong').first().textContent(),'--');
   await page.locator('#filter').selectOption('available');assert.equal(await page.locator('#count').textContent(),'0 条');
   await page.locator('#filter').selectOption('unavailable');assert.equal(await page.locator('#count').textContent(),'1 条');
-  assert.deepEqual(errors,[]);console.log('UI PASS: optimizer column/search/export, estimated ROI, bid profit rate, export, task prices, mobile width, top-400, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
+  assert.deepEqual(errors,[]);console.log('UI PASS: all-plan paging, optimizer detail and summary, estimated ROI, bid profit rate, exports, task prices, mobile width, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

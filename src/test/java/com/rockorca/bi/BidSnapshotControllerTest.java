@@ -32,9 +32,9 @@ class BidSnapshotControllerTest {
   }
 
   @Test void optimizerIsOptionalAndRetainedWithoutAcceptingObjects() {
-    var item=row();item.put("user_name","optimizer-A");
+    var item=row();item.put("user_name","optimizer-A");item.put("promotion_create_time","2026-09-05 08:00:00");
     var saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(item))).get("rows")).getFirst();
-    assertEquals("optimizer-A",saved.get("user_name"));
+    assertEquals("optimizer-A",saved.get("user_name"));assertEquals("2026-09-05 08:00:00",saved.get("promotion_create_time"));
     item.remove("user_name");assertDoesNotThrow(()->BidSnapshotController.validate(input(List.of(item))));
     item.put("user_name",Map.of("cookie","must-not-save"));
     assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(input(List.of(item))));
@@ -70,6 +70,16 @@ class BidSnapshotControllerTest {
     var data=new HashMap<>(input(rows));data.put("selection","created_window_all");data.put("upstreamTotal",250);
     assertEquals(250,((List<?>)BidSnapshotController.validate(data).get("rows")).size());
     rows.removeLast();assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
+  }
+  @Test void allSelectionAcceptsAuditedProviderDuplicates(){
+    var rows=new ArrayList<Map<String,Object>>();
+    for(int i=0;i<2;i++){var item=row();item.put("promotion_id",String.valueOf(i));rows.add(item);}
+    var data=new HashMap<>(input(rows));data.put("selection","created_window_all");data.put("upstreamTotal",2);
+    data.put("sourceTotal",3);data.put("duplicateRows",1);
+    var saved=BidSnapshotController.validate(data);
+    assertEquals(3L,saved.get("sourceTotal"));assertEquals(1L,saved.get("duplicateRows"));
+    data.put("duplicateRows",2);
+    assertThrows(IllegalArgumentException.class,()->BidSnapshotController.validate(data));
   }
   @Test void topFourHundredRequiresExactSelectedCount(){
     var rows=new ArrayList<Map<String,Object>>();

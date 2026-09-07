@@ -149,11 +149,30 @@ public class BidServerSyncService {
     String cookie;
     try{cookie=cipher.decrypt(owner,text(state,"credential"));}
     catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
-    var snapshot=collect(state,cookie,(done,total)->{
-      var latest=store.get(owner);requireQueryRevision(latest,revision);
+    long startedAt=System.currentTimeMillis();
+    store.update(owner,(connection,latest)->{
+      requireQueryRevision(latest,revision);
       if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
         throw new IllegalArgumentException("同步状态已变更，请重新查询");
+      latest.put("state","running");latest.put("error","");
+      latest.put("progress",progressValue(0,-1,startedAt));
     });
+    Map<String,Object> snapshot;
+    try{
+      snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,latest)->{
+        requireQueryRevision(latest,revision);
+        if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+          throw new IllegalArgumentException("同步状态已变更，请重新查询");
+        latest.put("progress",progressValue(done,total,startedAt));
+      }));
+    }catch(Exception error){
+      store.update(owner,(connection,latest)->{
+        if(current(latest,token)&&revision.equals(text(latest,"credentialRevision"))){
+          latest.put("state","ready");latest.remove("progress");
+        }
+      });
+      throw error;
+    }
     snapshots.initialize();
     var saved=new LinkedHashMap<String,Object>();
     store.update(owner,(connection,latest)->{
@@ -165,7 +184,7 @@ public class BidServerSyncService {
       saved.putAll(validated);
       // Retire overlapping queries/workers before publishing this complete snapshot.
       latest.put("token",UUID.randomUUID().toString());latest.put("lastSuccess",validated.get("updatedAt"));
-      latest.put("state","ready");latest.put("error","");latest.put("progress","");
+      latest.put("state","ready");latest.put("error","");latest.remove("progress");
       latest.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
     });
     return Map.of("userId",Long.toString(owner),"snapshot",saved);
@@ -213,6 +232,7 @@ public class BidServerSyncService {
         long due=((Number)current.getOrDefault("dueAt",0L)).longValue();
         if(!Boolean.TRUE.equals(current.get("enabled"))||due<=0||due>System.currentTimeMillis())return;
         current.put("token",token);current.put("state","running");
+        current.put("progress",progressValue(0,-1,System.currentTimeMillis()));
         // A crashed process leaves a short lease; another instance can resume after expiry.
         current.put("dueAt",System.currentTimeMillis()+180000L);
       });
@@ -221,11 +241,12 @@ public class BidServerSyncService {
       String cookie;
       try{cookie=cipher.decrypt(owner,text(state,"credential"));}
       catch(Exception error){throw new IllegalStateException("credential");}
+      long startedAt=((Number)((Map<?,?>)state.get("progress")).get("startedAt")).longValue();
       var snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,current)->{
         if(!current(current,token))throw new CancellationException();
         if(!allowed(owner))throw new IllegalStateException("permission");
         current.put("dueAt",System.currentTimeMillis()+180000L);
-        current.put("progress","已读取 "+done+(total<0?"":" / "+total)+" 条");
+        current.put("progress",progressValue(done,total,startedAt));
       }));
       snapshots.initialize();
       store.update(owner,(connection,current)->{
@@ -235,7 +256,8 @@ public class BidServerSyncService {
         var validated=BidSnapshotController.validate(snapshot);
         snapshots.write(connection,owner,validated);
         current.put("lastSuccess",validated.get("updatedAt"));current.put("state","ready");
-        current.put("minutes",10);current.put("error","");current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
+        current.put("minutes",10);current.put("error","");current.remove("progress");
+        current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
       });
     } catch(Exception error) {
       try {
@@ -245,6 +267,7 @@ public class BidServerSyncService {
           current.put("enabled",!pause);current.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
           current.put("state",pause?"paused":"retrying");
           current.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
+          current.remove("progress");
         });
       } catch(Exception ignored){LOG.warn("Bid server sync could not save failure status for user {}",owner);}
     }
@@ -259,6 +282,9 @@ public class BidServerSyncService {
   }
 
   @FunctionalInterface interface Progress { void update(int done,long total)throws Exception; }
+  static Map<String,Object> progressValue(int done,long total,long startedAt){
+    return Map.of("done",done,"total",total,"startedAt",startedAt,"updatedAt",System.currentTimeMillis());
+  }
   static LocalDate creationStart(LocalDate today){return today.minusDays(3);}
 
   Map<String,Object> collect(Map<String,Object> state,String cookie,Progress progress) throws Exception {
@@ -267,36 +293,51 @@ public class BidServerSyncService {
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
-    var rows=new ArrayList<Map<String,Object>>();long total=-1;var ids=new HashSet<String>();
-    for(int page=1;page<=4;page++) {
-      progress.update(rows.size(),total<0?-1:Math.min(400,total));
+    var rows=new ArrayList<Map<String,Object>>();long total=-1,received=0,duplicates=0;var ids=new HashSet<String>();
+    for(int page=1;total<0||received<total;page++) {
+      if(page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
+        throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
+      progress.update((int)received,total);
       input.put("page",page);
       if(total>=0)input.put("total",total);
       var result=upstream.page(input);
-      long count=Long.parseLong(String.valueOf(result.get("total")));
-      if(count<0||(total>=0&&total!=count))throw new IllegalArgumentException("incomplete");
+      long count;
+      try{count=Long.parseLong(String.valueOf(result.get("total")));}
+      catch(Exception error){throw new IllegalArgumentException("第 "+page+" 页缺少有效的计划总数");}
+      if(count<1)throw new IllegalArgumentException("查询范围内没有计划，保留原有结果");
+      if(count>BidMonitorApiController.MAX_PLAN_ROWS)
+        throw new IllegalArgumentException("计划总数 "+count+" 超过 100000 条，请缩小计划创建日期范围");
+      if(total>=0&&total!=count)
+        throw new IllegalArgumentException("分页期间计划总数从 "+total+" 变为 "+count+"，请重新查询");
       total=count;
-      if(!(result.get("rows") instanceof List<?> batch)||batch.size()!=Math.min(100,Math.max(0,total-(page-1)*100L)))
-        throw new IllegalArgumentException("incomplete");
+      if(!(result.get("rows") instanceof List<?> batch))
+        throw new IllegalArgumentException("第 "+page+" 页缺少计划列表");
+      long expected=Math.min(BidMonitorApiController.PAGE_SIZE,
+          Math.max(0,total-(long)(page-1)*BidMonitorApiController.PAGE_SIZE));
+      if(batch.size()!=expected)
+        throw new IllegalArgumentException("第 "+page+" 页数据不完整：应有 "+expected+" 条，实际 "+batch.size()+" 条");
       for(Object item:batch) {
-        if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("incomplete");
+        if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("第 "+page+" 页包含格式异常的计划");
         var row=new LinkedHashMap<String,Object>();
-        for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
+        for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time","stat_cost","convert_cnt","active_register","cpa_bid"))row.put(key,raw.get(key));
         for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
           Object id=row.get(key);
-          if(id instanceof Float||id instanceof Double)throw new IllegalArgumentException("incomplete");
+          if(id instanceof Float||id instanceof Double)
+            throw new IllegalArgumentException("第 "+page+" 页的账户或计划 ID 精度异常");
           if(id!=null)row.put(key,id.toString());
         }
         Object name=raw.get("media_account_name");
         row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);
-        if(!ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))throw new IllegalArgumentException("incomplete");
+        String unique=row.get("media_account_id")+":"+row.get("promotion_id");
+        if(!ids.add(unique)){duplicates++;continue;}
         rows.add(row);
       }
-      progress.update(rows.size(),Math.min(400,total));
-      if(rows.size()>=Math.min(400,total))break;
+      received+=batch.size();
+      progress.update((int)received,total);
     }
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","spend_desc_top_400",
-        "upstreamTotal",total,"createdStart",start,"createdEnd",today.toString()));
+    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
+        "upstreamTotal",rows.size(),"sourceTotal",total,"duplicateRows",duplicates,
+        "createdStart",start,"createdEnd",today.toString()));
   }
 
   static String failure(Exception error) {

@@ -42,7 +42,7 @@ class BidServerSyncServiceTest {
     for(int i=0;i<size;i++){
       var row=new LinkedHashMap<String,Object>(Map.of("promotion_id","768107547558"+(offset+i),"promotion_name","plan","media_account_id","123",
           "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop"));
-      row.put("advertiser_id","1866402186668232");rows.add(row);
+      row.put("advertiser_id","1866402186668232");row.put("promotion_create_time","2026-09-05 08:00:00");rows.add(row);
     }
     return rows;
   }
@@ -156,8 +156,9 @@ class BidServerSyncServiceTest {
     when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);if(page>1)assertEquals(350L,request.get("total"));return Map.of("total",350,"rows",rows((page-1)*100,page==4?50:100));});
     var snapshot=service.collect(input(),input().get("cookie").toString());
     assertEquals(List.of(1,2,3,4),pages);assertEquals(350,((List<?>)snapshot.get("rows")).size());
-    assertEquals("spend_desc_top_400",snapshot.get("selection"));
+    assertEquals("created_window_all",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
+    assertEquals("2026-09-05 08:00:00",row.get("promotion_create_time"));
     assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
     assertEquals("optimizer-A",row.get("user_name"));assertEquals("123",row.get("media_account_id"));
     assertEquals("1866402186668232",row.get("advertiser_id"));
@@ -167,16 +168,32 @@ class BidServerSyncServiceTest {
     assertEquals(java.time.LocalDate.parse("2026-08-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-01")));
     assertEquals(java.time.LocalDate.parse("2025-12-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-01-01")));
   }
-  @Test void largeTotalStopsAtFourPagesAndProgressTargetsFourHundred()throws Exception{
+  @Test void readsEveryPageAndProgressTargetsTheFullTotal()throws Exception{
     var pages=new ArrayList<Integer>();var progress=new ArrayList<Long>();
     when(upstream.page(anyMap())).thenAnswer(call->{
       int p=(Integer)((Map<?,?>)call.getArgument(0)).get("page");pages.add(p);
-      return Map.of("total",335367,"rows",rows((p-1)*100,100));
+      return Map.of("total",450,"rows",rows((p-1)*100,p==5?50:100));
     });
     var snapshot=service.collect(input(),"cookie",(done,total)->progress.add(total));
-    assertEquals(List.of(1,2,3,4),pages);assertEquals(400,((List<?>)snapshot.get("rows")).size());
-    assertEquals(335367L,snapshot.get("upstreamTotal"));assertEquals("spend_desc_top_400",snapshot.get("selection"));
-    assertEquals(400L,progress.getLast());
+    assertEquals(List.of(1,2,3,4,5),pages);assertEquals(450,((List<?>)snapshot.get("rows")).size());
+    assertEquals(450L,snapshot.get("upstreamTotal"));assertEquals("created_window_all",snapshot.get("selection"));
+    assertEquals(450L,progress.getLast());
+  }
+  @Test void refusesOversizedTotalsWithoutSavingAPartialSnapshot()throws Exception{
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",100001,"rows",rows(0,100)));
+    assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
+  }
+  @Test void removesProviderDuplicateRowsAndStillFinishesEveryPage()throws Exception{
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      return Map.of("total",200,"rows",page==1?rows(0,100):rows(99,100));
+    });
+    var snapshot=service.collect(input(),"cookie");
+    assertEquals(199,((List<?>)snapshot.get("rows")).size());
+    assertEquals(199L,snapshot.get("upstreamTotal"));
+    assertEquals(200L,snapshot.get("sourceTotal"));
+    assertEquals(1L,snapshot.get("duplicateRows"));
+    verify(upstream,times(2)).page(anyMap());
   }
   @Test void pricingIsOwnerScopedAndDoesNotChangeRunningJobToken()throws Exception{
     service.start(7,input());String token=store.get(7).get("token").toString();
@@ -203,11 +220,12 @@ class BidServerSyncServiceTest {
   @Test void smallDatasetNeedsOnePageAndIncompleteDataNeverPasses()throws Exception{
     when(upstream.page(anyMap())).thenReturn(Map.of("total",42,"rows",rows(0,42)));
     assertEquals(42,((List<?>)service.collect(input(),"cookie").get("rows")).size());verify(upstream,times(1)).page(anyMap());
-    when(upstream.page(anyMap())).thenReturn(Map.of("total",300,"rows",rows(0,100)));
+    doReturn(Map.of("total",300,"rows",rows(0,100)),
+        Map.of("total",300,"rows",rows(100,99))).when(upstream).page(anyMap());
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
-    when(upstream.page(anyMap())).thenReturn(Map.of("total",0,"rows",List.of()));
+    doReturn(Map.of("total",0,"rows",List.of())).when(upstream).page(anyMap());
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
-    when(upstream.page(anyMap())).thenReturn(Map.of("total",300,"rows",rows(0,100)),Map.of("total",301,"rows",rows(100,100)));
+    doReturn(Map.of("total",300,"rows",rows(0,100)),Map.of("total",301,"rows",rows(100,100))).when(upstream).page(anyMap());
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
   }
   @Test void persistedScheduleRunsWithoutBrowserAndAfterServiceRestart()throws Exception{

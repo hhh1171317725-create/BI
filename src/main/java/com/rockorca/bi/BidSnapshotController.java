@@ -19,7 +19,8 @@ public class BidSnapshotController {
   private final BidServerSyncStore serverSync;
   private volatile boolean initialized;
   private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
-      "media_account_id", "advertiser_id", "media_account_name", "user_name", "stat_cost", "convert_cnt", "active_register", "cpa_bid");
+      "media_account_id", "advertiser_id", "media_account_name", "user_name", "promotion_create_time",
+      "stat_cost", "convert_cnt", "active_register", "cpa_bid");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
     this(sessions,reports,mapper,null);
@@ -33,7 +34,8 @@ public class BidSnapshotController {
   synchronized void initialize() throws Exception {
     if (initialized) return;
     try (var connection = reports.openConnection(); var statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_snapshots (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload MEDIUMTEXT NOT NULL) ENGINE=InnoDB");
+      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_snapshots (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload LONGTEXT NOT NULL) ENGINE=InnoDB");
+      statement.execute("ALTER TABLE bid_monitor_snapshots MODIFY payload LONGTEXT NOT NULL");
     }
     initialized = true;
   }
@@ -100,7 +102,8 @@ public class BidSnapshotController {
     String date = String.valueOf(input.get("date"));
     if (!LocalDate.parse(date).equals(LocalDate.now(ReportService.BEIJING)))
       throw new IllegalArgumentException("定时同步仅保存北京时间当天数据，跨日请重新采集");
-    if (!(input.get("rows") instanceof List<?> rows) || rows.isEmpty() || rows.size() > 1000000)
+    if (!(input.get("rows") instanceof List<?> rows) || rows.isEmpty()
+        || rows.size() > BidMonitorApiController.MAX_PLAN_ROWS)
       throw new IllegalArgumentException("计划数据为空或超出安全范围，不覆盖旧快照");
     List<Map<String, Object>> clean = new ArrayList<>();
     Set<String> ids = new HashSet<>();
@@ -135,6 +138,13 @@ public class BidSnapshotController {
       long total=Long.parseLong(String.valueOf(input.get("upstreamTotal")));
       if (total<0 || rows.size()!=(all?total:Math.min(top400?400L:200L,total))) throw new IllegalArgumentException("计划数据不完整");
       snapshot.put("selection", input.get("selection"));snapshot.put("upstreamTotal",total);
+      if(input.containsKey("sourceTotal")){
+        long sourceTotal=Long.parseLong(String.valueOf(input.get("sourceTotal")));
+        long duplicateRows=Long.parseLong(String.valueOf(input.getOrDefault("duplicateRows",0)));
+        if(sourceTotal<total||duplicateRows<0||sourceTotal-total!=duplicateRows)
+          throw new IllegalArgumentException("上游重复计划统计无效");
+        snapshot.put("sourceTotal",sourceTotal);snapshot.put("duplicateRows",duplicateRows);
+      }
     }
     if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {
       LocalDate start = LocalDate.parse(String.valueOf(input.get("createdStart")));
@@ -147,7 +157,7 @@ public class BidSnapshotController {
   }
 
   private static void checkSize(String payload){
-    if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>15000000)
-      throw new IllegalArgumentException("完整快照超过 15 MB 安全限制，未截断或覆盖旧数据");
+    if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>64_000_000)
+      throw new IllegalArgumentException("完整快照超过 64 MB 安全限制，未截断或覆盖旧数据");
   }
 }

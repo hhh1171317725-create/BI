@@ -104,8 +104,9 @@ public class BidDingtalkService {
       Instant updated=Instant.parse(snapshot.get("updatedAt").toString());
       if(!snapshot.get("date").toString().equals(now.atZone(ReportService.BEIJING).toLocalDate().toString())
           ||updated.isBefore(now.minusSeconds(1200))||updated.isAfter(now.plusSeconds(60))
-          ||!"spend_desc_top_400".equals(snapshot.get("selection")))throw new IllegalArgumentException();
-    }catch(Exception error){throw new IllegalArgumentException("没有当天最近 20 分钟的前400条快照，请先完成服务器同步；本次不发送旧数据");}
+          ||(!"created_window_all".equals(snapshot.get("selection"))
+              &&!"spend_desc_top_400".equals(snapshot.get("selection"))))throw new IllegalArgumentException();
+    }catch(Exception error){throw new IllegalArgumentException("没有当天最近 20 分钟的完整快照，请先完成服务器同步；本次不发送旧数据");}
   }
   private List<Map<String,String>> prepare(long owner,Map<String,Object> state)throws Exception{
     if(!sync.allowed(owner))throw new IllegalArgumentException("网站账户已停用或无出价监测权限");

@@ -30,7 +30,7 @@ class BidDingtalkServiceTest {
   Map<String,Object> input(){return new LinkedHashMap<>(Map.of("revision","","pricingRevision","p1","tasks",List.of("taskA","taskB"),"time","18:00","enabled",true,
       "webhook","https://oapi.dingtalk.com/robot/send?access_token=test-token-only","secret","SECtestsecret123","keyword","TOP5"));}
   Map<String,Object> row(String id,String account,int cost){return new LinkedHashMap<>(Map.of("promotion_id",id,"promotion_name","plan-"+id,"media_account_id","12601552720","advertiser_id","7676449794404745237","media_account_name",account,"stat_cost",cost,"convert_cnt",10,"active_register",20,"cpa_bid",10));}
-  Map<String,Object> snapshot(){return Map.of("date","2026-09-03","updatedAt",clock.instant().minusSeconds(60).toString(),"selection","spend_desc_top_400","rows",List.of(row("1","account-A",150),row("2","account-B",120)));}
+  Map<String,Object> snapshot(){return Map.of("date","2026-09-03","updatedAt",clock.instant().minusSeconds(60).toString(),"selection","created_window_all","rows",List.of(row("1","account-A",150),row("2","account-B",120)));}
   @BeforeEach void setup()throws Exception{
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
     service=new BidDingtalkService(store,new BidCredentialCipher(config),snapshots,sync,robot,mapper,clock);
@@ -120,11 +120,13 @@ class BidDingtalkServiceTest {
     var messages=BidTop5Formatter.messages(snapshot,rules(),List.of("taskA","taskB"));
     String text=messages.getFirst().get("text");
     assertEquals(1,messages.size());assertEquals("【taskA TOP5】",text.lines().findFirst().orElseThrow());
-    assertEquals("1. 消耗 800.00 | 回传 50.00% | 出价 10.00 | 出价利润率 50.00%",text.lines().skip(1).findFirst().orElseThrow());
-    for(int i=0;i<5;i++)assertTrue(text.lines().filter(line->line.matches("[1-5]\\. .*")).skip(i).findFirst().orElseThrow().startsWith((i+1)+". 消耗 "+(800-i*100)+".00"));
-    assertFalse(text.contains("300.00"));assertFalse(text.contains("9999.00"));assertTrue(text.contains("【taskB TOP5】\n1. 消耗 9000.00"));
-    assertFalse(text.contains("ROI"));assertTrue(text.contains("账户ID"));assertTrue(text.contains("计划ID"));
-    assertEquals(6,text.lines().filter(line->line.contains("账户ID")).count());
+    assertEquals("① 利润出价50.00%｜消耗800.00｜回传50.00%｜出价10.00",text.lines().skip(1).findFirst().orElseThrow());
+    String taskA=text.substring(0,text.indexOf("\n\n【taskB TOP5】"));
+    for(String rank:List.of("①","②","③","④","⑤"))assertEquals(1,taskA.lines().filter(line->line.startsWith(rank+" 利润出价")).count());
+    assertFalse(text.contains("300.00"));assertFalse(text.contains("9,999.00"));assertTrue(text.contains("【taskB TOP5】\n① 利润出价75.00%｜消耗9,000.00"));
+    assertFalse(text.contains("▲"));assertFalse(text.contains("▼"));
+    assertFalse(text.contains("ROI"));assertTrue(text.contains("｜账"));assertTrue(text.contains("｜计"));
+    assertEquals(6,text.lines().filter(line->line.contains("｜账")).count());
   }
   @Test void formatterSeparatesMetricsFromCopyableExactIds(){
     var row=row("7681075475582042163","account-A",150);
@@ -132,11 +134,11 @@ class BidDingtalkServiceTest {
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(row));
     String text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
     assertEquals(3,text.lines().count());assertFalse(text.contains("\u2028"));assertFalse(text.contains("\u2029"));
-    assertTrue(text.contains("优化师 张三  运营 A B | "));
-    assertTrue(text.contains("账户ID 7676449794404745237 | 计划ID 7681075475582042163"));
+    assertTrue(text.contains("张三  运营 A B｜"));
+    assertTrue(text.contains("账7676449794404745237｜计7681075475582042163"));
     row.put("user_name"," ");row.remove("advertiser_id");
     text=BidTop5Formatter.messages(data,rules(),List.of("taskA")).getFirst().get("text");
-    assertTrue(text.contains("优化师 -- | 账户ID -- | 计划ID 7681075475582042163"));
+    assertTrue(text.contains("--｜账--｜计7681075475582042163"));
   }
   @Test void formatterFinancialRulesMatchBoundaryAndZeroCases(){
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));
@@ -156,9 +158,9 @@ class BidDingtalkServiceTest {
     for(String task:List.of("A","B","C"))for(int i=1;i<=7;i++)plans.add(row(task+i,"account-"+task,i*100));
     var data=new LinkedHashMap<>(snapshot());data.put("rows",plans);when(snapshots.readOwned(7)).thenReturn(data);
     var preview=service.preview(7);var messages=(List<?>)preview.get("messages");assertEquals(1,messages.size());
-    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[1-5]\\. .*")).count());
-    assertTrue(text.startsWith("【taskA TOP5】"));assertEquals(15,text.lines().filter(line->line.startsWith("优化师 ")).count());
-    assertEquals(33,text.lines().count());assertFalse(text.lines().anyMatch(String::isBlank));
+    String text=((Map<?,?>)messages.getFirst()).get("text").toString();assertEquals(15,text.lines().filter(line->line.matches("[①②③④⑤] 利润出价.*")).count());
+    assertTrue(text.startsWith("【taskA TOP5】"));assertEquals(15,text.lines().filter(line->line.startsWith("   ")).count());
+    assertTrue(text.lines().anyMatch(String::isBlank));
     for(String task:List.of("taskA","taskB","taskC"))assertTrue(text.contains("【"+task+" TOP5】"));
     service.send(7,false);verify(robot,times(1)).send(anyString(),anyString(),eq("TOP5"),eq(text));
     assertEquals("已发送 1 条消息，包含 3 个任务",service.settings(7).get("lastResult"));
@@ -167,10 +169,10 @@ class BidDingtalkServiceTest {
     var plan=row("1","account-A",150);plan.put("user_name","张|三");
     var data=new LinkedHashMap<>(snapshot());data.put("rows",List.of(plan));
     String text=BidTop5Formatter.messages(data,rules(),List.of("taskA","taskB")).getFirst().get("text");
-    assertEquals(5,text.lines().count());assertTrue(text.contains("【taskB TOP5】\n当前采集范围内无匹配计划"));
-    assertTrue(text.contains("优化师 张 三"));assertFalse(text.contains("张|三"));
+    assertEquals(6,text.lines().count());assertTrue(text.contains("【taskB TOP5】\n暂无匹配计划"));
+    assertTrue(text.contains("张 三｜账"));assertFalse(text.contains("张|三"));
     assertEquals(text,DingtalkRobotClient.content("",text));
-    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(5,withKeyword.lines().count());
+    String withKeyword=DingtalkRobotClient.content("TOP5",text);assertEquals(6,withKeyword.lines().count());
     assertEquals(withKeyword,DingtalkRobotClient.content("TOP5",withKeyword));
   }
   @Test void robotRejectsForeignDestinationsAndMissingSuccessCode()throws Exception{

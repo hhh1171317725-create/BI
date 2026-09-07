@@ -48,7 +48,8 @@ async function syncLoad(manual=false){
   if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return;}
   if(!manual&&(snapshot.updatedAt===syncStamp||(raw.length&&!followSync)))return;
   receive(snapshot.rows,'同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
-    (snapshot.selection==='spend_desc_top_400'?' · 消耗降序前 400 条（实际 '+snapshot.rows.length+' 条）':snapshot.selection==='created_window_all'?' · 历史全量快照（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
+    (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
+    (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
   syncStamp=snapshot.updatedAt;
   if(manual)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
@@ -66,11 +67,27 @@ function syncShow(result){
   $('#syncStop').disabled=syncAction||!result.enabled;
   $('#syncRun').disabled=syncAction||!result.enabled||['running','waiting'].includes(result.state);
   $('#syncForget').disabled=syncAction||!result.configured;
-  const names={waiting:'已排队',running:'正在读取消耗前 400 条',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
+  const names={waiting:'已排队',running:'正在读取全部计划',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
   const last=result.lastSuccess?'；最近成功：'+new Date(result.lastSuccess).toLocaleString('zh-CN'):'';
   const next=result.enabled&&['ready','retrying'].includes(result.state)&&result.dueAt?'；下次查询：'+new Date(result.dueAt).toLocaleString('zh-CN'):'';
+  const progress=syncProgressText(result.progress);
   syncText(result.error?result.error+last+next:(names[result.state]||'未开启定时同步')+last+next+
-    (result.progress?'；'+result.progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的计划，消耗前 400 条':''),Boolean(result.error));
+    (progress?'；'+progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划':''),Boolean(result.error));
+}
+function syncProgressText(progress){
+  if(!progress)return '';
+  if(typeof progress==='string')return progress;
+  const done=Number(progress.done),total=Number(progress.total),startedAt=Number(progress.startedAt);
+  if(!Number.isFinite(done)||done<0||!Number.isFinite(startedAt))return '';
+  const seconds=Math.max(.001,(Date.now()-startedAt)/1000),speed=done/seconds;
+  const pages=total>0?Math.ceil(total/100):null,current=total>0&&done>=total?pages:Math.floor(done/100)+1;
+  let text=`第 ${current}${pages?' / '+pages:''} 页；已读取 ${done}${total>=0?' / '+total:''} 条；已用时 ${syncDuration(seconds)}`;
+  if(done>0){text+=`；速度 ${speed.toFixed(1)} 条/秒`;if(total>done&&speed>0)text+=`；预计剩余 ${syncDuration((total-done)/speed)}`;}
+  return text;
+}
+function syncDuration(seconds){
+  seconds=Math.max(0,Math.round(seconds));const minutes=Math.floor(seconds/60),rest=seconds%60;
+  return minutes?`${minutes} 分 ${rest} 秒`:`${rest} 秒`;
 }
 async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;
@@ -96,6 +113,6 @@ for(const [id,command] of [['syncStart','start'],['syncRun','run'],['syncStop','
   finally{syncAction=false;setTimeout(()=>void syncRefresh(),1000);}
 };
 $('#syncLoad').onclick=()=>syncLoad(true).catch(error=>syncText(error.message,true));
-setInterval(syncRefresh,5000);
+setInterval(syncRefresh,2000);
 setTimeout(()=>void syncRefresh(),500);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void syncRefresh();});

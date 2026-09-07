@@ -11,6 +11,8 @@ final class BidTop5Formatter {
     catch(NumberFormatException error){throw new IllegalArgumentException("快照指标缺失或无效，请重新同步");}
   }
   static String money(BigDecimal value){return value.setScale(2,RoundingMode.HALF_UP).toPlainString();}
+  static String displayMoney(BigDecimal value){return String.format(Locale.ROOT,"%,.2f",value);}
+  static String rank(int value){return new String[]{"①","②","③","④","⑤"}[value-1];}
   static String clip(Object value,int max){
     String text=Objects.toString(value,"").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}|]"," ");
     return text.codePointCount(0,text.length())>max?text.substring(0,text.offsetByCodePoints(0,max))+"…":text;
@@ -50,18 +52,19 @@ final class BidTop5Formatter {
       selected.sort(Comparator.<Map<?,?>,BigDecimal>comparing(r->number(r.get("stat_cost"))).reversed()
           .thenComparing(r->Objects.toString(r.get("promotion_id"),"")));
       var entries=new ArrayList<String>();
-      if(selected.isEmpty())entries.add("当前采集范围内无匹配计划");
+      if(selected.isEmpty())entries.add("暂无匹配计划");
       int index=0;
       for(var row:selected.stream().limit(5).toList()){
         var metrics=metrics(row,number(rule.get("price")));
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
-        entries.add(++index+". 消耗 "+money(number(row.get("stat_cost")))+" | 回传 "+metrics.get("ratio")
-            +" | 出价 "+money(number(row.get("cpa_bid")))+" | 出价利润率 "+metrics.get("rate")
-            +"\n优化师 "+optimizer+" | 账户ID "+accountId+" | 计划ID "+field(row.get("promotion_id")));
+        entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
+            +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))
+            +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }
       groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));
     }
-    return List.of(Map.of("text",String.join("\n",groups),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
+    return List.of(Map.of("text",String.join("\n\n",groups),"missingOptimizer",Boolean.toString(missingOptimizer),"missingAccountId",Boolean.toString(missingAccountId)));
   }
 }

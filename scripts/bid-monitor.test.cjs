@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
-const {cashMetrics,summarizeCash}=require('../frontend/bid-monitor-core.js');
+const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('account ID uses advertiser_id and never substitutes Chuangliang internal ID',()=>{
  assert.equal(normalize({advertiser_id:'1866402186668232',media_account_id:'12601552720'}).accountId,'1866402186668232');
@@ -14,6 +14,43 @@ test('retains optimizer from upstream, snapshots and Excel without inventing mis
  assert.equal(normalize({}).optimizer,'');
  const r=normalize({promotion_id:'7681075475582042163',advertiser_id:'7676449794404745237',media_account_id:'12601552720',user_name:'张三'});
  assert.equal(r.id,'7681075475582042163');assert.equal(r.accountId,'7676449794404745237');
+});
+test('aggregates every plan by optimizer with weighted metrics',()=>{
+ const rules=[{name:'A',keyword:'account',price:10}];
+ const rows=[
+  analyzeTask({...row,id:'1',accountId:'a',account:'account-a',optimizer:'张三',cost:150,conversions:10,registrations:20,bid:10},rules,0,20,false),
+  analyzeTask({...row,id:'2',accountId:'b',account:'account-b',optimizer:'张三',cost:600,conversions:6,registrations:10,bid:10},rules,0,20,false),
+  analyzeTask({...row,id:'3',accountId:'c',account:'unknown',optimizer:'',cost:5,conversions:0,registrations:0,bid:1},rules,0,20,false)
+ ];
+ const result=aggregateOptimizers(rows);
+ assert.equal(result.length,2);assert.equal(result[0].optimizer,'张三');assert.equal(result[0].plans,2);assert.equal(result[0].accounts,2);
+ assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,-400);
+ assert.equal(result[0].estimatedRoi,(300+50+540)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
+});
+test('aggregate financial metrics use the priced subset without treating unmatched plans as zero',()=>{
+ const rules=[{name:'A',keyword:'account-a',price:10}];
+ const rows=[
+  analyzeTask({id:'1',accountId:'a',account:'account-a',optimizer:'张三',cost:150,conversions:10,registrations:20,bid:10},rules,0,20,false),
+  analyzeTask({id:'2',accountId:'b',account:'unknown',optimizer:'张三',cost:900,conversions:9,registrations:90,bid:10},rules,0,20,false)
+ ];
+ const result=aggregateOptimizers(rows)[0];
+ assert.equal(result.plans,2);assert.equal(result.priced,1);assert.equal(result.cost,1050);
+ assert.equal(result.commission,200);assert.equal(result.estimatedCompensation,50);assert.equal(result.cashCost,100);assert.equal(result.profit,100);
+ assert.equal(result.estimatedRoi,250/150);assert.equal(result.bidProfitRate,.5);
+});
+test('aggregates task and optimizer-task dimensions with new and spending plan counts',()=>{
+ const rows=[
+  {optimizer:'张三',task:'任务A',accountId:'a',createdAt:'2026-09-05 08:00:00',cost:10,conversions:2,registrations:4,price:10,commission:40,cashCost:10,estimatedCompensation:0,bidCost:8,bidProfitRate:.8},
+  {optimizer:'张三',task:'任务A',accountId:'b',createdAt:'2026-09-04 08:00:00',cost:0,conversions:0,registrations:0,price:10,commission:0,cashCost:0,estimatedCompensation:0,bidCost:0,bidProfitRate:0},
+  {optimizer:'李四',task:'任务A',accountId:'c',createdAt:'2026-09-05T09:00:00',cost:5,conversions:1,registrations:2,price:10,commission:20,cashCost:5,estimatedCompensation:0,bidCost:4,bidProfitRate:.8},
+  {optimizer:'李四',task:'',accountId:'d',createdAt:'',cost:0,conversions:0,registrations:0,price:null,commission:null,cashCost:null,estimatedCompensation:null,bidCost:null,bidProfitRate:null}
+ ];
+ const tasks=aggregateTasks(rows,'2026-09-05'),combinations=aggregateOptimizerTasks(rows,'2026-09-05');
+ assert.equal(tasks.length,2);assert.equal(tasks[0].task,'任务A');assert.equal(tasks[0].plans,3);
+ assert.equal(tasks[0].todayPlans,2);assert.equal(tasks[0].spendingPlans,2);
+ assert.equal(combinations.length,3);const zhang=combinations.find(r=>r.optimizer==='张三'&&r.task==='任务A');
+ assert.equal(zhang.plans,2);assert.equal(zhang.todayPlans,1);assert.equal(zhang.spendingPlans,1);
+ assert.ok(combinations.some(r=>r.task==='未匹配任务'));
 });
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
@@ -103,7 +140,7 @@ test('cash summary applies grant per plan and weights ROI and bid profit by thei
  assert.equal(total.estimatedRoi,(300+50+540)/750);
  assert.notEqual(total.roi,(rows[0].roi+rows[1].roi)/2);
  assert.equal(summarizeCash([]).roi,null);
- assert.equal(summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]).roi,null);
+ const partial=summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]);assert.equal(partial.roi,null);assert.equal(partial.bidProfitRate,140/300);
 });
 test('bid profit rate compares the current bid to the break-even bid, not cash ROI',()=>{
  const base={cost:300,conversions:10,registrations:100,bid:80};

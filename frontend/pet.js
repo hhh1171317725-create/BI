@@ -1,5 +1,8 @@
 (() => {
   "use strict";
+  if (document.querySelector('.data-pet')) return;
+  const loginPage = /^\/login(?:\.html)?\/?$/.test(location.pathname);
+  const reportPage = typeof window.getPetReportContext === 'function';
 
   const history = [];
   let queryState = null;
@@ -82,6 +85,14 @@
   const modelInput = root.querySelector(".data-pet-model");
   const apiKeyInput = root.querySelector(".data-pet-api-key");
   const head = root.querySelector(".data-pet-head");
+  if (!reportPage) {
+    const questions = loginPage ? ['如何登录网站？'] : ['这个页面能做什么？', '如何分析投放数据？', 'ROI是什么意思？'];
+    root.querySelector('.data-pet-quick').replaceChildren(...questions.map(question => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.dataset.question = question; button.textContent = question;
+      return button;
+    }));
+  }
   let dragState = null;
 
   function updatePanelDirection() {
@@ -266,6 +277,12 @@
   async function ask(question) {
     const message = String(question || "").trim();
     if (!message || busy) return;
+    if (loginPage) {
+      addMessage('user', message);
+      addMessage('assistant', '请先使用网站账户登录。忘记密码或没有账户时，请联系管理员。登录后可使用 AI 对话，并在大航海或京东日报中分析数据。');
+      input.value = '';
+      return;
+    }
     busy = true;
     input.value = "";
     send.disabled = true;
@@ -275,8 +292,8 @@
     try {
       const context = typeof window.getPetReportContext === "function"
         ? window.getPetReportContext()
-        : { reportType: "未知报表", summary: {} };
-      const nextContextKey = JSON.stringify([context.reportType, context.range, context.accountId, context.excludeUnknownOptimizer]);
+        : { mode: 'page', pagePath: location.pathname };
+      const nextContextKey = JSON.stringify([context.mode, context.pagePath, context.reportType, context.range, context.accountId, context.excludeUnknownOptimizer]);
       if (contextKey && contextKey !== nextContextKey) {
         history.length = 0;
         queryState = null;
@@ -300,7 +317,7 @@
       if (result.notice) addMessage("assistant", result.notice);
       if (result.queryState) queryState = result.queryState;
       mode.textContent = result.mode === "ai"
-        ? `${result.provider === "deepseek" ? "DeepSeek" : "OpenAI"} 对话 · 当前报表数据`
+        ? `${result.provider === "deepseek" ? "DeepSeek" : "OpenAI"} 对话 · ${reportPage ? '当前报表数据' : '页面帮助'}`
         : result.mode === "clarification" ? "需要补充查询条件" : "规则分析 · AI 未参与本次回答";
       if (Array.isArray(result.suggestions)) {
         const quick = root.querySelector(".data-pet-quick");
@@ -352,7 +369,7 @@
     queryState = null;
     contextKey = "";
     messages.replaceChildren();
-    addMessage("assistant", "已开始新对话，将从当前报表范围分析。可以问“最近7天谁亏损最多”，也可以继续追问某位优化师。");
+    addMessage("assistant", reportPage ? "已开始新对话，将从当前报表范围分析。可以问“最近7天谁亏损最多”，也可以继续追问某位优化师。" : "已开始新对话。可以询问当前页面用途或投放指标；具体业绩分析请打开对应日报。");
     input.focus();
   });
   settingsToggle.addEventListener("click", () => {
@@ -411,9 +428,10 @@
     if (button) ask(button.dataset.question);
   });
 
-  addMessage("assistant", "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。");
+  addMessage("assistant", reportPage ? "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。" : loginPage ? "嗨，我是初音数据助手！登录后可在全站与我对话。" : "嗨，我是初音数据助手！可以询问当前页面用途、投放指标和分析方法。具体业绩分析请打开大航海或京东日报。");
   mode.textContent = "正在读取 AI 配置…";
-  loadAiConfig().catch(() => {
+  if (loginPage) mode.textContent = '登录引导 · 登录后启用 AI';
+  else loadAiConfig().catch(() => {
     mode.textContent = "本地数据分析";
   });
   restorePetPosition();

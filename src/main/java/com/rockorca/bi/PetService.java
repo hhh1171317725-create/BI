@@ -57,6 +57,7 @@ public class PetService {
     if (message.length() > 500) message = message.substring(0, 500);
     if (message.isBlank()) throw new IllegalArgumentException("请输入问题");
     Map<String, Object> context = new LinkedHashMap<>(objectMap(payload.get("context")));
+    if ("page".equals(context.get("mode"))) return pageReply(message, context, listOfMaps(payload.get("history")));
     if (!containsAny(ReportService.text(context.get("reportType")), "京东", "大航海")) {
       return ReportService.mapOf("reply", "请先打开大航海或京东日报，再指定需要分析的日期和对象。", "mode", "clarification");
     }
@@ -440,6 +441,37 @@ public class PetService {
         "provider", ai.provider(),
         "model", ai.model(),
         "configured", !ai.apiKey().isBlank());
+  }
+
+  private Map<String, Object> pageReply(String message, Map<String, Object> context, List<Map<String, Object>> history) {
+    String path = ReportService.text(context.get("pagePath")).replaceAll("\\.html$", "").replaceAll("/$", "");
+    Map<String, String> pages = Map.ofEntries(
+        Map.entry("/tools", "工具中心"), Map.entry("/todo", "Todo任务"),
+        Map.entry("/terminal", "服务器终端"), Map.entry("/account", "设置"),
+        Map.entry("/account-vault", "账户对应关系"), Map.entry("/chat", "聊天室"),
+        Map.entry("/bid-monitor", "出价监测"), Map.entry("/jd-low-activity", "京东低活任务报表"),
+        Map.entry("/jd-images", "京东商品主图下载"), Map.entry("/deeplink", "京东深链生成"),
+        Map.entry("/deeplink-account", "通投账户取链"), Map.entry("/mail-dingtalk", "QQ邮箱转钉钉"),
+        Map.entry("/adpflux", "TikTok账户看板"));
+    String title = pages.getOrDefault(path, "网站页面");
+    Map<String, Object> safe = ReportService.mapOf("模式", "页面帮助，未读取业务数据",
+        "当前页面", title, "能力边界", "可以解释投放指标和分析方法；仅知道页面名称，不能声称看见表单、报表、聊天或终端内容。"
+            + "不要索要密码、Cookie、API Key。不执行操作。涉及具体业绩时引导用户打开大航海或京东日报进行分析。"
+            + "没有页面功能细节依据时不要编造按钮或路径。");
+    String notice = "AI 未配置，当前提供基础页面帮助";
+    try {
+      Map<String, Object> answer = askAi(message, safe, history);
+      if (!ReportService.text(answer.get("text")).isBlank()) return ReportService.mapOf(
+          "reply", answer.get("text"), "mode", "ai", "provider", answer.get("provider"), "scope", title + " · 页面帮助，未读取业务数据");
+      if (!resolveAiConfig().apiKey().isBlank()) notice = "AI 未返回回答，当前提供基础页面帮助";
+    } catch (Exception error) {
+      if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+      notice = "AI 暂时不可用，当前提供基础页面帮助";
+    }
+    String reply = "你正在使用“" + title + "”。可以询问页面用途、投放指标和分析方法。"
+        + "具体消耗、利润、ROI或优化师表现，请打开大航海或京东日报后提问；此处尚未接入当前页面的业务数据。";
+    if (message.toLowerCase(Locale.ROOT).contains("roi")) reply = "ROI=收益÷成本，以倍数表示；1倍为盈亏平衡。不同报表的收益、现金成本及赔付口径不同，请以对应报表说明为准。当前页面没有提供可计算的业绩数据。";
+    return ReportService.mapOf("reply", reply, "mode", "local", "notice", notice, "scope", title + " · 页面帮助，未读取业务数据");
   }
 
   public Map<String, Object> saveAiConfig(String provider, String apiKey, String model) {

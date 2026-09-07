@@ -16,6 +16,17 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class PetServiceTest {
+  @Test
+  void pageHelpDoesNotReadReportsOrTrustArbitraryPageContents() {
+    ReportRepository repository = mock(ReportRepository.class);
+    Map<String, Object> result = analysisService(repository).chat(Map.of("message", "ROI是什么意思", "context",
+        Map.of("mode", "page", "pagePath", "/bid-monitor.html", "password", "must-not-appear")));
+    assertEquals("local", result.get("mode"));
+    assertTrue(result.get("scope").toString().contains("出价监测"));
+    assertTrue(result.get("reply").toString().contains("ROI=收益÷成本"));
+    assertFalse(result.toString().contains("must-not-appear"));
+    org.mockito.Mockito.verifyNoInteractions(repository);
+  }
   private PetService analysisService(ReportRepository repository) {
     RuntimeConfig config = mock(RuntimeConfig.class);
     when(config.get(anyString(), anyString())).thenAnswer(call -> call.getArgument(1));

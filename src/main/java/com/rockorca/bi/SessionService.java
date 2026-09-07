@@ -72,6 +72,17 @@ public class SessionService {
     return null;
   }
 
+  /** Resolves the signed session cookie during a WebSocket handshake. */
+  public UserRepository.UserAccount currentUserFromCookieHeader(String cookieHeader) {
+    if (cookieHeader == null || cookieHeader.isBlank()) return null;
+    for (String part : cookieHeader.split(";")) {
+      String item = part.trim();
+      String prefix = COOKIE_NAME + "=";
+      if (item.startsWith(prefix)) return resolveToken(item.substring(prefix.length()), System.currentTimeMillis());
+    }
+    return null;
+  }
+
   private UserRepository.UserAccount resolveToken(String token, long now) {
     if (token == null) return null;
     String[] parts = token.split("\\.", -1);

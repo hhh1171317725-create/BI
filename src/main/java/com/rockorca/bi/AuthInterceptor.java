@@ -23,8 +23,7 @@ public class AuthInterceptor implements HandlerInterceptor {
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
       throws Exception {
     String path = request.getRequestURI();
-    if (path.equals("/api/login") || path.equals("/api/logout")
-        || path.startsWith("/api/terminal/")) {
+    if (path.equals("/api/login") || path.equals("/api/logout")) {
       return true;
     }
     if (sessions.authenticated(request)) {

@@ -55,6 +55,13 @@ class SessionServiceTest {
   }
 
   @Test
+  void websocketCookieHeaderUsesTheSameSignedSessionValidation() {
+    String token = sessions.createToken(user, System.currentTimeMillis());
+    assertTrue(sessions.currentUserFromCookieHeader("other=x; report_session=" + token) != null);
+    assertFalse(sessions.currentUserFromCookieHeader("report_session=invalid") != null);
+  }
+
+  @Test
   void authenticatedSkipsStaleDuplicateSessionCookies() {
     long now = System.currentTimeMillis();
     MockHttpServletRequest request = new MockHttpServletRequest();

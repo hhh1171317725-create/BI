@@ -1,0 +1,59 @@
+/* Shared visual layer for operational pages. Loaded after each page's local styles. */
+:root{--app-blue:#1677ff;--app-blue-strong:#0958d9;--app-ink:#172b4d;--app-muted:#667085;--app-line:#d9e2ec;--app-bg:#f5f8fb;--app-surface:#fff;--app-good:#067647;--app-danger:#b42318;--app-focus:0 0 0 3px rgba(22,119,255,.16)}
+html{scroll-behavior:smooth;text-rendering:optimizeLegibility}body{line-height:1.5}button,input,select,textarea{transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease}button:not(:disabled),a{touch-action:manipulation}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:0;box-shadow:var(--app-focus)}
+header{box-shadow:0 1px 0 rgba(23,43,77,.02)}.nav a,.nav button{transition:border-color .14s ease,background-color .14s ease,color .14s ease}.nav a[aria-current="page"],.nav a.is-current{border-color:#b9d4f7;background:#edf5ff;color:#0958d9}.nav a:hover,.nav button:hover{transform:translateY(-1px)}
+input:not([type=checkbox]):not([type=radio]),select,textarea{border-color:#c7d3df}input:not([type=checkbox]):not([type=radio]):hover,select:hover,textarea:hover{border-color:#98aec3}input:not([type=checkbox]):not([type=radio]):focus,select:focus,textarea:focus{border-color:var(--app-blue)!important;box-shadow:var(--app-focus)!important;outline:0}.primary,button.primary,button:not(.secondary):not(.danger):not(.close){box-shadow:0 1px 1px rgba(23,43,77,.08)}.primary:hover,button.primary:hover{box-shadow:0 3px 8px rgba(22,119,255,.2)}
+.panel,.content,.tool,.card,.workspace,.table-shell,.table-wrap{box-shadow:0 1px 2px rgba(23,43,77,.025)}.panel,.content,.tool,.card,.workspace{border-color:var(--app-line)!important}.table-wrap,.table-shell{scrollbar-color:#b7c5d1 #f4f7f9;scrollbar-width:thin}.table-wrap:focus-within,.table-shell:focus-within{box-shadow:0 0 0 3px rgba(22,119,255,.09)}table th{letter-spacing:0;font-weight:650}tbody tr{transition:background-color .12s ease}tbody tr:hover td{background:#f5f9fd}.empty{color:#748394}
+dialog{overflow:hidden}dialog .dialog-head,dialog .dialog-actions{background:#fbfcfd}dialog .dialog-head{position:sticky;top:0;z-index:1}dialog .dialog-actions{position:sticky;bottom:0}dialog .close{border-radius:5px}dialog .close:hover{background:#eef3f7;color:#344054}.status,.muted{font-variant-numeric:tabular-nums}.status.ok,.good{color:var(--app-good)!important}.status.error,.bad{color:var(--app-danger)!important}
+@media(max-width:700px){html{scroll-padding-top:12px}.nav a,.nav button{min-height:36px}.nav a:hover,.nav button:hover{transform:none}.panel,.content{border-radius:6px}.table-wrap,.table-shell{overscroll-behavior-x:contain}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{scroll-behavior:auto!important;transition-duration:0.01ms!important;animation-duration:0.01ms!important}}
+
+/* Shared page rhythm and interaction details. */
+:root{--app-ease-out:cubic-bezier(.23,1,.32,1);--app-shadow:0 8px 24px rgba(23,43,77,.06)}
+body{min-height:100vh;background:var(--app-bg);color:var(--app-ink);font-variant-numeric:tabular-nums}
+header{position:relative;z-index:5}
+header h1{letter-spacing:0;line-height:1.25}
+main{width:100%}
+button,a[href]{transition:transform .14s var(--app-ease-out),border-color .14s ease,box-shadow .14s ease,background-color .14s ease,color .14s ease}
+button:not(:disabled):active,a[href]:active{transform:scale(.98)!important}
+button:disabled{box-shadow:none!important}
+summary{border-radius:4px;list-style-position:outside}
+summary:hover{color:var(--app-blue-strong)}
+dialog{max-height:min(760px,calc(100vh - 32px));border-color:var(--app-line)!important;box-shadow:0 24px 80px rgba(23,43,77,.22)!important}
+dialog::backdrop{background:rgba(27,43,65,.42);backdrop-filter:blur(2px)}
+.toolbar,.actions,.filters,.controls,.fields{row-gap:10px}
+.note,.muted,.hint{line-height:1.65}
+.table-wrap,.table-shell{background:var(--app-surface);border-color:var(--app-line)!important}
+.table-wrap::-webkit-scrollbar,.table-shell::-webkit-scrollbar{width:10px;height:10px}
+.table-wrap::-webkit-scrollbar-thumb,.table-shell::-webkit-scrollbar-thumb{background:#b7c5d1;border:2px solid #f4f7f9;border-radius:8px}
+.table-wrap::-webkit-scrollbar-track,.table-shell::-webkit-scrollbar-track{background:#f4f7f9}
+
+/* Tool center: compact search-first directory. */
+body[data-page="tools"] .section{max-width:1500px;margin:20px auto;padding:0 32px}
+body[data-page="tools"] .section-head{margin-bottom:14px}
+body[data-page="tools"] .section-copy{margin:5px 0 0;color:var(--app-muted);font-size:13px}
+body[data-page="tools"] .tool-filters{display:grid;grid-template-columns:minmax(260px,1fr) 180px;gap:10px;margin-bottom:14px}
+body[data-page="tools"] .tool-filters input,body[data-page="tools"] .tool-filters select{width:100%;height:40px}
+body[data-page="tools"] .grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+body[data-page="tools"] .tool{min-height:164px;padding:17px 18px;border-radius:6px;box-shadow:none}
+body[data-page="tools"] .tool:hover{border-color:#adc7e2!important;box-shadow:var(--app-shadow);transform:translateY(-1px)}
+body[data-page="tools"] .tool-kind{display:inline-block;margin-bottom:9px;color:#60758a;font-size:11px;font-weight:650}
+body[data-page="tools"] .tool h3{font-size:16px;line-height:1.35}
+body[data-page="tools"] .tool p{min-height:43px}
+body[data-page="tools"] .tool .actions{width:100%}
+
+/* Bid monitor: report-first navigation with anchored configuration sections. */
+body[data-page="bid-monitor"] header{position:sticky;top:0}
+body[data-page="bid-monitor"] .section-nav{position:sticky;top:73px;z-index:4;display:flex;gap:4px;overflow-x:auto;margin:0 -32px;padding:10px 32px;border-bottom:1px solid var(--app-line);background:rgba(245,247,248,.96);backdrop-filter:blur(10px);scrollbar-width:none}
+body[data-page="bid-monitor"] .section-nav::-webkit-scrollbar{display:none}
+body[data-page="bid-monitor"] .section-nav a{flex:none;padding:7px 12px;border-radius:4px;color:#536779;font-size:13px;font-weight:600}
+body[data-page="bid-monitor"] .section-nav a:hover,body[data-page="bid-monitor"] .section-nav a:focus-visible{background:#e9f2fb;color:var(--app-blue-strong)}
+body[data-page="bid-monitor"] .band{scroll-margin-top:126px}
+body[data-page="bid-monitor"] #report{scroll-margin-top:126px}
+body[data-page="bid-monitor"] #sync-settings{padding-top:20px}
+body[data-page="bid-monitor"] #pricing-settings,body[data-page="bid-monitor"] #dingtalk-settings{background:#fff;margin-inline:-16px;padding-inline:16px}
+body[data-page="bid-monitor"] .metrics{max-width:900px}
+body[data-page="bid-monitor"] .table-wrap:not(.pricing-table){box-shadow:0 4px 16px rgba(23,43,77,.045)}
+
+@media(max-width:950px){body[data-page="tools"] .section{padding:0 16px}}
+@media(max-width:700px){button:not(:disabled):active,a[href]:active{transform:scale(.985)!important}dialog{max-height:calc(100vh - 16px)}body[data-page="tools"] .section{margin:12px auto;padding:0 12px}body[data-page="tools"] .tool-filters{grid-template-columns:1fr}body[data-page="tools"] .grid{grid-template-columns:1fr}body[data-page="tools"] .tool:hover{transform:none;box-shadow:none}body[data-page="bid-monitor"] header{position:relative}body[data-page="bid-monitor"] .section-nav{top:0;margin:0 -16px;padding:8px 16px}body[data-page="bid-monitor"] .band,body[data-page="bid-monitor"] #report{scroll-margin-top:58px}body[data-page="bid-monitor"] #pricing-settings,body[data-page="bid-monitor"] #dingtalk-settings{margin-inline:-8px;padding-inline:8px}}

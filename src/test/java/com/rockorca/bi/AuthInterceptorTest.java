@@ -24,13 +24,23 @@ class AuthInterceptorTest {
   }
 
   @Test
-  void publicApisAreAllowedWithoutSession() throws Exception {
+  void onlyLoginAndLogoutAreAllowedWithoutSession() throws Exception {
     for (String path : new String[] {
-        "/api/login", "/api/logout", "/api/terminal/settings", "/api/terminal/test"
+        "/api/login", "/api/logout"
     }) {
       assertTrue(interceptor.preHandle(
           new MockHttpServletRequest("POST", path), new MockHttpServletResponse(), new Object()));
     }
+  }
+
+  @Test
+  void terminalApisRequireASession() throws Exception {
+    when(sessions.authenticated(any())).thenReturn(false);
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    assertFalse(interceptor.preHandle(
+        new MockHttpServletRequest("POST", "/api/terminal/test"), response, new Object()));
+    assertEquals(401, response.getStatus());
   }
 
   @Test

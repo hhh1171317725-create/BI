@@ -2,6 +2,8 @@
   "use strict";
 
   const history = [];
+  let queryState = null;
+  let contextKey = "";
   let busy = false;
   const legacyAiConfigStorageKey = "data-pet-ai-config-v1";
   const petPositionStorageKey = "data-pet-position-v1";
@@ -31,6 +33,7 @@
             <div><div class="data-pet-name">初音未来 · 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
+            <button class="data-pet-reset" type="button" aria-label="新对话" title="新对话：清除聊天与分析筛选">↺</button>
             <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置" hidden>⚙</button>
             <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
           </div>
@@ -48,9 +51,9 @@
         <div class="data-pet-messages" aria-live="polite"></div>
         <div class="data-pet-quick">
           <button type="button" data-question="帮我总结当前报表">总结报表</button>
-          <button type="button" data-question="分析消耗和利润">消耗利润</button>
-          <button type="button" data-question="哪个优化师消耗最高？">优化师排名</button>
-          <button type="button" data-question="分析当前异常预警">异常预警</button>
+          <button type="button" data-question="诊断当前报表的亏损并给出优化建议">诊断亏损</button>
+          <button type="button" data-question="按利润给优化师排名">利润排名</button>
+          <button type="button" data-question="对比上期，哪些指标变化最大？">对比上期</button>
         </div>
         <form class="data-pet-form">
           <input class="data-pet-input" maxlength="500" autocomplete="off" placeholder="问问当前报表…" aria-label="输入问题" />
@@ -266,16 +269,24 @@
     busy = true;
     input.value = "";
     send.disabled = true;
+    root.querySelector(".data-pet-reset").disabled = true;
     addMessage("user", message);
     const thinking = addMessage("assistant", "正在查看当前报表…", "thinking");
     try {
       const context = typeof window.getPetReportContext === "function"
         ? window.getPetReportContext()
         : { reportType: "未知报表", summary: {} };
+      const nextContextKey = JSON.stringify([context.reportType, context.range, context.accountId, context.excludeUnknownOptimizer]);
+      if (contextKey && contextKey !== nextContextKey) {
+        history.length = 0;
+        queryState = null;
+        addMessage("assistant", "报表范围已变化，本轮按新的页面范围分析。");
+      }
+      contextKey = nextContextKey;
       const response = await fetch("/api/pet/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context, history: history.slice(-8) }),
+        body: JSON.stringify({ message, context, history: history.slice(-8), queryState }),
       });
       if (response.status === 401) {
         location.replace("/login");
@@ -284,16 +295,32 @@
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "分析失败");
       thinking.remove();
+      if (result.scope) addMessage("assistant", `分析范围：${result.scope}`);
       addMessage("assistant", result.reply);
+      if (result.notice) addMessage("assistant", result.notice);
+      if (result.queryState) queryState = result.queryState;
       mode.textContent = result.mode === "ai"
         ? `${result.provider === "deepseek" ? "DeepSeek" : "OpenAI"} 对话 · 当前报表数据`
-        : "本地数据分析";
+        : result.mode === "clarification" ? "需要补充查询条件" : "规则分析 · AI 未参与本次回答";
+      if (Array.isArray(result.suggestions)) {
+        const quick = root.querySelector(".data-pet-quick");
+        quick.replaceChildren();
+        for (const question of result.suggestions.slice(0, 3)) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.question = question;
+          button.textContent = question;
+          quick.appendChild(button);
+        }
+      }
       history.push({ role: "user", content: message }, { role: "assistant", content: result.reply });
+      if (history.length > 8) history.splice(0, history.length - 8);
     } catch (error) {
       thinking.textContent = error instanceof Error ? error.message : "分析失败，请稍后重试。";
     } finally {
       busy = false;
       send.disabled = false;
+      root.querySelector(".data-pet-reset").disabled = false;
       input.focus();
     }
   }
@@ -319,6 +346,15 @@
     if (event.detail === 0) panel.hidden ? openPet() : closePet();
   });
   root.querySelector(".data-pet-close").addEventListener("click", closePet);
+  root.querySelector(".data-pet-reset").addEventListener("click", () => {
+    if (busy) return;
+    history.length = 0;
+    queryState = null;
+    contextKey = "";
+    messages.replaceChildren();
+    addMessage("assistant", "已开始新对话，将从当前报表范围分析。可以问“最近7天谁亏损最多”，也可以继续追问某位优化师。");
+    input.focus();
+  });
   settingsToggle.addEventListener("click", () => {
     providerInput.value = aiStatus.provider;
     modelInput.value = aiStatus.model;

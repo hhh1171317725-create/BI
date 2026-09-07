@@ -60,7 +60,7 @@
   right: 0;
   bottom: calc(var(--data-pet-size) + var(--data-pet-gap));
   display: grid;
-  width: min(370px, calc(100vw - 28px));
+  width: min(440px, calc(100vw - 28px));
   height: min(520px, calc(100vh - 120px));
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   overflow: hidden;
@@ -122,6 +122,7 @@
 .data-pet-name { font-size: 15px; font-weight: 700; color: #172b4d; }
 .data-pet-mode { margin-top: 3px; color: #667085; font-size: 11px; }
 .data-pet-head-actions { display: flex; align-items: center; gap: 6px; cursor: default; }
+.data-pet-reset,
 .data-pet-close,
 .data-pet-settings-toggle {
   width: 30px;
@@ -269,6 +270,7 @@
 
 .data-pet-send:disabled { opacity: .55; cursor: wait; }
 .data-pet .data-pet-close:hover:not(:disabled),
+.data-pet .data-pet-reset:hover:not(:disabled),
 .data-pet .data-pet-settings-toggle:hover:not(:disabled) {
   background: #eaf3ff;
   color: #1756a9;

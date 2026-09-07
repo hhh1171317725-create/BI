@@ -1,9 +1,10 @@
 (() => {
-  const current = location.pathname.replace(/\/$/, '') || '/';
+  const normalize = path => path.replace(/\.html$/, '').replace(/\/index$/, '/').replace(/\/$/, '') || '/';
+  const current = normalize(location.pathname);
   document.body.dataset.route = current;
   document.querySelectorAll('nav a[href]').forEach(link => {
-    const target = new URL(link.href, location.origin).pathname.replace(/\/$/, '') || '/';
-    if (target === current) link.setAttribute('aria-current', 'page');
+    const url = new URL(link.href, location.origin);
+    if (!url.hash && url.origin === location.origin && normalize(url.pathname) === current) link.setAttribute('aria-current', 'page');
   });
   document.querySelectorAll('.table-wrap,.table-shell').forEach(element => {
     if (!element.hasAttribute('tabindex')) element.tabIndex = 0;

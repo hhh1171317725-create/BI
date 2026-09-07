@@ -70,6 +70,24 @@ body[data-page="bid-monitor"] .config-body{padding:4px 4px 22px}
 body[data-page="bid-monitor"] .config-body>h2{margin-bottom:14px;color:#687b8d;font-size:12px;font-weight:600}
 body[data-page="bid-monitor"] .credential-details{margin:14px 0;padding:12px 14px;border:1px solid var(--app-line);border-radius:5px;background:#f9fbfc}
 body[data-page="bid-monitor"] .credential-details>summary{margin-bottom:8px}
+body[data-page="bid-monitor"] main > [hidden]{display:none!important}
+body[data-page="bid-monitor"] .section-nav{top:var(--bid-header-height,73px);background:#fff;backdrop-filter:none;gap:6px;padding-block:0}
+body[data-page="bid-monitor"] .section-nav a{padding:15px 14px;border-radius:0;border-bottom:3px solid transparent;background:transparent}
+body[data-page="bid-monitor"] .section-nav a[aria-current="location"]{border-bottom-color:#1677ff;background:#edf5ff;color:#0958d9}
+body[data-page="bid-monitor"] .section-nav a:last-child{margin-left:auto;color:#657786}
+body[data-page="bid-monitor"] .config-details>summary{display:list-item;list-style-position:inside}
+body[data-page="bid-monitor"] .report-heading > div:first-child{min-width:0;flex:1}
+body[data-page="bid-monitor"] #source{overflow-wrap:anywhere}
+body[data-page="bid-monitor"] .report-heading .metrics{flex-basis:420px}
+body[data-page="bid-monitor"] .config-band{margin-inline:0!important;padding-inline:0!important}
+body[data-page="bid-monitor"] .config-body{max-width:1440px;padding-block:16px 32px}
+body[data-page="bid-monitor"] .config-body .fields{gap:16px}
+body[data-page="bid-monitor"] .config-body input:not([type=checkbox]),body[data-page="bid-monitor"] .config-body select{min-height:40px}
+body[data-page="bid-monitor"] .report-toolbar + p:empty{display:none}
+body[data-page="bid-monitor"] .sort-header{box-shadow:none!important}
+body[data-page="bid-monitor"] .section-nav a:not([aria-current]){border-bottom-color:transparent}
+@media(max-width:760px){body[data-page="bid-monitor"] .report-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}body[data-page="bid-monitor"] .report-toolbar #search{grid-column:1/-1;width:100%}body[data-page="bid-monitor"] .report-toolbar select{width:100%}body[data-page="bid-monitor"] #report .table-wrap:has(td.empty) table{min-width:0}body[data-page="bid-monitor"] #report .table-wrap:has(td.empty) thead{display:none}body[data-page="bid-monitor"] #report td.empty{min-width:0;white-space:normal}}
+@media(max-width:760px){body[data-page="bid-monitor"] header{position:relative}body[data-page="bid-monitor"] .section-nav{top:0!important}body[data-page="bid-monitor"] .section-nav a{padding:12px 10px}body[data-page="bid-monitor"] .report-heading{display:block}body[data-page="bid-monitor"] .report-heading .metrics{margin-top:16px}body[data-page="bid-monitor"] .report-toolbar>*{max-width:100%}}
 
 /* Daily reports share one content width and denser data hierarchy. */
 body[data-route="/"] :is(.header-row,.panel,.cards,.tabs,.content,.alert-panel),

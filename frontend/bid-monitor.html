@@ -8,12 +8,47 @@
 @media(max-width:760px){header{padding:16px;align-items:flex-start;flex-direction:column}main{margin:12px}nav{flex-wrap:wrap}.fields label{flex:1;min-width:140px}.fields input,.fields select{width:100%}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.metric strong{font-size:20px}.toolbar input{width:100%}.toolbar{align-items:stretch}.pager{flex-wrap:wrap;justify-content:center}.notice{font-size:12px}}
 .pricing-table{max-height:320px}.pricing-table table{min-width:650px}.pricing-table th,.pricing-table td{text-align:left;position:static}.pricing-table td input{width:100%;min-width:130px}.pricing-table td:first-child{max-width:none}#pricingStatus,#pricingCoverage{overflow-wrap:anywhere}fieldset:disabled{opacity:.6}
 .ding-check{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}.ding-check input[type=checkbox]{width:16px;min-height:16px;flex:none}#dingPreview{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-family:inherit;font-size:14px;font-variant-numeric:tabular-nums;line-height:1.9;border:1px solid #becbd9;padding:14px;background:#fff}#dingStatus{overflow-wrap:anywhere}
+/* Compact report surface with clear keyboard and numeric hierarchy. */
+:root{--line:#dce4e9;--ink:#20313a;--accent:#1469d1}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{background:#f5f7f8;color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;line-height:1.5}
+header{padding:18px 32px;background:#fff;border-bottom:1px solid var(--line)}
+h1{font-size:23px;font-weight:700}h2{font-weight:650;color:#263e49}
+nav{align-items:center;gap:6px;flex-wrap:wrap}nav a{padding:7px 12px;border-radius:4px;font-size:13px;color:#526474}nav a:hover{background:#edf3f7;color:var(--accent)}nav a:first-child{color:var(--accent);background:#edf4ff}
+main{max-width:1920px;margin:0 auto;padding:0 32px 24px}
+.band{padding:22px 0;border-color:var(--line)}
+.fields{gap:12px 16px}.fields>label{min-width:0}label{font-size:12px;font-weight:500;gap:6px}
+input,select,button{min-height:38px;border-color:#ccd6de;border-radius:4px;font-size:13px;transition:background-color .12s,border-color .12s}
+input,select{background:#fff}input::placeholder{color:#8995a0}input:hover,select:hover{border-color:#93a7b8}
+button{font-weight:550}button:hover:not(:disabled){background:#edf4fb;border-color:#7ea5d3}button.primary:hover:not(:disabled){background:#0c5abc;border-color:#0c5abc}
+:is(a,button,input,select,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+input[type=checkbox]{accent-color:var(--accent)}
+details summary{color:#304958;padding:2px 0;min-height:28px}details:not([open]) summary{margin-bottom:0}
+.muted{color:#647786}.notice{background:#fff9e9;border-left-color:#c59420;font-size:12px;padding:10px 14px;margin:18px 0 0}
+.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:0;padding:24px 0 20px;max-width:720px}
+.metric{padding:0 28px}.metric:first-child{padding-left:0}.metric:last-child{border-right:0}.metric span{font-size:12px;font-weight:550}.metric strong{font-size:30px;line-height:1.2;margin-top:8px;color:#203b46}
+#source{font-variant-numeric:tabular-nums}#message:empty{min-height:0;padding:0}
+.toolbar{gap:10px}.toolbar input.grow{min-width:220px}.toolbar select{max-width:100%}
+.table-wrap{border-color:var(--line);border-radius:4px;scrollbar-color:#b5c3ce #f3f6f8;scrollbar-width:thin;isolation:isolate}
+th,td{padding:11px 14px;height:46px}th{font-size:12px;font-weight:650;background:#edf2f5;box-shadow:inset 0 -1px var(--line)}
+tbody tr:hover td{background:#f0f6fc}tbody tr:nth-child(even){background:#fafcfd}
+.table-wrap:not(.pricing-table) th:first-child{left:0;z-index:3;min-width:250px}
+.table-wrap:not(.pricing-table) td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:1px 0 var(--line);min-width:250px;font-weight:500}
+.table-wrap:not(.pricing-table) tbody tr:hover td:first-child{background:#f0f6fc}
+.table-wrap:not(.pricing-table) td:nth-child(11){font-weight:700;color:#126b5d;background:#f3faf7}
+td small{font-size:11px;font-weight:400;color:#72818d}td:last-child{white-space:nowrap}
+.pricing-table td{padding:8px 12px}.pricing-table th{height:38px}.pricing-table td:last-child{white-space:nowrap}
+.pager{font-size:12px;color:#617381}.pager #count{margin-right:auto}.pager select{min-width:70px}
+#dingPreview{border-color:var(--line);border-left:3px solid #1b8a78;border-radius:4px;font-size:13px;line-height:1.65}
+.formula{font-size:13px}.good{color:#087f67}.bad{color:#ba3838}
+@media(max-width:760px){header{padding:16px;gap:10px}nav{gap:2px}nav a{padding:6px 9px}main{margin:0;padding:0 16px 20px}.band{padding:18px 0}.fields{gap:12px}.fields>label{min-width:140px}.fields>.grow{flex-basis:100%}.fields button{flex-grow:1}.fields input[type=checkbox]{width:16px}.fields .ding-check{min-width:0;flex:0 1 auto}.metrics{gap:0;max-width:none}.metric{padding:0 18px}.metric strong{font-size:26px}.toolbar{gap:8px}.toolbar input.grow{flex-basis:100%;min-width:0}.toolbar select{flex:1;min-width:0}.table-wrap:not(.pricing-table) td:first-child{position:static;min-width:210px}.table-wrap:not(.pricing-table) th:first-child{left:auto;min-width:210px}.pager{justify-content:flex-start;gap:8px}.pager #count{flex-basis:100%}.notice{line-height:1.7}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}input,select,button{transition:none}}
 </style>
 <script src="/bid-monitor-core.js?v=2.2.6" defer></script><script src="/bid-monitor.js?v=2.2.6" defer></script><script src="/bid-monitor-pricing.js?v=2.2.6" defer></script><script src="/bid-monitor-server-sync.js?v=2.2.6" defer></script>
 <script src="/bid-monitor-dingtalk.js?v=2.2.6" defer></script>
 </head>
 <body>
-<header><h1>出价监测</h1><nav><a href="/tools">工具中心</a><a href="/account">设置</a><a href="/">大航海日报</a></nav></header>
+<header><h1>出价监测</h1><nav aria-label="页面导航"><a href="#report">查看报表</a><a href="/tools">工具中心</a><a href="/account">设置</a><a href="/">大航海日报</a></nav></header>
 <main>
 <section class="band"><h2>服务器定时同步 · 近 3 天至今天创建的计划，消耗前 400 条</h2><div class="fields">
 <label>自动查询间隔<select id="syncMinutes" disabled><option value="10">每 10 分钟</option></select></label>
@@ -34,7 +69,7 @@
 </details></section>
 <section class="band"><details><summary>计算口径</summary><div class="formula">佣金 = 注册数 × 任务结算单价<br>转化成本 = 总消耗 ÷ 转化数<br>当转化成本 &gt; 1.2 × 出价时，预估赔付金额 = 总消耗 − 出价 × 转化数；否则为 0<br>预估 ROI =（佣金 + 预估赔付金额）÷ 总消耗<br>当转化成本 &gt; 1.2 × 出价且转化数 &gt; 6 时，赠款 = 总消耗 − 出价 × 转化数；否则为 0<br>现金消耗 = 总消耗 − 赠款<br>盈亏线出价 = 任务结算单价 ÷ 回传比例<br>出价利润率 =（盈亏线出价 − 当前出价）÷ 盈亏线出价</div><p class="muted">赔付和赠款均为规则预估，不代表平台已到账金额。出价利润率假设每次转化成本等于当前出价。全部注册按任务单价结算，未计入其他费用。</p></details></section>
 <div class="notice" id="lag">包含当天的数据尚可能回补。早上点击、下午注册会改变比例与成本，勿据此频繁调整出价。</div>
-<div class="metrics" id="metrics"></div><p class="muted" id="source">尚未查询或导入数据</p>
+<div id="report" tabindex="-1"><div class="metrics" id="metrics"></div></div><p class="muted" id="source">尚未查询或导入数据</p>
 <div class="toolbar"><input id="search" class="grow" placeholder="搜索计划、账户、优化师或 ID" aria-label="搜索计划"><select id="taskFilter" aria-label="任务筛选"><option value="">全部任务</option></select><select id="filter" aria-label="出价利润率筛选"><option value="all">全部计划</option><option value="available">有出价利润率</option><option value="unavailable">无法计算出价利润率</option></select><select id="sort" aria-label="排序"><option value="cost">消耗从高到低</option><option value="estimatedRoi">预估 ROI 从高到低</option><option value="bidProfitRate">出价利润率从高到低</option><option value="bid">出价从高到低</option><option value="ratio">回传比例从高到低</option></select><button id="export" disabled>导出当前结果</button></div>
 <div class="table-wrap"><table><thead><tr><th>计划</th><th>账户</th><th>优化师</th><th>任务</th><th>结算单价</th><th>总消耗</th><th>转化数</th><th>注册数</th><th>回传比例</th><th>当前出价</th><th>预估 ROI</th><th>盈亏线出价</th><th>出价利润率</th></tr></thead><tbody id="rows"><tr><td colspan="13" class="empty">等待计划数据</td></tr></tbody></table></div>
 <div class="pager"><span id="count">0 条</span><select id="pageSize" aria-label="每页条数"><option>20</option><option selected>50</option><option>100</option></select><button id="prev" disabled>上一页</button><span id="pageLabel">第 1 / 1 页</span><button id="next" disabled>下一页</button></div>

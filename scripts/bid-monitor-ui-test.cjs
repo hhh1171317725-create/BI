@@ -63,6 +63,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   });
   await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html`);await page.locator('body.ready').waitFor();
+  assert.equal(await page.evaluate(()=>Boolean(document.querySelector('#report').compareDocumentPosition(document.querySelector('#sync-settings'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
+  const syncDetails=page.locator('#sync-settings>.config-details');
+  await syncDetails.locator(':scope>summary').click();assert.equal(await syncDetails.getAttribute('open'),null);
+  await syncDetails.locator(':scope>summary').click();assert.notEqual(await syncDetails.getAttribute('open'),null);
   await page.evaluate(()=>syncShow({userId:'1',configured:false,enabled:true,state:'running',minutes:10,createdDays:4,progress:{done:200,total:450,startedAt:Date.now()-10000}}));
   assert.match(await page.locator('#syncStatus').textContent(),/第 3 \/ 5 页；已读取 200 \/ 450 条；已用时 10 秒；速度 [0-9.]+ 条\/秒；预计剩余/);
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.waitForFunction(()=>!document.querySelector('#pricingFields').disabled);
@@ -184,6 +188,6 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#metrics strong').first().textContent(),'--');
   await page.locator('#filter').selectOption('available');assert.equal(await page.locator('#count').textContent(),'0 条');
   await page.locator('#filter').selectOption('unavailable');assert.equal(await page.locator('#count').textContent(),'1 条');
-  assert.deepEqual(errors,[]);console.log('UI PASS: all-plan paging, optimizer detail and summary, estimated ROI, bid profit rate, exports, task prices, mobile width, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
+  assert.deepEqual(errors,[]);console.log('UI PASS: report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, bid profit rate, exports, task prices, mobile width, encrypted credential reuse, 10-minute schedule, daily snapshot following, historical data preservation');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

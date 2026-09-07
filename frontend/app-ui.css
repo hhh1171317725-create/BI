@@ -55,5 +55,35 @@ body[data-page="bid-monitor"] #pricing-settings,body[data-page="bid-monitor"] #d
 body[data-page="bid-monitor"] .metrics{max-width:900px}
 body[data-page="bid-monitor"] .table-wrap:not(.pricing-table){box-shadow:0 4px 16px rgba(23,43,77,.045)}
 
+body[data-page="bid-monitor"] .report-surface{padding:22px 0 30px;scroll-margin-top:126px}
+body[data-page="bid-monitor"] .report-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+body[data-page="bid-monitor"] .report-heading h2{margin:0;font-size:17px}
+body[data-page="bid-monitor"] .report-heading #source{margin:5px 0 0}
+body[data-page="bid-monitor"] .report-heading .metrics{flex:0 1 560px;padding:0}
+body[data-page="bid-monitor"] .report-heading .metric{padding-inline:24px}
+body[data-page="bid-monitor"] .report-heading .metric strong{font-size:27px}
+body[data-page="bid-monitor"] .report-toolbar{padding-top:10px}
+body[data-page="bid-monitor"] .config-band{padding:0;border-bottom:1px solid var(--app-line);background:transparent!important}
+body[data-page="bid-monitor"] .config-details>summary{display:flex;align-items:center;min-height:52px;margin:0;padding:0 4px;color:#304958;font-size:15px;font-weight:700}
+body[data-page="bid-monitor"] .config-details>summary::marker{color:#7890a6}
+body[data-page="bid-monitor"] .config-body{padding:4px 4px 22px}
+body[data-page="bid-monitor"] .config-body>h2{margin-bottom:14px;color:#687b8d;font-size:12px;font-weight:600}
+body[data-page="bid-monitor"] .credential-details{margin:14px 0;padding:12px 14px;border:1px solid var(--app-line);border-radius:5px;background:#f9fbfc}
+body[data-page="bid-monitor"] .credential-details>summary{margin-bottom:8px}
+
+/* Daily reports share one content width and denser data hierarchy. */
+body[data-route="/"] :is(.header-row,.panel,.cards,.tabs,.content,.alert-panel),
+body[data-route="/jd"] :is(.header-row,.panel,.cards,.tabs,.content,.alert-panel),
+body[data-route="/jd-low-activity"] :is(.header-row,.band,.source-note,.cards,.chart-band,.workspace,.account-detail){width:min(1760px,calc(100% - 48px));margin-left:auto;margin-right:auto}
+body[data-route="/"] .header-row,body[data-route="/jd"] .header-row,body[data-route="/jd-low-activity"] .header-row{width:min(1760px,100%)}
+body[data-route="/"] :is(.panel,.alert-panel),body[data-route="/jd"] :is(.panel,.alert-panel),body[data-route="/jd-low-activity"] .band{padding:16px 18px}
+body[data-route="/"] .cards,body[data-route="/jd"] .cards,body[data-route="/jd-low-activity"] .cards{gap:9px}
+body[data-route="/"] .card,body[data-route="/jd"] .card,body[data-route="/jd-low-activity"] .card{min-height:82px;border-radius:6px;box-shadow:none}
+body[data-route="/"] .card :is(.v,.value),body[data-route="/jd"] .card :is(.v,.value),body[data-route="/jd-low-activity"] .card :is(.v,.value){font-size:21px;line-height:1.25;font-weight:700;font-variant-numeric:tabular-nums}
+body[data-route="/"] :is(.controls,.filters),body[data-route="/jd"] :is(.controls,.filters),body[data-route="/jd-low-activity"] :is(.sync-grid,.filters){row-gap:10px}
+body[data-route="/"] :is(.content,.tabs),body[data-route="/jd"] :is(.content,.tabs){margin-top:0}
+body[data-route="/"] table td,body[data-route="/jd"] table td,body[data-route="/jd-low-activity"] table td{font-variant-numeric:tabular-nums}
+body[data-route="/"] table th,body[data-route="/jd"] table th,body[data-route="/jd-low-activity"] table th{background:#eef3f7;color:#415468}
+
 @media(max-width:950px){body[data-page="tools"] .section{padding:0 16px}}
-@media(max-width:700px){button:not(:disabled):active,a[href]:active{transform:scale(.985)!important}dialog{max-height:calc(100vh - 16px)}body[data-page="tools"] .section{margin:12px auto;padding:0 12px}body[data-page="tools"] .tool-filters{grid-template-columns:1fr}body[data-page="tools"] .grid{grid-template-columns:1fr}body[data-page="tools"] .tool:hover{transform:none;box-shadow:none}body[data-page="bid-monitor"] header{position:relative}body[data-page="bid-monitor"] .section-nav{top:0;margin:0 -16px;padding:8px 16px}body[data-page="bid-monitor"] .band,body[data-page="bid-monitor"] #report{scroll-margin-top:58px}body[data-page="bid-monitor"] #pricing-settings,body[data-page="bid-monitor"] #dingtalk-settings{margin-inline:-8px;padding-inline:8px}}
+@media(max-width:700px){button:not(:disabled):active,a[href]:active{transform:scale(.985)!important}dialog{max-height:calc(100vh - 16px)}body[data-page="tools"] .section{margin:12px auto;padding:0 12px}body[data-page="tools"] .tool-filters{grid-template-columns:1fr}body[data-page="tools"] .grid{grid-template-columns:1fr}body[data-page="tools"] .tool:hover{transform:none;box-shadow:none}body[data-page="bid-monitor"] header{position:relative}body[data-page="bid-monitor"] .section-nav{top:0;margin:0 -16px;padding:8px 16px}body[data-page="bid-monitor"] .band,body[data-page="bid-monitor"] #report{scroll-margin-top:58px}body[data-page="bid-monitor"] .report-heading{display:block}body[data-page="bid-monitor"] .report-heading .metrics{margin-top:18px}body[data-page="bid-monitor"] .report-heading .metric:first-child{padding-left:0}body[data-page="bid-monitor"] #pricing-settings,body[data-page="bid-monitor"] #dingtalk-settings{margin-inline:0;padding-inline:0}body[data-route="/"] :is(.panel,.cards,.tabs,.content,.alert-panel),body[data-route="/jd"] :is(.panel,.cards,.tabs,.content,.alert-panel),body[data-route="/jd-low-activity"] :is(.band,.source-note,.cards,.chart-band,.workspace,.account-detail){width:calc(100% - 24px)}}

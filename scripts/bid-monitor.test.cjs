@@ -86,6 +86,8 @@ test('aggregates account dimension by account name and advertiser ID',()=>{
  assert.equal(groups.length,2);
  const account=groups.find(row=>row.accountId==='1001');
  assert.equal(account.account,'同名账户');assert.equal(account.plans,2);assert.equal(account.accounts,1);assert.equal(account.cost,15);
+ const renamed=require('../frontend/bid-monitor-core.js').aggregateGroups([...rows,{account:'改名账户',accountId:'1001',cost:7,price:null}],['account','accountId']);
+ assert.equal(renamed.length,2);assert.equal(renamed.find(row=>row.accountId==='1001').cost,22);
 });
 test('analysis cache reuses calculations and invalidates price edits, gap and snapshots',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();

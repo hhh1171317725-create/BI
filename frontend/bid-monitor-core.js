@@ -89,13 +89,16 @@
       return result;
     };
   }
+  const accountIdentity=row=>row.accountId?JSON.stringify(['id',String(row.accountId).trim()]):row.account?JSON.stringify(['name',String(row.account).trim()]):JSON.stringify(['plan',String(row.id||'')]);
   function aggregateGroups(rows,dimensions,statDate){
     const groups=new Map();
     for(const row of rows){
       const labels={account:String(row.account||'').trim()||'账户名称缺失',accountId:String(row.accountId||'').trim()||'账户ID缺失',optimizer:String(row.optimizer||'').trim()||'未填写',task:String(row.task||'').trim()||'未匹配任务',
         externalAction:String(row.externalAction||'').trim()||'未填写',deepExternalAction:String(row.deepExternalAction||'').trim()||'未填写',
         appType:String(row.appType||'').trim()||'未填写'};
-      const key=JSON.stringify(dimensions.map(dimension=>labels[dimension]));
+      const accountView=dimensions.includes('account')&&dimensions.includes('accountId');
+      labels.accountKey=accountIdentity(row);
+      const key=accountView?JSON.stringify([labels.accountKey,...dimensions.filter(d=>d!=='account'&&d!=='accountId').map(d=>labels[d])]):JSON.stringify(dimensions.map(dimension=>labels[dimension]));
       if(!groups.has(key))groups.set(key,{labels,items:[]});
       groups.get(key).items.push(row);
     }
@@ -118,5 +121,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

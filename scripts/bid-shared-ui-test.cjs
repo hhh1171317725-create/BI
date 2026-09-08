@@ -36,6 +36,10 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');
   assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
   assert.match(await page.locator('#count').textContent(),/^1 个账户（1 条计划）$/);
+  await page.locator('.account-drill-link').click();
+  assert.equal(await page.locator('#accountDrill').isVisible(),true);
+  assert.equal(await page.locator('#count').textContent(),'1 条');
+  await page.locator('#accountDrillBack').click();
   await page.locator('#viewMode').selectOption('plans');
   await page.locator('#search').fill('不存在');assert.equal(await page.locator('#count').textContent(),'0 条');
   await page.locator('#search').fill('张三');assert.equal(await page.locator('#count').textContent(),'1 条');

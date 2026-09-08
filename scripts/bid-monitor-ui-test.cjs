@@ -130,6 +130,18 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#count').textContent(),/^2 个账户（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
   const accountRow=page.locator('#rows tr').filter({hasText:'1866402186668232'});assert.equal(await accountRow.locator('td').nth(0).textContent(),'客户-A-01');assert.equal(await accountRow.locator('td').nth(2).textContent(),'53');
+  const computed=await page.evaluate(()=>{window.previousBidAnalysis=analyzed;return analyzed.length;});assert.equal(computed,105);
+  await accountRow.locator('.account-drill-link').click();
+  assert.equal(await page.locator('#viewMode').inputValue(),'plans');assert.equal(await page.locator('#count').textContent(),'53 条');
+  assert.equal(await page.evaluate(()=>previousBidAnalysis===analyzed),true);
+  await page.locator('#accountDrillBack').click();assert.equal(await page.locator('#count').textContent(),'2 个账户（105 条计划）');
+  await page.locator('#aggregateSettings summary').click();
+  await page.locator('[data-aggregate-column="cost"]').uncheck();
+  assert.equal(await page.locator('#tableHead [data-sort-key="cost"]').count(),0);
+  const accountDownload=page.waitForEvent('download');await page.locator('#export').click();
+  const accountFile=await accountDownload;assert.match(accountFile.suggestedFilename(),/账户汇总/);
+  const accountCsv=fs.readFileSync(await accountFile.path(),'utf8');assert.match(accountCsv,/1866402186668232/);assert.doesNotMatch(accountCsv.split('\n')[0],/总消耗/);
+  await page.locator('#aggregateColumnReset').click();assert.equal(await page.locator('#tableHead [data-sort-key="cost"]').count(),1);
   await page.locator('#viewMode').selectOption('optimizers');
   assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');

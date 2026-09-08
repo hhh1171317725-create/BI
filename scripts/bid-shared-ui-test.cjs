@@ -32,6 +32,11 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#dingtalk-settings').isVisible(),false);
   assert.equal(await page.locator('#fetch').isVisible(),false);
   assert.match(await page.locator('#sharedReportNotice').textContent(),/查看、筛选和导出/);
+  await page.locator('#viewMode').selectOption('accounts');
+  assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');
+  assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
+  assert.match(await page.locator('#count').textContent(),/^1 个账户（1 条计划）$/);
+  await page.locator('#viewMode').selectOption('plans');
   await page.locator('#search').fill('不存在');assert.equal(await page.locator('#count').textContent(),'0 条');
   await page.locator('#search').fill('张三');assert.equal(await page.locator('#count').textContent(),'1 条');
   const download=page.waitForEvent('download');await page.locator('#export').click();

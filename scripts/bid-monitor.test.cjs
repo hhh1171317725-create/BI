@@ -76,6 +76,17 @@ test('aggregates by conversion, deep conversion and app type dimensions',()=>{
  assert.equal(groups[0].appType,'应用');assert.equal(groups[0].plans,2);assert.equal(groups[0].accounts,2);assert.equal(groups[0].cost,30);
  assert.equal(groups[1].deepExternalAction,'未填写');
 });
+test('aggregates account dimension by account name and advertiser ID',()=>{
+ const rows=[
+  {account:'同名账户',accountId:'1001',cost:10,conversions:2,registrations:4,price:null},
+  {account:'同名账户',accountId:'1002',cost:20,conversions:3,registrations:6,price:null},
+  {account:'同名账户',accountId:'1001',cost:5,conversions:1,registrations:2,price:null}
+ ];
+ const groups=require('../frontend/bid-monitor-core.js').aggregateGroups(rows,['account','accountId']);
+ assert.equal(groups.length,2);
+ const account=groups.find(row=>row.accountId==='1001');
+ assert.equal(account.account,'同名账户');assert.equal(account.plans,2);assert.equal(account.accounts,1);assert.equal(account.cost,15);
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

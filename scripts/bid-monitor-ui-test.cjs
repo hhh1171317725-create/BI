@@ -126,6 +126,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#taskFilter').selectOption('');
   assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('main').textContent(),/预估 ROI/);
   assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
+  await page.locator('#viewMode').selectOption('accounts');
+  assert.match(await page.locator('#count').textContent(),/^2 个账户（105 条计划）$/);
+  assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
+  const accountRow=page.locator('#rows tr').filter({hasText:'1866402186668232'});assert.equal(await accountRow.locator('td').nth(0).textContent(),'客户-A-01');assert.equal(await accountRow.locator('td').nth(2).textContent(),'53');
   await page.locator('#viewMode').selectOption('optimizers');
   assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');

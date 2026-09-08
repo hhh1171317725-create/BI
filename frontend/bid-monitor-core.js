@@ -80,7 +80,7 @@
   function aggregateGroups(rows,dimensions,statDate){
     const groups=new Map();
     for(const row of rows){
-      const labels={optimizer:String(row.optimizer||'').trim()||'未填写',task:String(row.task||'').trim()||'未匹配任务',
+      const labels={account:String(row.account||'').trim()||'账户名称缺失',accountId:String(row.accountId||'').trim()||'账户ID缺失',optimizer:String(row.optimizer||'').trim()||'未填写',task:String(row.task||'').trim()||'未匹配任务',
         externalAction:String(row.externalAction||'').trim()||'未填写',deepExternalAction:String(row.deepExternalAction||'').trim()||'未填写',
         appType:String(row.appType||'').trim()||'未填写'};
       const key=JSON.stringify(dimensions.map(dimension=>labels[dimension]));

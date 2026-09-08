@@ -139,6 +139,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#tableHead th').first().textContent(),'任务');assert.equal(await page.locator('#rows tr').filter({hasText:'任务A'}).locator('td').nth(1).textContent(),'53');
   await page.locator('#viewMode').selectOption('optimizerTasks');assert.match(await page.locator('#count').textContent(),/^2 个优化师 × 任务组合（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'优化师');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'任务');
+  await page.locator('#viewMode').selectOption('conversionTargets');assert.match(await page.locator('#count').textContent(),/^2 个目标组合（105 条计划）$/);
+  assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'转化目标');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'深度转化目标');assert.equal(await page.locator('#tableHead th').nth(2).textContent(),'应用类型');
+  const targetRow=page.locator('#rows tr').filter({hasText:'注册'});assert.equal(await targetRow.locator('td').nth(3).textContent(),'53');assert.equal(await targetRow.locator('td').nth(6).textContent(),'1');
   await page.locator('#viewMode').selectOption('plans');
   assert.equal(await page.locator('#tableHead .sort-header').count(),15);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);

@@ -65,6 +65,17 @@ test('aggregates task and optimizer-task dimensions with new and spending plan c
  assert.equal(zhang.plans,2);assert.equal(zhang.todayPlans,1);assert.equal(zhang.spendingPlans,1);
  assert.ok(combinations.some(r=>r.task==='未匹配任务'));
 });
+test('aggregates by conversion, deep conversion and app type dimensions',()=>{
+ const rows=[
+  {externalAction:'注册',deepExternalAction:'付费',appType:'应用',accountId:'a',cost:10,conversions:2,registrations:4,price:null},
+  {externalAction:'注册',deepExternalAction:'付费',appType:'应用',accountId:'b',cost:20,conversions:3,registrations:6,price:null},
+  {externalAction:'激活',deepExternalAction:'',appType:'小程序',accountId:'a',cost:5,conversions:1,registrations:2,price:null}
+ ];
+ const groups=require('../frontend/bid-monitor-core.js').aggregateGroups(rows,['externalAction','deepExternalAction','appType']);
+ assert.equal(groups.length,2);assert.equal(groups[0].externalAction,'注册');assert.equal(groups[0].deepExternalAction,'付费');
+ assert.equal(groups[0].appType,'应用');assert.equal(groups[0].plans,2);assert.equal(groups[0].accounts,2);assert.equal(groups[0].cost,30);
+ assert.equal(groups[1].deepExternalAction,'未填写');
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

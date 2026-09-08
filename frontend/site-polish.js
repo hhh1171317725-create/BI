@@ -12,13 +12,13 @@
     const results=create('div','tool-results','');
     const count=create('span','','');count.id='toolResultCount';count.setAttribute('role','status');
     const reset=create('button','tool-reset','清除筛选');reset.type='button';reset.id='resetToolFilters';
-    reset.onclick=()=>{document.getElementById('toolSearch').value='';category.value='';document.getElementById('toolSearch').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('toolSearch').focus();};
+    reset.onclick=()=>{document.getElementById('toolSearch').value='';category.value='';document.dispatchEvent(new Event('tools:reset-filters'));document.getElementById('toolSearch').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('toolSearch').focus();};
     results.append(count,reset);section.querySelector('.tool-filters').after(results);
     function update(){
       const all=[...section.querySelectorAll('.tool')].filter(card=>!card.dataset.tool||card.dataset.allowed==='true');
       const visible=all.filter(card=>!card.hidden).length;
       count.textContent=`显示 ${visible} / ${all.length} 项工具`;
-      reset.hidden=!document.getElementById('toolSearch').value&&!category.value;
+      reset.hidden=!document.getElementById('toolSearch').value&&!category.value&&!window.toolFavorites?.only;
     }
     new MutationObserver(update).observe(section.querySelector('.grid'),{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','data-allowed']});
     document.getElementById('toolSearch').addEventListener('input',update);category.addEventListener('change',update);update();

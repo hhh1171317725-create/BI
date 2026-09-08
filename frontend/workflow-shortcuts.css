@@ -1,0 +1,12 @@
+.tool-favorite{position:absolute;right:16px;top:18px;width:30px;height:30px;padding:0;border:1px solid #e1e8f1;border-radius:7px;background:#fff;color:#8391a3;font-size:20px;line-height:28px;cursor:pointer}
+.tool-favorite[aria-pressed="true"]{color:#a96910;background:#fff8e9;border-color:#efd4a0}
+body.site-polished[data-page="tools"] .tool.is-favorite{order:-1;border-color:#cfddf0}
+.favorite-hint{color:#798ba1;font-size:11px;margin:0 0 13px;line-height:1.6}
+.tool-results{gap:8px;flex-wrap:wrap}.tool-results>span{margin-right:auto}
+#favoriteToolsOnly[aria-pressed="true"]{border-radius:5px;color:#15579d;background:#e7f0ff}
+.date-shortcuts{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 16px}
+.date-shortcuts>span{font-size:12px;color:#677d97;margin-right:4px}
+.site-polished .date-shortcuts button{height:30px;padding:4px 11px;border:1px solid #dce5ef;background:#fff;color:#526d8c;font-size:12px;font-weight:500;line-height:20px;cursor:pointer;box-shadow:none}
+.site-polished .date-shortcuts button[aria-pressed="true"]{background:var(--polish-soft);color:var(--polish-accent);border-color:var(--polish-accent)}
+.date-shortcuts small{margin-left:auto;color:#7c8ba0;font-size:11px}
+@media(max-width:700px){.date-shortcuts{gap:6px}.date-shortcuts>span{flex-basis:100%}.date-shortcuts small{margin:3px 0 0;flex-basis:100%}.tool-results{font-size:11px}}

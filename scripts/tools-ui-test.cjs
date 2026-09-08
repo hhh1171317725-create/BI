@@ -26,7 +26,7 @@ const root = path.resolve(__dirname, '../frontend');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/pet-loader.js*',route=>route.fulfill({contentType:'application/javascript',body:''}));
-    await page.route('**/api/session', route => route.fulfill({ json: { authenticated: true, user: { role: 'admin' } } }));
+    await page.route('**/api/session', route => route.fulfill({ json: { authenticated: true, user: {id:'test-user-1',role: 'admin' } } }));
     await page.route('**/api/tool-visibility', route => route.fulfill({ json: {
       todo: true,
       accountVault: true,
@@ -44,6 +44,12 @@ const root = path.resolve(__dirname, '../frontend');
     await page.waitForFunction(() => [...document.querySelectorAll('[data-tool]')].every(card => card.dataset.allowed));
     assert.equal(await page.locator('.tool:visible').count(), 9);
     assert.equal(await page.locator('[data-tool="terminal"]').count(), 0);
+    await page.getByRole('button',{name:'收藏：出价监测',exact:true}).click();
+    await page.locator('#favoriteToolsOnly').click();assert.equal(await page.locator('.tool:visible').count(),1);
+    assert.equal(await page.locator('.tool:visible h3').textContent(),'出价监测');
+    await page.reload();await page.getByRole('button',{name:'取消收藏：出价监测',exact:true}).waitFor();
+    await page.locator('#favoriteToolsOnly').click();assert.equal(await page.locator('.tool:visible').count(),1);
+    await page.locator('#resetToolFilters').click();assert.equal(await page.locator('.tool:visible').count(),9);
 
     await page.locator('#toolSearch').fill('出价');
     assert.equal(await page.locator('.tool:visible').count(), 1);
@@ -58,6 +64,7 @@ const root = path.resolve(__dirname, '../frontend');
     await page.locator('#addTool').click();await page.locator('#toolName').fill('演示工具');await page.locator('#toolUrl').fill('/tools');
     await page.locator('#toolForm button[type=submit]').click();
     await page.locator('#toolCategory').selectOption('custom');assert.equal(await page.locator('.tool:visible').count(),1);
+    await page.getByRole('button',{name:'收藏：演示工具',exact:true}).click();
     await page.locator('#customTools .delete').click();assert.equal(await page.locator('#emptyTools').isVisible(),true);
     await page.locator('#resetToolFilters').click();
     fs.mkdirSync(path.resolve(__dirname,'../.runtime'),{recursive:true});
@@ -70,6 +77,13 @@ const root = path.resolve(__dirname, '../frontend');
     await page.route('**/api/tool-visibility',route=>route.fulfill({json:{bidMonitor:true}}));
     await page.reload();await page.waitForFunction(()=>document.getElementById('toolResultCount')?.textContent==='显示 1 / 1 项工具');
     assert.equal(await page.locator('.tool:visible').count(),1);
+    await page.route('**/api/tool-visibility',route=>route.fulfill({json:{todo:true}}));
+    await page.reload();await page.waitForFunction(()=>document.getElementById('toolResultCount')?.textContent==='显示 1 / 1 项工具');
+    await page.locator('#favoriteToolsOnly').click();assert.equal(await page.locator('.tool:visible').count(),0);
+    await page.route('**/api/session',route=>route.fulfill({json:{authenticated:true,user:{id:'test-user-2',role:'member'}}}));
+    await page.reload();await page.waitForFunction(()=>document.getElementById('favoriteToolsOnly')?.textContent==='只看收藏（0）');
+    await page.getByRole('button',{name:'收藏：Todo 任务',exact:true}).click();
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('marketing-tool-favorites-v1:test-user-1')).includes('builtin:todo')),false);
     assert.deepEqual(errors, []);
     console.log('TOOLS UI PASS: permissions, search, categories, disabled terminal entry, mobile width');
   } finally {

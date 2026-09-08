@@ -18,6 +18,13 @@ const report={rows:240,range:['2026-09-01','2026-09-07'],summary:metrics,exclude
    await page.goto(`http://127.0.0.1:${server.address().port}${url}`);await page.locator('#content:not(.hidden)').waitFor();
    assert.equal(await page.locator('.panel-heading h2').count(),2);
    assert.ok(await page.locator('#table tbody tr').count()>0);
+   const beforePresets=requests.length;
+   await page.locator('[data-range-preset="week"]').click();
+   const expected=await page.evaluate(()=>BIReportDates.ranges().week);
+   assert.equal(await page.locator('#start').inputValue(),expected[0]);assert.equal(await page.locator('#end').inputValue(),expected[1]);
+   assert.equal(requests.length,beforePresets);
+   await page.locator('#apply').click();await page.waitForFunction(()=>!document.querySelector('#apply').disabled);
+   assert.equal(requests.at(-1).start,expected[0]);assert.equal(requests.at(-1).end,expected[1]);
    await page.locator('#start').fill('2026-09-01');await page.locator('#end').fill('2026-09-07');await page.locator('#apply').click();
    await page.waitForFunction(()=>!document.querySelector('#apply').disabled);
    assert.equal(requests.at(-1).start,'2026-09-01');assert.equal(requests.at(-1).end,'2026-09-07');

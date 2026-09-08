@@ -77,6 +77,18 @@
     if(price===null||price===0){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.price===null?task.pricingStatus:gap===null?'gap-missing':'zero-price';}
     return{...result,...task,basePrice:task.price,gap,price,...cashMetrics(row,price)};
   }
+  function createAnalysisCache(){
+    let previousRows,previousRules,previousCurrent,previousGaps,result;
+    return (rows,rules,current,gaps)=>{
+      // Pricing edits mutate rules in place; compare their small serialized value.
+      const ruleKey=JSON.stringify(rules);
+      if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps){
+        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gaps?.[row.accountId]?.gap??null));
+        previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;
+      }
+      return result;
+    };
+  }
   function aggregateGroups(rows,dimensions,statDate){
     const groups=new Map();
     for(const row of rows){
@@ -106,5 +118,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

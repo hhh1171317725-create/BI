@@ -386,6 +386,7 @@ public class ReportRepository {
       String accountIdValue,
       boolean includeAccountInfo) {
     String accountId = normalizedAccountId(accountIdValue);
+    String alertDate = normalizedDate(extraDate);
     String selectSql = includeAccountInfo
         ? """
             SELECT business_date, media, optimizer, project_name, task_name, account_info,
@@ -395,6 +396,7 @@ public class ReportRepository {
             """
         : """
             SELECT business_date, media, optimizer, project_name, task_name,
+                   CASE WHEN business_date = ? THEN account_info ELSE NULL END AS account_info,
                    spend, cash_spend, reward_spend, estimated_commission, settlement_count,
                    conversion_count, registration_count
               FROM dhh_daily_rows
@@ -402,10 +404,13 @@ public class ReportRepository {
     RangeQuery query = rangeQuery(selectSql, start, end, extraDate,
         accountId.isBlank() ? "" : "JSON_SEARCH(account_info, 'one', ?) IS NOT NULL",
         accountId);
+    List<String> parameters = new ArrayList<>();
+    if (!includeAccountInfo) parameters.add(alertDate);
+    parameters.addAll(query.parameters());
     List<Map<String, Object>> rows = new ArrayList<>();
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement(query.sql())) {
-      bindRangeParameters(statement, query.parameters());
+      bindRangeParameters(statement, parameters);
       try (ResultSet result = statement.executeQuery()) {
       while (result.next()) {
         Map<String, Object> row = new LinkedHashMap<>();
@@ -414,7 +419,7 @@ public class ReportRepository {
         row.put("优化师", result.getString("optimizer"));
         row.put("项目", result.getString("project_name"));
         row.put("任务名", result.getString("task_name"));
-        if (includeAccountInfo) {
+        if (includeAccountInfo || alertDate.equals(row.get("日期"))) {
           row.put("账户列表", parseAccountInfo(result.getString("account_info")));
         }
         row.put("消耗", result.getDouble("spend"));

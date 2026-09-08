@@ -6,6 +6,8 @@ const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creati
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,abort,sortKey='cost',sortDirection='desc';
 let gapData=null,gapGeneration=0;
+const cachedAnalysis=B.createAnalysisCache();
+let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
@@ -51,6 +53,8 @@ function receive(rows,label,datesValue,live=false){
 }
 function optionValue(value){return `<option value="${esc(value)}">${esc(value||'未填写')}</option>`;}
 function drawValueFilters(){
+  if(valueFilterRows===analyzed)return;
+  valueFilterRows=analyzed;
   for(const [key,id] of [['appType','appTypeFilter'],['deepBidType','deepBidTypeFilter'],['deepExternalAction','deepExternalActionFilter'],['externalAction','externalActionFilter'],['planStatus','statusFilter']]){
     const select=$('#'+id),chosen=select.value,values=[...new Set(analyzed.map(row=>row[key]).filter(value=>value!==''))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
     select.innerHTML='<option value="">全部</option>'+values.map(optionValue).join('');
@@ -62,7 +66,7 @@ function render(){
   $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${raw.length} 条计划（元）`:'尚未查询或导入数据';
   for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
   const current=range?range.end>=today():true;$('#lag').hidden=!current;
-  analyzed=raw.map(r=>B.analyzeTask(r,taskRules,0,20,current,gapData?.accounts?.[r.accountId]?.gap??null));
+  analyzed=cachedAnalysis(raw,taskRules,current,gapData?.accounts);
   drawValueFilters();
   const chosen=$('#taskFilter').value;
   $('#taskFilter').innerHTML='<option value="">全部任务</option><option value="__unmatched">未匹配 / 冲突</option>'+taskRules.map((r,i)=>`<option value="task:${i}">${esc(r.name)}</option>`).join('');
@@ -70,18 +74,25 @@ function render(){
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...aggregateColumns]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value;
-  visible=analyzed.filter(r=>(!selected||(selected==='__unmatched'?!r.task:r.task===taskRules[Number(selected.slice(5))]?.name))&&
+  const filterKey=JSON.stringify([selected,q,filter,...optionalTextKeys.map(key=>$('#'+(key==='planStatus'?'statusFilter':key+'Filter')).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
+  filteredRows=analyzed.filter(r=>(!selected||(selected==='__unmatched'?!r.task:r.task===taskRules[Number(selected.slice(5))]?.name))&&
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
     (filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null))&&
     optionalTextKeys.every(key=>{const id=key==='planStatus'?'statusFilter':key+'Filter';return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
+    filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
+  }
+  visible=[...filteredRows];
   const summary=B.summarizeCash(visible);
   $('#metrics').innerHTML=[['出价利润率',fmtPercent(summary.bidProfitRate)],['预估 ROI',fmtRoi(summary.estimatedRoi)]]
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
   $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划已匹配原单价和gap${unpriced?'；未匹配价格、gap缺失或冲突的计划不计算相关收益指标':''}`:'';
-  aggregateRows=aggregateMode?sortRows(B.aggregateGroups(visible,dimensions,today())):[];if(!aggregateMode)sortRows(visible);
+  const groupKey=viewMode+':'+today();
+  if(aggregateMode&&!groupCache.has(groupKey))groupCache.set(groupKey,B.aggregateGroups(filteredRows,dimensions,today()));
+  aggregateRows=aggregateMode?sortRows([...groupCache.get(groupKey)]):[];if(!aggregateMode)sortRows(visible);
   const displayRows=aggregateMode?aggregateRows:visible,size=Number($('#pageSize').value),pages=Math.max(1,Math.ceil(displayRows.length/size));page=Math.min(page,pages);
   if(aggregateMode){
     const dimensionHeaders=dimensions.map(d=>sortHeader(dimensionLabels[d],d)).join('');

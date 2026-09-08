@@ -87,6 +87,18 @@ test('aggregates account dimension by account name and advertiser ID',()=>{
  const account=groups.find(row=>row.accountId==='1001');
  assert.equal(account.account,'同名账户');assert.equal(account.plans,2);assert.equal(account.accounts,1);assert.equal(account.cost,15);
 });
+test('analysis cache reuses calculations and invalidates price edits, gap and snapshots',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({advertiser_id:'123',media_account_name:'客户A',stat_cost:100,convert_cnt:10,active_register:100,cpa_bid:10})];
+ const rules=[{name:'任务',keyword:'客户',price:2}],gaps={'123':{gap:.8}};
+ const first=cached(rows,rules,false,gaps);
+ assert.equal(first[0].price,1.6);assert.strictEqual(cached(rows,rules,false,gaps),first);
+ rules[0].price=3;
+ const repriced=cached(rows,rules,false,gaps);assert.notStrictEqual(repriced,first);assert.ok(Math.abs(repriced[0].price-2.4)<1e-12);
+ const unavailable=cached(rows,rules,false,null);assert.equal(unavailable[0].price,null);
+ const refreshed=cached([...rows],rules,false,gaps);assert.notStrictEqual(refreshed,repriced);
+ assert.notStrictEqual(cached(rows,rules,true,gaps),refreshed);
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

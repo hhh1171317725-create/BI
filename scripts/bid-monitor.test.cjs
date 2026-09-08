@@ -3,6 +3,14 @@ const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
+test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
+ const rules=[{name:'甲',keyword:'account',price:2}];
+ const source={...row,account:'account',cost:100,conversions:10,registrations:100,bid:5};
+ const half=analyzeTask(source,rules,0,20,false,.5);
+ assert.equal(half.basePrice,2);assert.equal(half.price,1);assert.equal(half.commission,100);assert.equal(half.breakEvenBid,10);
+ const missing=analyzeTask(source,rules,0,20,false,null);assert.equal(missing.price,null);assert.equal(missing.commission,null);assert.equal(missing.estimatedRoi,null);
+ const zero=analyzeTask(source,rules,0,20,false,0);assert.equal(zero.price,0);assert.equal(zero.commission,0);
+});
 test('account ID uses advertiser_id and never substitutes Chuangliang internal ID',()=>{
  assert.equal(normalize({advertiser_id:'1866402186668232',media_account_id:'12601552720'}).accountId,'1866402186668232');
  assert.equal(normalize({media_account_id:'12601552720'}).accountId,'');

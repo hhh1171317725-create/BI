@@ -36,6 +36,9 @@ final class BidTop5Formatter {
   }
 
   static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks){
+    return messages(snapshot,rules,tasks,null);
+  }
+  static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks,Map<String,Object> accountGaps){
     if(!(snapshot.get("rows") instanceof List<?> rows))throw new IllegalArgumentException("没有可推送的快照");
     var groups=new ArrayList<String>();
     boolean missingOptimizer=false,missingAccountId=false;
@@ -55,12 +58,18 @@ final class BidTop5Formatter {
       if(selected.isEmpty())entries.add("暂无匹配计划");
       int index=0;
       for(var row:selected.stream().limit(5).toList()){
-        var metrics=metrics(row,number(rule.get("price")));
+        BigDecimal price=number(rule.get("price"));boolean gapMissing=false;
+        if(accountGaps!=null){
+          Object entry=accountGaps.get(Objects.toString(row.get("advertiser_id"),""));
+          Object gap=entry instanceof Map<?,?> m?m.get("gap"):null;
+          gapMissing=gap==null;price=gapMissing?BigDecimal.ZERO:price.multiply(number(gap));
+        }
+        var metrics=metrics(row,price);
         String optimizer=field(row.get("user_name"));missingOptimizer|=optimizer.equals("--");
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
         entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
-            +"｜出价"+displayMoney(number(row.get("cpa_bid")))
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+(gapMissing?"｜gap缺失":"")
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }
       groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));

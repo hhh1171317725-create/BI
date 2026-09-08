@@ -62,6 +62,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    await route.fulfill({json:syncStatus});
   });
   await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
+  let gapFactor=1;
+  await page.route('**/api/bid-monitor/gap?**',route=>{const anchor=new URL(route.request().url()).searchParams.get('endDate');return route.fulfill({json:{anchor,start:'2026-07-29',end:'2026-07-31',basis:'test',accounts:Object.fromEntries(['1866402186668232','1870049327502852'].map(id=>[id,{gap:gapFactor,validDays:gapFactor===null?0:3,days:[]}]))}})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html#all`);await page.locator('body.ready').waitFor();
   assert.equal(await page.evaluate(()=>Boolean(document.querySelector('#report').compareDocumentPosition(document.querySelector('#sync-settings'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
   const syncDetails=page.locator('#sync-settings>.config-details');
@@ -100,7 +102,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
-  assert.equal(await page.locator('#rows tr td').count(),13);
+  assert.equal(await page.locator('#rows tr td').count(),15);
   assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'21.078');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'143.33');
   assert.equal(await page.locator('.table-wrap:not(.pricing-table) th').nth(10).textContent(),'预估 ROI');
@@ -129,7 +131,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#viewMode').selectOption('optimizerTasks');assert.match(await page.locator('#count').textContent(),/^2 个优化师 × 任务组合（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'优化师');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'任务');
   await page.locator('#viewMode').selectOption('plans');
-  assert.equal(await page.locator('#tableHead .sort-header').count(),13);
+  assert.equal(await page.locator('#tableHead .sort-header').count(),15);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
   const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
@@ -169,8 +171,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#fetch').click();await preparedResponse;await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
   assert.equal(preparedQueries.at(-1).cookie,'');
   await page.evaluate(()=>receive([
-   {promotion_id:'grant',promotion_name:'grant plan',media_account_name:'客户-A',stat_cost:150,convert_cnt:10,active_register:20,cpa_bid:10},
-   {promotion_id:'no-grant',promotion_name:'six conversions',media_account_name:'客户-B',stat_cost:600,convert_cnt:6,active_register:10,cpa_bid:10}
+   {promotion_id:'grant',advertiser_id:'1866402186668232',promotion_name:'grant plan',media_account_name:'客户-A',stat_cost:150,convert_cnt:10,active_register:20,cpa_bid:10},
+   {promotion_id:'no-grant',advertiser_id:'1870049327502852',promotion_name:'six conversions',media_account_name:'客户-B',stat_cost:600,convert_cnt:6,active_register:10,cpa_bid:10}
   ],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
   assert.equal(await page.locator('#metrics strong').first().textContent(),'78.08%');
   assert.equal(await page.locator('#metrics strong').nth(1).textContent(),'1.760');
@@ -182,7 +184,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#search').fill('');await page.locator('#tableHead .sort-header[data-sort-key="bidProfitRate"]').click();
   assert.match(await page.locator('#rows tr').first().textContent(),/six conversions/);
   assert.equal(await page.locator('#tableHead th').nth(12).getAttribute('aria-sort'),'descending');
-  await page.evaluate(()=>receive([{promotion_id:'zero',media_account_name:'客户-A',stat_cost:1,convert_cnt:0,active_register:20,cpa_bid:5}],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
+  await page.evaluate(()=>receive([{promotion_id:'zero',advertiser_id:'1866402186668232',media_account_name:'客户-A',stat_cost:1,convert_cnt:0,active_register:20,cpa_bid:5}],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
   assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'430.000');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'--');
   assert.equal(await page.locator('#rows tr td').nth(12).textContent(),'--');
@@ -206,7 +208,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
-  assert.match(await page.locator('#report [role="status"]').textContent(),/已读取/);
+  assert.match(await page.locator('#report [role="status"]:not(#gapStatus)').textContent(),/已读取/);
+  gapFactor=.5;await page.locator('#gapReload').click();
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(14)').textContent==='0.500');
+  assert.equal(await page.locator('#rows tr td').nth(14).textContent(),'10.75');
+  gapFactor=null;await page.locator('#gapReload').click();
+  await page.waitForFunction(()=>document.querySelector('#gapStatus').textContent.startsWith('gap区间'));
+  assert.equal(await page.locator('#rows tr td').nth(14).textContent(),'--');
+  assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'--');
+  gapFactor=1;await page.locator('#gapReload').click();
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(14)').textContent==='1.000');
   await page.mouse.move(0,0);
   await page.waitForTimeout(200);
   await page.setViewportSize({width:1440,height:1000});

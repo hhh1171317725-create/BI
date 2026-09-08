@@ -19,10 +19,15 @@ public class BidDingtalkService {
   private final DingtalkRobotClient robot;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private BidGapService gaps;
   private final ExecutorService workers=Executors.newFixedThreadPool(2);
   private final Semaphore slots=new Semaphore(2);
 
   @org.springframework.beans.factory.annotation.Autowired
+  public BidDingtalkService(BidServerSyncStore store,BidCredentialCipher cipher,BidSnapshotController snapshots,
+      BidServerSyncService sync,DingtalkRobotClient robot,ObjectMapper mapper,BidGapService gaps){
+    this(store,cipher,snapshots,sync,robot,mapper,Clock.systemUTC());this.gaps=Objects.requireNonNull(gaps);
+  }
   public BidDingtalkService(BidServerSyncStore store,BidCredentialCipher cipher,BidSnapshotController snapshots,
       BidServerSyncService sync,DingtalkRobotClient robot,ObjectMapper mapper){
     this(store,cipher,snapshots,sync,robot,mapper,Clock.systemUTC());
@@ -112,7 +117,9 @@ public class BidDingtalkService {
     if(!sync.allowed(owner))throw new IllegalArgumentException("网站账户已停用或无出价监测权限");
     if(tasks(state).isEmpty())throw new IllegalArgumentException("请先选择任务并保存推送配置");
     var snapshot=snapshots.readOwned(owner);fresh(snapshot,clock.instant());
-    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state)).stream().map(message->{
+    @SuppressWarnings("unchecked")
+    Map<String,Object> accountGaps=gaps==null?null:(Map<String,Object>)gaps.load(snapshot.get("date").toString()).get("accounts");
+    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state),accountGaps).stream().map(message->{
       var result=new LinkedHashMap<>(message);
       result.put("text",DingtalkRobotClient.content(text(state,"dingKeyword"),message.get("text")));
       return (Map<String,String>)result;

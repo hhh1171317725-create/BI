@@ -98,6 +98,7 @@ class BidDingtalkServiceTest {
       context.registerBean(BidCredentialCipher.class,()->new BidCredentialCipher(config));
       context.registerBean(BidSnapshotController.class,()->snapshots);context.registerBean(BidServerSyncService.class,()->sync);
       context.registerBean(DingtalkRobotClient.class,()->robot);context.registerBean(ObjectMapper.class,()->mapper);
+      context.registerBean(BidGapService.class,()->mock(BidGapService.class));
       context.register(BidDingtalkService.class);context.refresh();assertNotNull(context.getBean(BidDingtalkService.class));
     }
   }

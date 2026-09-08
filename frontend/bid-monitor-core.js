@@ -37,7 +37,7 @@
   function cashMetrics(row,price){
     const valid=n=>Number.isFinite(n)&&n>=0;
     const finite=n=>Number.isFinite(n)?n:null;
-    const commission=valid(row.registrations)&&price>0?finite(row.registrations*price):null;
+    const commission=valid(row.registrations)&&Number.isFinite(price)&&price>=0?finite(row.registrations*price):null;
     const bidCost=valid(row.bid)&&valid(row.conversions)?finite(row.bid*row.conversions):null;
     const breakEvenBid=commission>0&&row.conversions>0?finite(commission/row.conversions):null;
     let grant=null,cashCost=null,estimatedCompensation=null,estimatedRoi=null;
@@ -69,11 +69,13 @@
     const bidProfitRate=bidCommission>0?(bidCommission-validBidCost)/bidCommission:null;
     return{roi:Number.isFinite(roi)?roi:null,estimatedRoi:Number.isFinite(estimatedRoi)?estimatedRoi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
   }
-  function analyzeTask(row,rules,margin,minSample,current){
+  function analyzeTask(row,rules,margin,minSample,current,gapValue=1){
     const task=taskFor(row,rules);
-    const result=analyze(row,task.price||1,margin,minSample,current);
-    if(task.price===null){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.pricingStatus;}
-    return{...result,...task,...cashMetrics(row,task.price)};
+    const gap=Number.isFinite(gapValue)&&gapValue>=0?gapValue:null;
+    const price=task.price!==null&&gap!==null?task.price*gap:null;
+    const result=analyze(row,price||1,margin,minSample,current);
+    if(price===null||price===0){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.price===null?task.pricingStatus:gap===null?'gap-missing':'zero-price';}
+    return{...result,...task,basePrice:task.price,gap,price,...cashMetrics(row,price)};
   }
   function aggregateGroups(rows,dimensions,statDate){
     const groups=new Map();

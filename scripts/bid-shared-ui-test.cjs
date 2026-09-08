@@ -41,6 +41,11 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('#accountDrillBack').click();
   await page.locator('#viewMode').selectOption('plans');
+  await page.locator('#openBidColumns').click();await page.locator('[data-column-key="optimizer"]').uncheck();
+  await page.locator('#bidColumnsDialog').getByRole('button',{name:'取消',exact:true}).click();
+  assert.equal(await page.locator('#tableHead [data-sort-key="optimizer"]').count(),1);
+  await page.locator('#openBidFilters').click();await page.locator('#draft-deepCpaBidMin').fill('100');await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#deepCpaBidMin').inputValue(),'');
   await page.locator('#search').fill('不存在');assert.equal(await page.locator('#count').textContent(),'0 条');
   await page.locator('#search').fill('张三');assert.equal(await page.locator('#count').textContent(),'1 条');
   const download=page.waitForEvent('download');await page.locator('#export').click();

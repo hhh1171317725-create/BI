@@ -46,7 +46,7 @@
   let focused=false,scrollY=0;
   function setFocus(value){if(value===focused)return;focused=value;if(value)scrollY=window.scrollY;document.body.classList.toggle('bid-table-focus',value);focus.textContent=value?'退出专注（Esc）':'专注看表';focus.setAttribute('aria-pressed',String(value));window.scrollTo({top:value?0:scrollY,behavior:'instant'});if(!value)focus.focus({preventScroll:true});}
   focus.onclick=()=>setFocus(!focused);
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused){e.preventDefault();setFocus(false);}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(false);}});
   window.addEventListener('hashchange',()=>setFocus(false));
   tools.append(density,focus);report.querySelector('.table-wrap').before(tools);
   report.querySelector('.table-wrap').setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');

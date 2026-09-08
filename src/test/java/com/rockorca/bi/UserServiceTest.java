@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -46,6 +47,16 @@ class UserServiceTest {
     assertEquals(admin, service.authenticate("hhh", "123456"));
     verify(repository).initialize("hhh", "bootstrap-hash");
     verify(repository).markLogin(1L);
+  }
+
+  @Test
+  void cachesUserAndPermissionReadsAcrossRequests() {
+    when(repository.findById(2L)).thenReturn(Optional.of(member));
+    when(repository.toolVisibility(2L)).thenReturn(Map.of("todo", true));
+    assertEquals(member,service.findById(2L));assertEquals(member,service.findById(2L));
+    assertEquals(true,service.effectiveToolVisibility(member).get("todo"));
+    assertEquals(true,service.effectiveToolVisibility(member).get("todo"));
+    verify(repository,times(1)).findById(2L);verify(repository,times(1)).toolVisibility(2L);
   }
 
   @Test

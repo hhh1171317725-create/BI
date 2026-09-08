@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class BidServerSyncService {
   private static final long INTERVAL_MILLIS=600000L;
+  private static final int PAGE_CONCURRENCY=4;
   private static final Logger LOG=LoggerFactory.getLogger(BidServerSyncService.class);
   private final BidServerSyncStore store;
   private final BidCredentialCipher cipher;
@@ -282,6 +283,7 @@ public class BidServerSyncService {
   }
 
   @FunctionalInterface interface Progress { void update(int done,long total)throws Exception; }
+  private record PageChunk(long total,List<Map<String,Object>> rows) {}
   static Map<String,Object> progressValue(int done,long total,long startedAt){
     return Map.of("done",done,"total",total,"startedAt",startedAt,"updatedAt",System.currentTimeMillis());
   }
@@ -293,53 +295,66 @@ public class BidServerSyncService {
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
-    var rows=new ArrayList<Map<String,Object>>();long total=-1,received=0,duplicates=0;var ids=new HashSet<String>();
-    for(int page=1;total<0||received<total;page++) {
-      if(page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
-        throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
-      progress.update((int)received,total);
-      input.put("page",page);
-      if(total>=0)input.put("total",total);
-      var result=upstream.page(input);
-      long count;
-      try{count=Long.parseLong(String.valueOf(result.get("total")));}
-      catch(Exception error){throw new IllegalArgumentException("第 "+page+" 页缺少有效的计划总数");}
-      if(count<1)throw new IllegalArgumentException("查询范围内没有计划，保留原有结果");
-      if(count>BidMonitorApiController.MAX_PLAN_ROWS)
-        throw new IllegalArgumentException("计划总数 "+count+" 超过 100000 条，请缩小计划创建日期范围");
-      if(total>=0&&total!=count)
-        throw new IllegalArgumentException("分页期间计划总数从 "+total+" 变为 "+count+"，请重新查询");
-      total=count;
-      if(!(result.get("rows") instanceof List<?> batch))
-        throw new IllegalArgumentException("第 "+page+" 页缺少计划列表");
-      long expected=Math.min(BidMonitorApiController.PAGE_SIZE,
-          Math.max(0,total-(long)(page-1)*BidMonitorApiController.PAGE_SIZE));
-      if(batch.size()!=expected)
-        throw new IllegalArgumentException("第 "+page+" 页数据不完整：应有 "+expected+" 条，实际 "+batch.size()+" 条");
-      for(Object item:batch) {
-        if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("第 "+page+" 页包含格式异常的计划");
-        var row=new LinkedHashMap<String,Object>();
-        for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
-            "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
-            "deep_external_action_text","external_action_text","status_text"))row.put(key,raw.get(key));
-        for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
-          Object id=row.get(key);
-          if(id instanceof Float||id instanceof Double)
-            throw new IllegalArgumentException("第 "+page+" 页的账户或计划 ID 精度异常");
-          if(id!=null)row.put(key,id.toString());
+    var rows=new ArrayList<Map<String,Object>>();long received=0,duplicates=0;var ids=new HashSet<String>();
+    progress.update(0,-1);
+    PageChunk first=fetchPage(input,1,-1),chunk=first;long total=first.total();
+    int pages=(int)((total+BidMonitorApiController.PAGE_SIZE-1)/BidMonitorApiController.PAGE_SIZE);
+    for(var row:chunk.rows()){if(ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))rows.add(row);else duplicates++;}
+    received+=chunk.rows().size();progress.update((int)received,total);
+    try(var executor=Executors.newVirtualThreadPerTaskExecutor()){
+      for(int firstPage=2;firstPage<=pages;firstPage+=PAGE_CONCURRENCY){
+        int lastPage=Math.min(pages,firstPage+PAGE_CONCURRENCY-1);
+        var pending=new ArrayList<Future<PageChunk>>();
+        for(int page=firstPage;page<=lastPage;page++){
+          int requestedPage=page;pending.add(executor.submit(()->fetchPage(input,requestedPage,total)));
         }
-        Object name=raw.get("media_account_name");
-        row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);
-        String unique=row.get("media_account_id")+":"+row.get("promotion_id");
-        if(!ids.add(unique)){duplicates++;continue;}
-        rows.add(row);
+        for(Future<PageChunk> future:pending){
+          try{chunk=future.get();}
+          catch(ExecutionException error){
+            if(error.getCause() instanceof Exception cause)throw cause;
+            throw new IllegalStateException("分页查询失败",error.getCause());
+          }
+          for(var row:chunk.rows()){if(ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))rows.add(row);else duplicates++;}
+          received+=chunk.rows().size();progress.update((int)received,total);
+        }
       }
-      received+=batch.size();
-      progress.update((int)received,total);
     }
     return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
         "upstreamTotal",rows.size(),"sourceTotal",total,"duplicateRows",duplicates,
         "createdStart",start,"createdEnd",today.toString()));
+  }
+
+  private PageChunk fetchPage(Map<String,Object> base,int page,long expectedTotal)throws Exception{
+    if(page<1||page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
+      throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
+    var input=new LinkedHashMap<>(base);input.put("page",page);if(expectedTotal>=0)input.put("total",expectedTotal);
+    var result=upstream.page(input);long total;
+    try{total=Long.parseLong(String.valueOf(result.get("total")));}
+    catch(Exception error){throw new IllegalArgumentException("第 "+page+" 页缺少有效的计划总数");}
+    if(total<1)throw new IllegalArgumentException("查询范围内没有计划，保留原有结果");
+    if(total>BidMonitorApiController.MAX_PLAN_ROWS)
+      throw new IllegalArgumentException("计划总数 "+total+" 超过 100000 条，请缩小计划创建日期范围");
+    if(expectedTotal>=0&&expectedTotal!=total)
+      throw new IllegalArgumentException("分页期间计划总数从 "+expectedTotal+" 变为 "+total+"，请重新查询");
+    if(!(result.get("rows") instanceof List<?> batch))throw new IllegalArgumentException("第 "+page+" 页缺少计划列表");
+    long expected=Math.min(BidMonitorApiController.PAGE_SIZE,Math.max(0,total-(long)(page-1)*BidMonitorApiController.PAGE_SIZE));
+    if(batch.size()!=expected)throw new IllegalArgumentException("第 "+page+" 页数据不完整：应有 "+expected+" 条，实际 "+batch.size()+" 条");
+    var rows=new ArrayList<Map<String,Object>>(batch.size());
+    for(Object item:batch){
+      if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("第 "+page+" 页包含格式异常的计划");
+      var row=new LinkedHashMap<String,Object>();
+      for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
+          "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
+          "deep_external_action_text","external_action_text","status_text"))row.put(key,raw.get(key));
+      for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
+        Object id=row.get(key);
+        if(id instanceof Float||id instanceof Double)throw new IllegalArgumentException("第 "+page+" 页的账户或计划 ID 精度异常");
+        if(id!=null)row.put(key,id.toString());
+      }
+      Object name=raw.get("media_account_name");
+      row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);rows.add(row);
+    }
+    return new PageChunk(total,rows);
   }
 
   static String failure(Exception error) {

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,7 +17,12 @@ public class UserService {
   private final UserRepository users;
   private final PasswordHasher passwords;
   private final RuntimeConfig config;
+  private static final long CACHE_MILLIS = 5_000;
+  private final Map<Long, Timed<UserRepository.UserAccount>> userCache = new ConcurrentHashMap<>();
+  private final Map<Long, Timed<Map<String, Boolean>>> reportVisibilityCache = new ConcurrentHashMap<>();
+  private final Map<Long, Timed<Map<String, Boolean>>> toolVisibilityCache = new ConcurrentHashMap<>();
   private volatile boolean initialized;
+  private record Timed<T>(T value, long expiresAt) {}
 
   public UserService(UserRepository users, PasswordHasher passwords, RuntimeConfig config) {
     this.users = users;
@@ -39,12 +45,17 @@ public class UserService {
       return null;
     }
     users.markLogin(user.id());
-    return users.findById(user.id()).orElse(user);
+    UserRepository.UserAccount refreshed = users.findById(user.id()).orElse(user);
+    cacheUser(refreshed);return refreshed;
   }
 
   public UserRepository.UserAccount findById(long id) {
     initialize();
-    return users.findById(id).orElse(null);
+    Timed<UserRepository.UserAccount> cached=userCache.get(id);long now=System.currentTimeMillis();
+    if(cached!=null&&cached.expiresAt()>now)return cached.value();
+    UserRepository.UserAccount user=users.findById(id).orElse(null);
+    if(user==null)userCache.remove(id);else userCache.put(id,new Timed<>(user,now+CACHE_MILLIS));
+    return user;
   }
 
   public UserRepository.UserAccount findByUsername(String username) {
@@ -64,7 +75,8 @@ public class UserService {
     if (passwords.matches(newPassword, current.passwordHash())) {
       throw new IllegalArgumentException("新密码不能与当前密码相同");
     }
-    return users.updatePassword(current.id(), passwords.hash(newPassword));
+    UserRepository.UserAccount updated=users.updatePassword(current.id(), passwords.hash(newPassword));
+    invalidateUser(current.id());cacheUser(updated);return updated;
   }
 
   public List<Map<String, Object>> listUsers(UserRepository.UserAccount actor) {
@@ -83,7 +95,8 @@ public class UserService {
     String normalizedUsername = normalizeUsername(username);
     validatePassword(password);
     String normalizedRole = normalizeRole(role);
-    return view(users.create(normalizedUsername, passwords.hash(password), normalizedRole), false);
+    UserRepository.UserAccount created=users.create(normalizedUsername, passwords.hash(password), normalizedRole);
+    cacheUser(created);return view(created, false);
   }
 
   public Map<String, Object> resetPassword(
@@ -96,7 +109,8 @@ public class UserService {
     }
     validatePassword(newPassword);
     requireExisting(targetId);
-    return view(users.updatePassword(targetId, passwords.hash(newPassword)), false);
+    UserRepository.UserAccount updated=users.updatePassword(targetId, passwords.hash(newPassword));
+    invalidateUser(targetId);cacheUser(updated);return view(updated, false);
   }
 
   public Map<String, Object> setActive(
@@ -106,7 +120,8 @@ public class UserService {
     requireAdmin(actor);
     if (actor.id() == targetId) throw new IllegalArgumentException("不能停用当前登录账号");
     requireExisting(targetId);
-    return view(users.setActive(targetId, active), false);
+    UserRepository.UserAccount updated=users.setActive(targetId, active);
+    invalidateUser(targetId);cacheUser(updated);return view(updated, false);
   }
 
   public Map<String, Boolean> effectiveReportVisibility(
@@ -118,7 +133,7 @@ public class UserService {
     Map<String, Boolean> result = new LinkedHashMap<>();
     Map<String, Boolean> personal = actor.admin()
         ? Map.of("dhh", true, "jd", true, "jdLowActivity", true, "adpflux", true)
-        : users.reportVisibility(actor.id());
+        : cachedVisibility(reportVisibilityCache,actor.id(),users::reportVisibility);
     for (String key : List.of("dhh", "jd", "jdLowActivity", "adpflux")) {
       result.put(key, !Boolean.FALSE.equals(globalVisibility.get(key))
           && !Boolean.FALSE.equals(personal.get(key)));
@@ -139,7 +154,8 @@ public class UserService {
     if (target.admin()) {
       throw new IllegalArgumentException("管理员始终可以访问已启用的日报，无需单独设置");
     }
-    return users.saveReportVisibility(targetId, dhh, jd, jdLowActivity, adpflux);
+    Map<String,Boolean> saved=users.saveReportVisibility(targetId, dhh, jd, jdLowActivity, adpflux);
+    reportVisibilityCache.remove(targetId);return saved;
   }
 
   public Map<String, Boolean> effectiveToolVisibility(UserRepository.UserAccount actor) {
@@ -148,7 +164,7 @@ public class UserService {
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已失效，请重新登录");
     }
     if (actor.admin()) return allToolsVisible();
-    return users.toolVisibility(actor.id());
+    return cachedVisibility(toolVisibilityCache,actor.id(),users::toolVisibility);
   }
 
   public boolean canUseTool(UserRepository.UserAccount actor, String toolKey) {
@@ -165,7 +181,8 @@ public class UserService {
     }
     Map<String, Boolean> visibility = new LinkedHashMap<>();
     TOOL_KEYS.forEach(key -> visibility.put(key, !Boolean.FALSE.equals(payload.get(key))));
-    return users.saveToolVisibility(targetId, visibility);
+    Map<String,Boolean> saved=users.saveToolVisibility(targetId, visibility);
+    toolVisibilityCache.remove(targetId);return saved;
   }
 
   public Map<String, Object> view(UserRepository.UserAccount user, boolean current) {
@@ -204,6 +221,21 @@ public class UserService {
     UserRepository.UserAccount user = users.findById(id).orElse(null);
     if (user == null) throw new IllegalArgumentException("用户不存在");
     return user;
+  }
+
+  private void cacheUser(UserRepository.UserAccount user){
+    userCache.put(user.id(),new Timed<>(user,System.currentTimeMillis()+CACHE_MILLIS));
+  }
+
+  private void invalidateUser(long id){
+    userCache.remove(id);reportVisibilityCache.remove(id);toolVisibilityCache.remove(id);
+  }
+
+  private static Map<String,Boolean> cachedVisibility(Map<Long,Timed<Map<String,Boolean>>> cache,long id,
+      java.util.function.LongFunction<Map<String,Boolean>> loader){
+    Timed<Map<String,Boolean>> cached=cache.get(id);long now=System.currentTimeMillis();
+    if(cached!=null&&cached.expiresAt()>now)return cached.value();
+    Map<String,Boolean> value=Map.copyOf(loader.apply(id));cache.put(id,new Timed<>(value,now+CACHE_MILLIS));return value;
   }
 
   private static String normalizeUsername(String username) {

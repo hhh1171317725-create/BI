@@ -154,10 +154,10 @@ class BidServerSyncServiceTest {
     verify(snapshots,never()).write(any(),anyLong(),anyMap());
   }
   @Test void readsAllFourPagesAndKeepsIdsAndMetrics()throws Exception{
-    var pages=new ArrayList<Integer>();
+    var pages=Collections.synchronizedList(new ArrayList<Integer>());
     when(upstream.page(anyMap())).thenAnswer(call->{Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");pages.add(page);if(page>1)assertEquals(350L,request.get("total"));return Map.of("total",350,"rows",rows((page-1)*100,page==4?50:100));});
     var snapshot=service.collect(input(),input().get("cookie").toString());
-    assertEquals(List.of(1,2,3,4),pages);assertEquals(350,((List<?>)snapshot.get("rows")).size());
+    assertEquals(List.of(1,2,3,4),pages.stream().sorted().toList());assertEquals(350,((List<?>)snapshot.get("rows")).size());
     assertEquals("created_window_all",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("2026-09-05 08:00:00",row.get("promotion_create_time"));
@@ -174,15 +174,23 @@ class BidServerSyncServiceTest {
     assertEquals(java.time.LocalDate.parse("2025-12-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-01-01")));
   }
   @Test void readsEveryPageAndProgressTargetsTheFullTotal()throws Exception{
-    var pages=new ArrayList<Integer>();var progress=new ArrayList<Long>();
+    var pages=Collections.synchronizedList(new ArrayList<Integer>());var progress=new ArrayList<Long>();
     when(upstream.page(anyMap())).thenAnswer(call->{
       int p=(Integer)((Map<?,?>)call.getArgument(0)).get("page");pages.add(p);
       return Map.of("total",450,"rows",rows((p-1)*100,p==5?50:100));
     });
     var snapshot=service.collect(input(),"cookie",(done,total)->progress.add(total));
-    assertEquals(List.of(1,2,3,4,5),pages);assertEquals(450,((List<?>)snapshot.get("rows")).size());
+    assertEquals(List.of(1,2,3,4,5),pages.stream().sorted().toList());assertEquals(450,((List<?>)snapshot.get("rows")).size());
     assertEquals(450L,snapshot.get("upstreamTotal"));assertEquals("created_window_all",snapshot.get("selection"));
     assertEquals(450L,progress.getLast());
+  }
+  @Test void fetchesPagesAfterTheFirstOnConcurrentVirtualThreads()throws Exception{
+    var threads=java.util.concurrent.ConcurrentHashMap.<Long>newKeySet();
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");if(page>1)threads.add(Thread.currentThread().threadId());
+      return Map.of("total",500,"rows",rows((page-1)*100,100));
+    });
+    assertEquals(500,((List<?>)service.collect(input(),"cookie").get("rows")).size());assertTrue(threads.size()>1);
   }
   @Test void refusesOversizedTotalsWithoutSavingAPartialSnapshot()throws Exception{
     when(upstream.page(anyMap())).thenReturn(Map.of("total",100001,"rows",rows(0,100)));
@@ -212,14 +220,14 @@ class BidServerSyncServiceTest {
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",0))));
   }
   @Test void renewsLeaseDuringLongCollectionAndCanStopBeforeNextPage()throws Exception{
-    service.start(7,input());var pages=new ArrayList<Integer>();
+    service.start(7,input());var pages=Collections.synchronizedList(new ArrayList<Integer>());
     when(upstream.page(anyMap())).thenAnswer(call->{
       int p=(Integer)((Map<?,?>)call.getArgument(0)).get("page");pages.add(p);
       assertTrue(((Number)store.get(7).get("dueAt")).longValue()>System.currentTimeMillis()+170000);
       if(p==2)service.command(7,"stop");
       return Map.of("total",350,"rows",rows((p-1)*100,100));
     });
-    service.run(7);assertEquals(List.of(1,2),pages);verify(snapshots,never()).write(any(),anyLong(),anyMap());
+    service.run(7);assertTrue(pages.containsAll(List.of(1,2)));verify(snapshots,never()).write(any(),anyLong(),anyMap());
     assertEquals("stopped",service.status(7).get("state"));
   }
   @Test void smallDatasetNeedsOnePageAndIncompleteDataNeverPasses()throws Exception{

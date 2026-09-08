@@ -7,29 +7,14 @@
   };
   const currentReport = Object.entries(reportPaths)
       .find(([, path]) => location.pathname === path)?.[0];
+  const cacheKey = 'report-visibility-v1';
   const style = document.createElement('style');
   style.textContent = '.report-visibility-hidden{display:none!important}'
       + 'html.report-visibility-checking body{visibility:hidden}';
   document.head.appendChild(style);
   if (currentReport) document.documentElement.classList.add('report-visibility-checking');
 
-  async function applyVisibility() {
-    let visibility = {dhh: true, jd: true, jdLowActivity: true, adpflux: true};
-    try {
-      const response = await fetch('/api/report-visibility', {cache: 'no-store'});
-      if (response.status === 401) {
-        const sessionResponse = await fetch('/api/session', {cache: 'no-store'});
-        const session = sessionResponse.ok ? await sessionResponse.json() : null;
-        if (sessionResponse.status === 401 || session?.authenticated === false) {
-          location.replace('/login');
-          return;
-        }
-      }
-      if (response.ok) visibility = {...visibility, ...await response.json()};
-    } catch {
-      // Keep every report visible if the preference endpoint is temporarily unavailable.
-    }
-
+  function renderVisibility(visibility) {
     const navigation = document.querySelector('.header-actions, nav.nav');
     const supplementalLinks = [{path: '/adpflux', label: 'TikTok账户'}];
     for (const item of supplementalLinks) {
@@ -43,21 +28,39 @@
       const settingsLink = navigation.querySelector('a[href="/account"]');
       navigation.insertBefore(link, toolsLink || settingsLink || navigation.querySelector('button'));
     }
-
     for (const [key, path] of Object.entries(reportPaths)) {
       document.querySelectorAll(`a[href="${path}"]`).forEach(link => {
         link.classList.toggle('report-visibility-hidden', visibility[key] === false);
       });
     }
-
     if (currentReport && visibility[currentReport] === false) {
       const destination = Object.entries(reportPaths)
           .find(([key]) => visibility[key] !== false)?.[1] || '/tools';
-      location.replace(destination);
-      return;
+      location.replace(destination);return false;
     }
     document.documentElement.classList.remove('report-visibility-checking');
-    document.documentElement.classList.add('report-visibility-ready');
+    document.documentElement.classList.add('report-visibility-ready');return true;
+  }
+
+  async function applyVisibility() {
+    let visibility = {dhh: true, jd: true, jdLowActivity: true, adpflux: true};
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(cacheKey)||'null');
+      if(saved&&Date.now()-saved.savedAt<30_000){visibility={...visibility,...saved.visibility};renderVisibility(visibility);}
+    } catch { sessionStorage.removeItem(cacheKey); }
+    try {
+      const response = await fetch('/api/report-visibility', {cache: 'no-store'});
+      if (response.status === 401) {
+        sessionStorage.removeItem(cacheKey);location.replace('/login');return;
+      }
+      if (response.ok) {
+        visibility = {...visibility, ...await response.json()};
+        sessionStorage.setItem(cacheKey,JSON.stringify({savedAt:Date.now(),visibility}));
+      }
+    } catch {
+      // Keep every report visible if the preference endpoint is temporarily unavailable.
+    }
+    renderVisibility(visibility);
   }
 
   if (document.readyState === 'loading') {

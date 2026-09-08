@@ -3,9 +3,11 @@ package com.rockorca.bi;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -101,7 +103,7 @@ class CoreBehaviorTest {
         "temporary-token", "20", "2026-07-01", "2026-07-25"))
         .thenReturn(rows);
     when(repository.readDhhRows(
-        eq("2026-07-01"), eq("2026-07-25"), anyString(), eq("")))
+        eq("2026-07-01"), eq("2026-07-25"), anyString(), eq(""), anyBoolean()))
         .thenReturn(rows);
 
     Map<String, Object> result = service.loadDhh(
@@ -257,6 +259,43 @@ class CoreBehaviorTest {
         .filter(item -> "优化师A".equals(item.get("优化师"))).findFirst().orElseThrow().get("消耗"));
     assertEquals(40.0, taskOptimizers.stream()
         .filter(item -> "优化师A".equals(item.get("优化师"))).findFirst().orElseThrow().get("现金利润"));
+  }
+
+  @Test
+  void dhhAnalysisOnlyBuildsTheRequestedView() {
+    List<Map<String, Object>> rows = List.of(
+        map("日期", "2026-07-23", "优化师", "优化师A", "项目", "项目A", "任务名", "任务A",
+            "消耗", 100, "现金消耗", 80, "预估佣金", 120));
+
+    Map<String, Object> analysis =
+        reports.buildDhhAnalysis(rows, "2026-07-01", "2026-07-31", "now", "by_date");
+
+    assertEquals(1, maps(analysis.get("by_date")).size());
+    assertTrue(analysis.containsKey("summary"));
+    assertTrue(analysis.containsKey("alerts"));
+    assertFalse(analysis.containsKey("by_optimizer"));
+    assertFalse(analysis.containsKey("by_project"));
+    assertFalse(analysis.containsKey("by_account"));
+  }
+
+  @Test
+  void dhhViewAnalysisSkipsAccountJsonAndReusesRecentResult() {
+    ObjectMapper objectMapper = new ObjectMapper();
+    ReportRepository repository = mock(ReportRepository.class);
+    ReportService service = new ReportService(repository, importer, null, objectMapper);
+    List<Map<String, Object>> rows = List.of(
+        map("日期", "2026-07-23", "优化师", "优化师A", "项目", "项目A", "任务名", "任务A",
+            "消耗", 100, "现金消耗", 80, "预估佣金", 120));
+    when(repository.latestSyncTime("dhh")).thenReturn("2026-07-24T09:00:00Z");
+    when(repository.readDhhRows(
+        eq("2026-07-01"), eq("2026-07-31"), anyString(), eq("86784411"), eq(false)))
+        .thenReturn(rows);
+
+    service.analyzeDhh("2026-07-01", "2026-07-31", "86784411", "by_optimizer");
+    service.analyzeDhh("2026-07-01", "2026-07-31", "86784411", "by_optimizer");
+
+    verify(repository, times(1)).readDhhRows(
+        eq("2026-07-01"), eq("2026-07-31"), anyString(), eq("86784411"), eq(false));
   }
 
   @Test

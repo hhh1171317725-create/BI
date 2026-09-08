@@ -37,6 +37,8 @@ public class ReportService {
       List.of("消耗", "现金消耗", "赠款消耗", "预估佣金", "结算数", "转化数", "注册数");
   private static final long JD_ANALYSIS_CACHE_TTL_MILLIS = 120_000;
   private static final int JD_ANALYSIS_CACHE_MAX_ENTRIES = 6;
+  private static final long DHH_ANALYSIS_CACHE_TTL_MILLIS = 120_000;
+  private static final int DHH_ANALYSIS_CACHE_MAX_ENTRIES = 12;
 
   private final ReportRepository repository;
   private final CsvImportService importer;
@@ -44,6 +46,7 @@ public class ReportService {
   private final ObjectMapper objectMapper;
   private final AtomicBoolean refreshRunning = new AtomicBoolean(false);
   private final Map<JdAnalysisKey, CachedJdAnalysis> jdAnalysisCache = new ConcurrentHashMap<>();
+  private final Map<DhhAnalysisKey, CachedDhhAnalysis> dhhAnalysisCache = new ConcurrentHashMap<>();
 
   public ReportService(
       ReportRepository repository,
@@ -59,9 +62,7 @@ public class ReportService {
   public Map<String, Object> currentDhh() {
     String alertDate = previousBeijingDate(Instant.now());
     String start = alertDate.substring(0, 8) + "01";
-    return buildDhhAnalysis(
-        repository.readDhhRows(start, alertDate, alertDate),
-        start, alertDate, repository.latestSyncTime("dhh"));
+    return cachedDhhAnalysis(start, alertDate, "", "");
   }
 
   public Map<String, Object> analyzeDhh(String start, String end) {
@@ -69,12 +70,15 @@ public class ReportService {
   }
 
   public Map<String, Object> analyzeDhh(String start, String end, String accountId) {
+    return analyzeDhh(start, end, accountId, "");
+  }
+
+  public Map<String, Object> analyzeDhh(
+      String start, String end, String accountId, String view) {
     String selectedStart = text(start);
     String selectedEnd = text(end);
-    return buildDhhAnalysis(
-        repository.readDhhRows(
-            selectedStart, selectedEnd, previousBeijingDate(Instant.now()), text(accountId)),
-        selectedStart, selectedEnd, repository.latestSyncTime("dhh"));
+    return cachedDhhAnalysis(
+        selectedStart, selectedEnd, text(accountId), normalizedDhhView(view));
   }
 
   public Map<String, Object> loadDhh(
@@ -97,6 +101,7 @@ public class ReportService {
       // 凭据文件先原子写入；若保存失败，不开始日期范围替换。
       saveSchedulerCredentials(resolvedToken, resolvedUserId);
       repository.replaceDhhRange(rows, start, end, "manual");
+      dhhAnalysisCache.clear();
       return analyzeDhh(start, end, "");
     });
   }
@@ -154,6 +159,7 @@ public class ReportService {
           importer.fetchJdRows(credentials.get("token"), credentials.get("userId"));
       // 两份上游数据均拉取成功后在一个事务中入库；大航海仅覆盖本月日期段。
       repository.replaceDhhRangeAndJd(dhhRows, start, end, jdRows, "scheduled");
+      dhhAnalysisCache.clear();
       jdAnalysisCache.clear();
       return null;
     });
@@ -231,18 +237,45 @@ public class ReportService {
     return analysis;
   }
 
+  private Map<String, Object> cachedDhhAnalysis(
+      String start, String end, String accountId, String view) {
+    String cachedAt = repository.latestSyncTime("dhh");
+    String alertDate = previousBeijingDate(Instant.now());
+    DhhAnalysisKey key = new DhhAnalysisKey(start, end, accountId, view, cachedAt, alertDate);
+    long now = System.currentTimeMillis();
+    dhhAnalysisCache.entrySet().removeIf(
+        entry -> now - entry.getValue().createdAtMillis() >= DHH_ANALYSIS_CACHE_TTL_MILLIS);
+    CachedDhhAnalysis cached = dhhAnalysisCache.get(key);
+    if (cached != null) return cached.analysis();
+    if (dhhAnalysisCache.size() >= DHH_ANALYSIS_CACHE_MAX_ENTRIES) dhhAnalysisCache.clear();
+
+    boolean includeAccountInfo = view.isBlank() || view.equals("by_account");
+    Map<String, Object> analysis = buildDhhAnalysis(
+        repository.readDhhRows(start, end, alertDate, accountId, includeAccountInfo),
+        start, end, cachedAt, view);
+    dhhAnalysisCache.put(key, new CachedDhhAnalysis(now, analysis));
+    return analysis;
+  }
+
   public Map<String, Object> buildDhhAnalysis(
       List<Map<String, Object>> sourceRows, String start, String end, String cachedAt) {
+    return buildDhhAnalysis(sourceRows, start, end, cachedAt, "");
+  }
+
+  Map<String, Object> buildDhhAnalysis(
+      List<Map<String, Object>> sourceRows,
+      String start,
+      String end,
+      String cachedAt,
+      String view) {
     List<Map<String, Object>> filtered = sourceRows.stream()
         .filter(row -> inRange(row, start, end))
         .toList();
-    List<Map<String, Object>> accountRows = buildDhhAccountRows(filtered);
-    List<Map<String, Object>> byProject = aggregateDhh(filtered, List.of("项目"));
-    Map<String, Object> summary = zeroValues(DHH_NUMERIC_FIELDS);
-    for (String field : DHH_NUMERIC_FIELDS) {
-      double total = byProject.stream().mapToDouble(item -> number(item.get(field))).sum();
-      summary.put(field, round(total, 2));
-    }
+    boolean all = view.isBlank();
+    List<Map<String, Object>> totals = aggregateDhh(filtered, List.of());
+    Map<String, Object> summary = totals.isEmpty()
+        ? zeroValues(DHH_NUMERIC_FIELDS)
+        : new LinkedHashMap<>(totals.getFirst());
     double spend = number(summary.get("消耗"));
     double cash = number(summary.get("现金消耗"));
     double commission = number(summary.get("预估佣金"));
@@ -253,33 +286,54 @@ public class ReportService {
     Map<String, Object> response = baseAnalysis(filtered, cachedAt);
     response.put("summary", summary);
     response.put("alerts", buildDhhAlerts(sourceRows, previousBeijingDate(Instant.now())));
-    response.put("by_optimizer", aggregateDhh(filtered, List.of("优化师")));
-    response.put("by_project", byProject);
-    response.put("by_date", dateDescending(aggregateDhh(filtered, List.of("日期"))));
-    response.put("by_task", aggregateDhh(filtered, List.of("任务名")));
-    response.put("by_account",
-        aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID")));
-    // 项目、任务下钻时直接返回优化师汇总，前端无需再次拼接或累加日报指标。
-    response.put("by_optimizer_project",
-        aggregateDhh(filtered, List.of("项目", "优化师")));
-    response.put("by_optimizer_task",
-        aggregateDhh(filtered, List.of("任务名", "优化师")));
-    response.put("by_optimizer_date", aggregateDhh(filtered, List.of("日期", "优化师")));
-    response.put("by_optimizer_project_date",
-        aggregateDhh(filtered, List.of("日期", "优化师", "项目")));
-    response.put("by_optimizer_task_date",
-        aggregateDhh(filtered, List.of("日期", "优化师", "任务名")));
-    response.put("by_optimizer_project_task_date",
-        aggregateDhh(filtered, List.of("日期", "优化师", "项目", "任务名")));
-    response.put("by_project_date", aggregateDhh(filtered, List.of("日期", "项目")));
-    response.put("by_task_date", aggregateDhh(filtered, List.of("日期", "任务名")));
-    response.put("by_account_date", dateDescending(aggregateDhh(
-        accountRows, List.of("日期", "账户", "账户名称", "账户ID"))));
-    response.put("by_optimizer_account",
-        aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID", "优化师")));
-    response.put("by_optimizer_account_date", dateDescending(aggregateDhh(
-        accountRows, List.of("日期", "账户", "账户名称", "账户ID", "优化师"))));
+    if (all || view.equals("by_optimizer")) {
+      response.put("by_optimizer", aggregateDhh(filtered, List.of("优化师")));
+      response.put("by_optimizer_date", aggregateDhh(filtered, List.of("日期", "优化师")));
+      response.put("by_optimizer_project_date",
+          aggregateDhh(filtered, List.of("日期", "优化师", "项目")));
+      response.put("by_optimizer_task_date",
+          aggregateDhh(filtered, List.of("日期", "优化师", "任务名")));
+      response.put("by_optimizer_project_task_date",
+          aggregateDhh(filtered, List.of("日期", "优化师", "项目", "任务名")));
+    }
+    if (all || view.equals("by_project")) {
+      response.put("by_project", aggregateDhh(filtered, List.of("项目")));
+      response.put("by_optimizer_project", aggregateDhh(filtered, List.of("项目", "优化师")));
+      response.put("by_project_date", aggregateDhh(filtered, List.of("日期", "项目")));
+      response.put("by_optimizer_project_date",
+          aggregateDhh(filtered, List.of("日期", "优化师", "项目")));
+    }
+    if (all || view.equals("by_task")) {
+      response.put("by_task", aggregateDhh(filtered, List.of("任务名")));
+      response.put("by_optimizer_task", aggregateDhh(filtered, List.of("任务名", "优化师")));
+      response.put("by_task_date", aggregateDhh(filtered, List.of("日期", "任务名")));
+      response.put("by_optimizer_task_date",
+          aggregateDhh(filtered, List.of("日期", "优化师", "任务名")));
+    }
+    if (all || view.equals("by_date")) {
+      response.put("by_date", dateDescending(aggregateDhh(filtered, List.of("日期"))));
+    }
+    if (all || view.equals("by_account")) {
+      List<Map<String, Object>> accountRows = buildDhhAccountRows(filtered);
+      response.put("by_account",
+          aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID")));
+      response.put("by_account_date", dateDescending(aggregateDhh(
+          accountRows, List.of("日期", "账户", "账户名称", "账户ID"))));
+      response.put("by_optimizer_account",
+          aggregateDhh(accountRows, List.of("账户", "账户名称", "账户ID", "优化师")));
+      response.put("by_optimizer_account_date", dateDescending(aggregateDhh(
+          accountRows, List.of("日期", "账户", "账户名称", "账户ID", "优化师"))));
+    }
     return response;
+  }
+
+  private static String normalizedDhhView(String value) {
+    String view = text(value);
+    if (view.isBlank()) return "";
+    if (!Set.of("by_optimizer", "by_project", "by_date", "by_task", "by_account").contains(view)) {
+      throw new IllegalArgumentException("大航海统计维度无效");
+    }
+    return view;
   }
 
   public List<Map<String, Object>> aggregateDhh(
@@ -663,6 +717,10 @@ public class ReportService {
       String cachedAt) {}
 
   private record CachedJdAnalysis(long createdAtMillis, Map<String, Object> analysis) {}
+  private record DhhAnalysisKey(
+      String start, String end, String accountId, String view, String cachedAt, String alertDate) {}
+
+  private record CachedDhhAnalysis(long createdAtMillis, Map<String, Object> analysis) {}
 
   @SuppressWarnings("unchecked")
   public static Map<String, Object> mapOf(Object... values) {

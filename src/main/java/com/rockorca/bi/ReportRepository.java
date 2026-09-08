@@ -376,13 +376,30 @@ public class ReportRepository {
 
   public List<Map<String, Object>> readDhhRows(
       String start, String end, String extraDate, String accountIdValue) {
+    return readDhhRows(start, end, extraDate, accountIdValue, true);
+  }
+
+  public List<Map<String, Object>> readDhhRows(
+      String start,
+      String end,
+      String extraDate,
+      String accountIdValue,
+      boolean includeAccountInfo) {
     String accountId = normalizedAccountId(accountIdValue);
-    RangeQuery query = rangeQuery("""
-        SELECT business_date, media, optimizer, project_name, task_name, account_info,
-               spend, cash_spend, reward_spend, estimated_commission, settlement_count,
-               conversion_count, registration_count
-          FROM dhh_daily_rows
-        """, start, end, extraDate,
+    String selectSql = includeAccountInfo
+        ? """
+            SELECT business_date, media, optimizer, project_name, task_name, account_info,
+                   spend, cash_spend, reward_spend, estimated_commission, settlement_count,
+                   conversion_count, registration_count
+              FROM dhh_daily_rows
+            """
+        : """
+            SELECT business_date, media, optimizer, project_name, task_name,
+                   spend, cash_spend, reward_spend, estimated_commission, settlement_count,
+                   conversion_count, registration_count
+              FROM dhh_daily_rows
+            """;
+    RangeQuery query = rangeQuery(selectSql, start, end, extraDate,
         accountId.isBlank() ? "" : "JSON_SEARCH(account_info, 'one', ?) IS NOT NULL",
         accountId);
     List<Map<String, Object>> rows = new ArrayList<>();
@@ -397,7 +414,9 @@ public class ReportRepository {
         row.put("优化师", result.getString("optimizer"));
         row.put("项目", result.getString("project_name"));
         row.put("任务名", result.getString("task_name"));
-        row.put("账户列表", parseAccountInfo(result.getString("account_info")));
+        if (includeAccountInfo) {
+          row.put("账户列表", parseAccountInfo(result.getString("account_info")));
+        }
         row.put("消耗", result.getDouble("spend"));
         row.put("现金消耗", result.getDouble("cash_spend"));
         row.put("赠款消耗", result.getDouble("reward_spend"));

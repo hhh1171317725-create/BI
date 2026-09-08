@@ -156,7 +156,7 @@ class ApiControllerTest {
         .thenReturn(Map.of("configured", true, "userId", "21"));
     when(reports.loadDhh("report-token", "20", "2026-07-01", "2026-07-25"))
         .thenReturn(Map.of("source", "load"));
-    when(reports.analyzeDhh("2026-07-01", "2026-07-25", "86784411"))
+    when(reports.analyzeDhh("2026-07-01", "2026-07-25", "86784411", "by_project"))
         .thenReturn(Map.of("source", "analyze"));
 
     mvc.perform(get("/api/current"))
@@ -195,7 +195,8 @@ class ApiControllerTest {
     mvc.perform(post("/api/analyze")
             .contentType("application/json")
             .content("""
-                {"start":"2026-07-01","end":"2026-07-25","accountId":"86784411"}
+                {"start":"2026-07-01","end":"2026-07-25","accountId":"86784411",
+                 "view":"by_project"}
                 """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.source").value("analyze"));
@@ -203,7 +204,7 @@ class ApiControllerTest {
     verify(reports).loadDhh("report-token", "20", "2026-07-01", "2026-07-25");
     verify(reports).saveReportCredentials("new-report-token", "21");
     verify(reports).saveReportVisibility(true, false, true, true);
-    verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411");
+    verify(reports).analyzeDhh("2026-07-01", "2026-07-25", "86784411", "by_project");
   }
 
   @Test

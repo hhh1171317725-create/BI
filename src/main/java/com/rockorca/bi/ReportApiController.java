@@ -91,7 +91,8 @@ public class ReportApiController {
     return reports.analyzeDhh(
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")),
-        ReportService.text(payload.get("accountId")));
+        ReportService.text(payload.get("accountId")),
+        ReportService.text(payload.get("view")));
   }
 
   @GetMapping("/jd/current")

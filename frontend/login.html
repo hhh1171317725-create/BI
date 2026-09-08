@@ -19,30 +19,19 @@
     @media(max-width:480px){body{padding:16px}main{padding:26px 20px;border-radius:10px}.brand{align-items:flex-start}.mark{width:38px;height:38px;border-radius:9px;font-size:19px}h1{font-size:21px}p{margin-bottom:22px}}
   </style>
   <link rel="stylesheet" href="/app-ui.css?v=4" /><script src="/app-ui.js?v=4" defer></script>
-  <link rel="stylesheet" href="/login-character.css?v=1" />
-  <script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.js"}}</script>
-  <script type="module" src="/login-character.js?v=1"></script>
+  <script src="/pet-loader.js?v=20260907-global" defer></script>
 </head>
-<body class="login-page">
-  <div class="login-shell">
-  <section class="character-panel" aria-label="互动人物">
-    <div class="character-heading"><p class="eyebrow">A NEW DAY. A NEW BEGINNING.</p><h2>菜月 昴</h2><small>NATSUKI SUBARU / 486</small></div>
-    <span class="character-credit">SUBARU · SCULPTURE</span>
-    <div id="characterStage"></div>
-    <div class="character-controls"><p id="characterStatus" role="status">正在加载人物…</p><button type="button" id="greetCharacter" aria-pressed="false">自动展示</button><button type="button" id="rotateCharacter">转个身</button><button type="button" id="zoomCharacter">缩放</button><button type="button" id="resetCharacter">复位</button></div>
-  </section>
+<body>
   <main>
     <div class="brand"><span class="mark">报</span><h1>营销日报分析</h1></div>
-    <p class="intro">每一次出发，都从这里开始。<br>登录后查看大航海、京东与投放分析数据。</p>
+    <p>登录后查看大航海、京东广义新与京东低活数据</p>
     <form id="loginForm">
-      <label>用户名<input id="username" name="username" autocomplete="username" required /></label>
+      <label>用户名<input id="username" name="username" autocomplete="username" required autofocus /></label>
       <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
       <div id="error" role="alert" aria-live="polite"></div>
       <button id="submit" type="submit">登录</button>
     </form>
-    <p class="login-footnote">营销日报分析 · YOUR DAILY COMPANION</p>
   </main>
-  </div>
   <script>
     const form=document.querySelector('#loginForm'),button=document.querySelector('#submit'),error=document.querySelector('#error');
     form.addEventListener('submit',async event=>{

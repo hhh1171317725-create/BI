@@ -25,6 +25,7 @@ const root = path.resolve(__dirname, '../frontend');
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/pet-loader.js*',route=>route.fulfill({contentType:'application/javascript',body:''}));
     await page.route('**/api/session', route => route.fulfill({ json: { authenticated: true, user: { role: 'admin' } } }));
     await page.route('**/api/tool-visibility', route => route.fulfill({ json: {
       todo: true,
@@ -51,9 +52,24 @@ const root = path.resolve(__dirname, '../frontend');
     await page.locator('#toolSearch').fill('');
     await page.locator('#toolCategory').selectOption('automation');
     assert.equal(await page.locator('.tool:visible').count(), 2);
+    await page.waitForFunction(()=>document.getElementById('toolResultCount').textContent==='显示 2 / 9 项工具');
+    await page.locator('#resetToolFilters').click();
+    assert.equal(await page.locator('.tool:visible').count(),9);
+    await page.locator('#addTool').click();await page.locator('#toolName').fill('演示工具');await page.locator('#toolUrl').fill('/tools');
+    await page.locator('#toolForm button[type=submit]').click();
+    await page.locator('#toolCategory').selectOption('custom');assert.equal(await page.locator('.tool:visible').count(),1);
+    await page.locator('#customTools .delete').click();assert.equal(await page.locator('#emptyTools').isVisible(),true);
+    await page.locator('#resetToolFilters').click();
+    fs.mkdirSync(path.resolve(__dirname,'../.runtime'),{recursive:true});
+    await page.locator('#toolSearch').blur();
+    await page.screenshot({path:path.resolve(__dirname,'../.runtime/tools-polished-desktop.png'),fullPage:true});
 
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({path:path.resolve(__dirname,'../.runtime/tools-polished-mobile.png'),fullPage:true});
+    await page.route('**/api/tool-visibility',route=>route.fulfill({json:{bidMonitor:true}}));
+    await page.reload();await page.waitForFunction(()=>document.getElementById('toolResultCount')?.textContent==='显示 1 / 1 项工具');
+    assert.equal(await page.locator('.tool:visible').count(),1);
     assert.deepEqual(errors, []);
     console.log('TOOLS UI PASS: permissions, search, categories, disabled terminal entry, mobile width');
   } finally {

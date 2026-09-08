@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,'../frontend');
 const todayChina=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
 const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
 (async()=>{
- const server=http.createServer((req,res)=>{const file=path.join(root,path.basename(new URL(req.url,'http://localhost').pathname));if(!fs.existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
+ const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  let browser;
  try{
@@ -226,6 +226,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>!document.querySelector('#pricing-settings').hidden);
   assert.equal(await page.locator('#report').isVisible(),false);
   await page.reload();await page.locator('body.ready').waitFor();
+  // Pricing starts on a separate timer after ready; wait before asserting monetary cells.
+  await page.waitForFunction(()=>taskRules.length===2&&!pricingBusy);
   assert.equal(await page.locator('#pricing-settings').isVisible(),true);
   await page.locator('.section-nav a[href="#report"]').click();
   await page.waitForFunction(()=>!document.querySelector('#report').hidden);
@@ -246,13 +248,41 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(10).textContent(),'--');
   gapFactor=1;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(14)').textContent==='1.000');
+  await page.locator('#search').fill('不存在的计划');
+  assert.equal(await page.locator('#count').textContent(),'0 条');
+  assert.equal(await page.getByRole('button',{name:'清除关键词筛选',exact:true}).count(),1);
+  await page.getByRole('button',{name:'清除关键词筛选',exact:true}).click();
+  assert.equal(await page.locator('#count').textContent(),'450 条');
+  await page.locator('#viewMode').selectOption('accounts');
+  await page.locator('#search').fill('不存在');await page.locator('#filter').selectOption('unavailable');
+  await page.locator('#clearReportFilters').click();
+  assert.equal(await page.locator('#viewMode').inputValue(),'accounts');
+  assert.match(await page.locator('#count').textContent(),/450 条计划/);
+  assert.equal(await page.locator('#filter').inputValue(),'all');
+  await page.locator('.account-drill-link').first().click();
+  await page.locator('#search').fill('不存在');await page.locator('#clearReportFilters').click();
+  assert.equal(await page.locator('#accountDrill').isVisible(),true);
+  await page.locator('#accountDrillBack').click();await page.locator('#viewMode').selectOption('plans');
+  if(!await page.locator('#deepCpaBidMin').isVisible())await page.locator('#columnSettings > summary').click();
+  await page.locator('#deepCpaBidMin').fill('99999');
+  assert.equal(await page.locator('#count').textContent(),'0 条');
+  await page.locator('#columnSettings > summary').click();
+  assert.equal(await page.getByRole('button',{name:'清除深度 CPA 最低筛选'}).isVisible(),true);
+  await page.locator('#clearReportFilters').click();assert.equal(await page.locator('#deepCpaBidMin').inputValue(),'');
+  await page.locator('#tableDensity').click();assert.equal(await page.locator('#tableDensity').getAttribute('aria-pressed'),'true');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('bid.table.compact')),'true');
+  await page.locator('#tableFocus').click();assert.equal(await page.locator('body > header').isVisible(),false);
+  await page.keyboard.press('Escape');assert.equal(await page.locator('body > header').isVisible(),true);
+  await page.evaluate(rows=>receive(rows,'界面演示数据',{start:'2026-08-01',end:'2026-08-01'}),sample);
   await page.mouse.move(0,0);
   await page.waitForTimeout(200);
   await page.setViewportSize({width:1440,height:1000});
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-views-desktop.png')});
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-views-mobile.png')});
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+  await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-views-mobile.png'),fullPage:true});
   assert.deepEqual(errors,[]);console.log('UI PASS: report views, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

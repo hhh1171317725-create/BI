@@ -33,7 +33,7 @@
     const active = [...sections, 'all'].includes(requested) ? requested : 'report';
     panels.forEach(panel => {
       panel.hidden = active !== 'all' && panel.id !== active;
-      if (panel.id === active) {
+      if (panel.id === active && panel.id !== 'report') {
         const details = panel.querySelector(':scope > details');
         if (details) details.open = true;
       }

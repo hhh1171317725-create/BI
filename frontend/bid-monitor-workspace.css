@@ -1,0 +1,49 @@
+/* Scoped workspace layer: no changes to other reports or financial semantics. */
+body[data-page="bid-monitor"]{background:#f3f6fa}
+body[data-page="bid-monitor"] #sharedReportNotice{margin:12px 0;font-size:12px}
+body[data-page="bid-monitor"] .report-surface{margin:20px 0;padding:24px;background:white;border:1px solid #dfe7ef;border-radius:12px;box-shadow:0 4px 20px #203b4610}
+body[data-page="bid-monitor"] .report-heading{align-items:center;padding-bottom:18px;border-bottom:1px solid #edf1f5}
+body[data-page="bid-monitor"] .report-heading h2{font-size:20px}
+body[data-page="bid-monitor"] .report-heading .metrics{display:grid;gap:12px}
+body[data-page="bid-monitor"] .report-heading .metric{padding:12px 18px;border:0;border-radius:8px;background:#f4f8fd}
+body[data-page="bid-monitor"] .metric strong{letter-spacing:-.5px}
+body[data-page="bid-monitor"] .report-toolbar{align-items:end;padding:18px 0 10px;gap:10px}
+.workspace-field{min-width:130px;flex:1;color:#61758a;font-size:11px!important}
+.workspace-field.workspace-search{flex:2;min-width:220px}
+.workspace-field :is(input,select){width:100%;min-width:0!important;height:40px}
+body[data-page="bid-monitor"] .report-toolbar>button{height:40px}
+body[data-page="bid-monitor"] #export{background:#1767ca;color:white;border-color:#1767ca}
+.filter-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 12px;min-height:34px}
+.filter-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.filter-placeholder{font-size:12px;color:#75869a}
+body[data-page="bid-monitor"] .filter-chip{font-size:12px;min-height:28px;padding:4px 9px;color:#15579d;background:#edf5ff;border:1px solid #d2e4f8;border-radius:5px;white-space:normal;overflow-wrap:anywhere;text-align:left;max-width:100%}
+body[data-page="bid-monitor"] .filter-reset{flex:none;min-height:28px;padding:4px 8px;border:0;color:#1767ca;background:transparent;box-shadow:none}
+body[data-page="bid-monitor"] #columnSettings,body[data-page="bid-monitor"] #aggregateSettings{background:#f8fafc;border-radius:8px;margin:8px 0 14px}
+body[data-page="bid-monitor"] .credential-details:not([open])>summary{margin:0}
+.table-tools{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:14px 0 8px}
+.gap-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:4px 0}
+.gap-strip #gapStatus{flex:1;min-width:0;margin:0;font-size:11px}
+.gap-strip #gapReload{min-height:30px;font-size:12px;padding:4px 10px}
+.table-guidance{margin-right:auto;font-size:12px;color:#75869a}
+.table-tools button{min-height:32px;font-size:12px}
+.table-tools button[aria-pressed="true"]{background:#edf5ff;color:#15579d;border-color:#a6c6ec}
+body[data-page="bid-monitor"] #report .table-wrap{border-radius:8px;max-height:65vh}
+body[data-page="bid-monitor"] #report.compact-table :is(th,td){padding-block:6px;height:34px;font-size:12px}
+body[data-page="bid-monitor"] #report.compact-table td small{margin-top:2px}
+body[data-page="bid-monitor"] #accountDrill{border-left:3px solid #1767ca;background:#edf5ff;padding:10px 12px;border-radius:4px}
+body[data-page="bid-monitor"].bid-table-focus>header,body.bid-table-focus main>:not(#report){display:none!important}
+body[data-page="bid-monitor"].bid-table-focus main{max-width:none;padding:0 16px}
+body[data-page="bid-monitor"].bid-table-focus #report{margin:12px 0}
+body[data-page="bid-monitor"].bid-table-focus #report .table-wrap{max-height:75vh}
+@media(max-width:760px){
+ body[data-page="bid-monitor"] .report-surface{padding:14px;margin:12px 0;border-radius:8px}
+ body[data-page="bid-monitor"] .report-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workspace-field,.workspace-field.workspace-search{min-width:0}
+ .workspace-field.workspace-search{grid-column:1/-1}
+ .filter-summary{align-items:flex-start;flex-direction:column;gap:6px}
+ .table-tools{flex-wrap:wrap;justify-content:flex-start}
+ .table-guidance{width:100%;font-size:11px}
+ body[data-page="bid-monitor"] .report-heading .metric{padding:12px}
+ body[data-page="bid-monitor"] .report-heading .metric strong{font-size:24px}
+ body[data-page="bid-monitor"] .report-toolbar>button{font-size:12px;padding-inline:6px}
+}

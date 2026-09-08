@@ -62,6 +62,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    await route.fulfill({json:syncStatus});
   });
   await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
+  await page.route('**/api/bid-monitor/shared-report',route=>route.fulfill({json:{userId:'1',canManage:true,sharedOwnerId:'1',sharedOwnerName:'管理员'}}));
   let gapFactor=1;
   await page.route('**/api/bid-monitor/gap?**',route=>{const anchor=new URL(route.request().url()).searchParams.get('endDate');return route.fulfill({json:{anchor,start:'2026-07-29',end:'2026-07-31',basis:'test',accounts:Object.fromEntries(['1866402186668232','1870049327502852'].map(id=>[id,{gap:gapFactor,validDays:gapFactor===null?0:3,days:[]}]))}})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html#all`);await page.locator('body.ready').waitFor();
@@ -208,7 +209,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
-  assert.match(await page.locator('#report [role="status"]:not(#gapStatus)').textContent(),/已读取/);
+  assert.match(await page.locator('#report [role="status"]:not(#gapStatus):not(#message)').textContent(),/已读取/);
   gapFactor=.5;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(14)').textContent==='0.500');
   assert.equal(await page.locator('#rows tr td').nth(14).textContent(),'10.75');

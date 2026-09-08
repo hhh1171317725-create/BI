@@ -40,6 +40,7 @@ public class RuntimeConfig {
     loadOptionalFile("adpflux.env");
     loadOptionalFile("mail-dingtalk.env");
     loadOptionalFile("report-visibility.env");
+    loadOptionalFile("bid-shared.env");
     ensureSessionSecret();
   }
 
@@ -59,6 +60,13 @@ public class RuntimeConfig {
     } catch (IOException error) {
       throw new IllegalStateException("保存登录会话密钥失败：" + error.getMessage(), error);
     }
+  }
+
+  public synchronized void saveBidSharedOwner(long owner) {
+    try {
+      saveEnvironmentFile(runtimeDir.resolve("bid-shared.env"), "# Shared bid report source; administrator account ID.", Map.of("BID_SHARED_OWNER_ID", Long.toString(owner)));
+      values.put("BID_SHARED_OWNER_ID", Long.toString(owner));
+    } catch (IOException error) { throw new IllegalStateException("保存共享报表来源失败", error); }
   }
 
   private void loadFile(String filename) {

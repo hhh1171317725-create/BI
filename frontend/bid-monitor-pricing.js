@@ -6,6 +6,7 @@ function pricingDraw(){
 }
 function pricingChanged(){pricingDirty=true;$('#taskFilter').value='';pricingStatus('任务价格有未保存的修改');render();}
 async function pricingLoad(){
+  if(!bidCanManage)return;
   if(pricingBusy)return;
   if(pricingDirty&&!confirm('放弃未保存的任务价格修改，重新读取？'))return;
   pricingBusy=true;$('#pricingFields').disabled=true;

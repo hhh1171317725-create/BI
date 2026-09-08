@@ -14,6 +14,23 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
 class ToolPermissionInterceptorTest {
+  @Test
+  void membersCanOnlyReadSharedBidDataEvenWithToolPermission() throws Exception {
+    when(users.canUseTool(operator,"bidMonitor")).thenReturn(true);
+    for(String path:java.util.List.of("/api/bid-monitor/server-sync/pricing","/api/bid-monitor/server-sync/start",
+        "/api/bid-monitor/server-sync/run","/api/bid-monitor/server-sync/forget","/api/bid-monitor/server-sync/page",
+        "/api/bid-monitor/dingtalk/send","/api/bid-monitor/snapshot","/api/bid-monitor/import","/api/bid-monitor/page")){
+      var request=new MockHttpServletRequest("POST",path);var response=new MockHttpServletResponse();
+      when(sessions.currentUser(request)).thenReturn(operator);
+      assertFalse(interceptor.preHandle(request,response,new Object()));assertEquals(403,response.getStatus());
+    }
+    for(String path:java.util.List.of("/api/bid-monitor/shared-report","/api/bid-monitor/gap")){
+      var request=new MockHttpServletRequest("GET",path);when(sessions.currentUser(request)).thenReturn(operator);
+      assertTrue(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()));
+    }
+    var request=new MockHttpServletRequest("GET","/api/bid-monitor/dingtalk");when(sessions.currentUser(request)).thenReturn(operator);
+    assertFalse(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()));
+  }
   private SessionService sessions;
   private UserService users;
   private ToolPermissionInterceptor interceptor;

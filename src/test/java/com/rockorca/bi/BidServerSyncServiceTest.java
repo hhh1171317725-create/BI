@@ -31,7 +31,7 @@ class BidServerSyncServiceTest {
   @BeforeEach void setup(){
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
     cipher=new BidCredentialCipher(config);
-    when(users.findById(anyLong())).thenAnswer(call->new UserRepository.UserAccount(call.getArgument(0),"operator","hash","user",true,1,null,null,null));
+    when(users.findById(anyLong())).thenAnswer(call->new UserRepository.UserAccount(call.getArgument(0),"operator","hash","admin",true,1,null,null,null));
     when(users.canUseTool(any(),eq("bidMonitor"))).thenReturn(true);
     service=new BidServerSyncService(store,cipher,upstream,snapshots,users);
   }

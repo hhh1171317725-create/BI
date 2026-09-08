@@ -40,6 +40,11 @@ async function syncPrepareQuery(signal){
   }
 }
 async function syncLoad(manual=false){
+  if(!bidCanManage){
+    const loaded=await bidRefreshShared(manual);
+    syncText(loaded?'已读取管理员共享报表':'共享报表正在读取或读取失败，请查看页面提示',!loaded);
+    return;
+  }
   if(busy)return;
   const response=await api('/api/bid-monitor/snapshot',{signal:AbortSignal.timeout(15000)});
   if(busy)return;
@@ -91,6 +96,7 @@ function syncDuration(seconds){
 }
 async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;
+  if(!bidCanManage){await bidRefreshShared();return;}
   syncPolling=true;const revision=syncRevision;
   try{
     const result=await syncCommand('status');if(revision!==syncRevision)return;

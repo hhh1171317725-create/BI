@@ -29,6 +29,15 @@ public class ToolPermissionInterceptor implements HandlerInterceptor {
     String toolKey = toolFor(request.getRequestURI());
     if (toolKey == null) return true;
     UserRepository.UserAccount actor = sessions.currentUser(request);
+    if ("bidMonitor".equals(toolKey) && actor != null && !actor.admin()) {
+      boolean readOnly = "GET".equals(request.getMethod()) && java.util.Set.of(
+          "/api/bid-monitor/shared-report", "/api/bid-monitor/gap").contains(request.getRequestURI());
+      if (!readOnly) {
+        response.setStatus(403);response.setContentType(MediaType.APPLICATION_JSON_VALUE);response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getOutputStream(), Map.of("error", "成员仅可查看共享报表，配置和同步由管理员维护"));
+        return false;
+      }
+    }
     if (actor == null || users.canUseTool(actor, toolKey)) return true;
     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);

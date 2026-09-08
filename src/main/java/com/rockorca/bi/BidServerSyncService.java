@@ -211,7 +211,7 @@ public class BidServerSyncService {
 
   boolean allowed(long owner) {
     var actor=users.findById(owner);
-    return actor!=null&&actor.active()&&users.canUseTool(actor,"bidMonitor");
+    return actor!=null&&actor.active()&&actor.admin()&&users.canUseTool(actor,"bidMonitor");
   }
 
   @Scheduled(fixedDelay=5000,initialDelay=15000)

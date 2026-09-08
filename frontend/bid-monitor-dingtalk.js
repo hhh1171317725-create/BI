@@ -19,6 +19,7 @@ function dingShow(data,fill=false){
   $('#dingFields').disabled=dingBusy;
 }
 async function dingLoad(){
+  if(!bidCanManage)return;
   if(dingBusy)return;if(dingDirty&&!confirm('放弃未保存的推送配置，重新读取？'))return;
   dingBusy=true;$('#dingFields').disabled=true;
   try{dingShow(await api('/api/bid-monitor/dingtalk',{signal:AbortSignal.timeout(15000)}),true);}

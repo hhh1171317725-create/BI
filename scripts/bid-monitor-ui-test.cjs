@@ -5,7 +5,7 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../frontend');
 const todayChina=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
-const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i}));
+const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.join(root,path.basename(new URL(req.url,'http://localhost').pathname));if(!fs.existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -111,6 +111,14 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(2).textContent(),'张三');
   assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');
   await page.locator('#search').fill('李四');assert.equal(await page.locator('#count').textContent(),'52 条');
+  await page.locator('#columnSettings summary').click();
+  await page.locator('#columnSettings input[data-column="planStatus"]').check();await page.locator('#columnSettings input[data-column="deepCpaBid"]').check();
+  assert.equal(await page.locator('#tableHead th').count(),17);assert.equal(await page.locator('#tableHead th').nth(15).textContent(),'深度 CPA 出价');assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'计划状态');
+  await page.locator('#statusFilter').selectOption('投放中');assert.equal(await page.locator('#count').textContent(),'52 条');
+  await page.locator('#deepCpaBidMin').fill('150');assert.equal(await page.locator('#count').textContent(),'2 条');
+  await page.locator('#deepCpaBidMin').fill('');await page.locator('#statusFilter').selectOption('');
+  await page.locator('#columnSettings input[data-column="planStatus"]').uncheck();await page.locator('#columnSettings input[data-column="deepCpaBid"]').uncheck();
+  assert.equal(await page.locator('#tableHead th').count(),15);
   await page.locator('#search').fill('测试计划 104');
   assert.equal(await page.locator('#rows tr td').nth(12).textContent(),'-42.33%');
   assert.equal(await page.locator('#rows tr td').nth(12).getAttribute('title'),'盈亏线出价：143.33');

@@ -20,7 +20,8 @@ public class BidSnapshotController {
   private volatile boolean initialized;
   private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
       "media_account_id", "advertiser_id", "media_account_name", "user_name", "promotion_create_time",
-      "stat_cost", "convert_cnt", "active_register", "cpa_bid");
+      "stat_cost", "convert_cnt", "active_register", "cpa_bid", "app_type_text", "deep_bid_type_text",
+      "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
     this(sessions,reports,mapper,null);

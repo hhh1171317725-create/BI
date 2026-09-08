@@ -23,8 +23,14 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const fmt=v=>v===null||v===undefined?'--':Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtPercent=v=>Number.isFinite(v)?fmt(v*100)+'%':'--';
 const fmtRoi=v=>Number.isFinite(v)?Number(v).toLocaleString('zh-CN',{minimumFractionDigits:3,maximumFractionDigits:3}):'--';
-const textSortKeys=new Set(['name','account','optimizer','task']);
+const textSortKeys=new Set(['name','account','optimizer','task','appType','deepBidType','deepExternalAction','externalAction','planStatus']);
 const planColumns=[['计划','name'],['账户','account'],['优化师','optimizer'],['任务','task'],['原单价','basePrice'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['当前出价','bid'],['预估 ROI','estimatedRoi'],['盈亏线出价','breakEvenBid'],['出价利润率','bidProfitRate'],['gap','gap'],['实际单价','price']];
+const optionalColumns=[['应用类型','appType'],['深度出价类型','deepBidType'],['深度 CPA 出价','deepCpaBid'],['深度转化目标','deepExternalAction'],['转化目标','externalAction'],['计划状态','planStatus']];
+const optionalTextKeys=['appType','deepBidType','deepExternalAction','externalAction','planStatus'];
+const optionalColumnStorage='bid-monitor-visible-columns-v1';
+let visibleOptionalColumns=new Set();
+try{visibleOptionalColumns=new Set(JSON.parse(localStorage.getItem(optionalColumnStorage)||'[]').filter(key=>optionalColumns.some(column=>column[1]===key)));}catch{}
+const activePlanColumns=()=>[...planColumns,...optionalColumns.filter(column=>visibleOptionalColumns.has(column[1]))];
 const aggregateColumns=[['计划数','plans'],['今日新上','todayPlans'],['有消耗计划','spendingPlans'],['账户数','accounts'],['价格匹配','priced'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['佣金','commission'],['预估赔付','estimatedCompensation'],['现金消耗','cashCost'],['现金利润','profit'],['预估 ROI','estimatedRoi'],['出价利润率','bidProfitRate']];
 function sortHeader(label,key){const state=key===sortKey?sortDirection:'none',aria=state==='asc'?'ascending':state==='desc'?'descending':'none',description=state==='asc'?'当前升序':state==='desc'?'当前降序':'点击排序';return `<th aria-sort="${aria}"><button class="sort-header" type="button" data-sort-key="${key}" data-sort-state="${state}" aria-label="按${label}排序，${description}">${label}</button></th>`;}
 function sortRows(rows){return rows.sort((a,b)=>{const left=a[sortKey],right=b[sortKey],leftMissing=left===null||left===undefined||Number.isNaN(left),rightMissing=right===null||right===undefined||Number.isNaN(right);if(leftMissing||rightMissing)return leftMissing===rightMissing?0:leftMissing?1:-1;const result=typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right),'zh-CN',{numeric:true});return sortDirection==='asc'?result:-result;});}
@@ -41,18 +47,33 @@ function receive(rows,label,datesValue,live=false){
   if(!next.some(r=>r.cost!==null&&r.registrations!==null&&r.conversions!==null&&r.bid!==null))throw Error('未识别到消耗、转化数、注册数和出价四个字段，请核对报表');
   raw=next;range=datesValue;source=label;followSync=live;page=1;const loading=loadGap();message(`已读取 ${raw.length} 条计划`);return loading;
 }
+function optionValue(value){return `<option value="${esc(value)}">${esc(value||'未填写')}</option>`;}
+function drawValueFilters(){
+  for(const [key,id] of [['appType','appTypeFilter'],['deepBidType','deepBidTypeFilter'],['deepExternalAction','deepExternalActionFilter'],['externalAction','externalActionFilter'],['planStatus','statusFilter']]){
+    const select=$('#'+id),chosen=select.value,values=[...new Set(analyzed.map(row=>row[key]).filter(value=>value!==''))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+    select.innerHTML='<option value="">全部</option>'+values.map(optionValue).join('');
+    if([...select.options].some(option=>option.value===chosen))select.value=chosen;
+  }
+}
+function optionalCell(row,key){return key==='deepCpaBid'?fmt(row[key]):esc(row[key]||'--');}
 function render(){
   $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${raw.length} 条计划（元）`:'尚未查询或导入数据';
+  for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
   const current=range?range.end>=today():true;$('#lag').hidden=!current;
   analyzed=raw.map(r=>B.analyzeTask(r,taskRules,0,20,current,gapData?.accounts?.[r.accountId]?.gap??null));
+  drawValueFilters();
   const chosen=$('#taskFilter').value;
   $('#taskFilter').innerHTML='<option value="">全部任务</option><option value="__unmatched">未匹配 / 冲突</option>'+taskRules.map((r,i)=>`<option value="task:${i}">${esc(r.name)}</option>`).join('');
   if([...$('#taskFilter').options].some(o=>o.value===chosen))$('#taskFilter').value=chosen;
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewMode==='optimizerTasks'?['optimizer','task']:viewMode==='tasks'?['task']:['optimizer'];
-  const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...aggregateColumns]:planColumns).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
+  const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...aggregateColumns]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value;
   visible=analyzed.filter(r=>(!selected||(selected==='__unmatched'?!r.task:r.task===taskRules[Number(selected.slice(5))]?.name))&&
-    (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task].join(' ').toLowerCase().includes(q))&&(filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null)));
+    (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
+    (filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null))&&
+    optionalTextKeys.every(key=>{const id=key==='planStatus'?'statusFilter':key+'Filter';return !$('#'+id).value||r[key]===$('#'+id).value;})&&
+    (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
+    (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
   const summary=B.summarizeCash(visible);
   $('#metrics').innerHTML=[['出价利润率',fmtPercent(summary.bidProfitRate)],['预估 ROI',fmtRoi(summary.estimatedRoi)]]
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
@@ -65,8 +86,8 @@ function render(){
     $('#tableHead').innerHTML='<tr>'+dimensionHeaders+aggregateColumns.map(column=>sortHeader(...column)).join('')+'</tr>';
     $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map(r=>{const financialTitle=`仅汇总已匹配价格的 ${r.priced} / ${r.plans} 条计划`;return `<tr>${dimensions.map(d=>`<td>${esc(r[d])}</td>`).join('')}<td>${r.plans}</td><td>${r.todayPlans}</td><td>${r.spendingPlans}</td><td>${r.accounts}</td><td>${r.priced} / ${r.plans}</td><td>${fmt(r.cost)}</td><td>${fmt(r.conversions)}</td><td>${fmt(r.registrations)}</td><td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td title="${financialTitle}">${fmt(r.commission)}</td><td title="${financialTitle}">${fmt(r.estimatedCompensation)}</td><td title="${financialTitle}">${fmt(r.cashCost)}</td><td title="${financialTitle}" class="${r.profit===null?'':r.profit<0?'bad':'good'}">${fmt(r.profit)}</td><td title="${financialTitle}">${fmtRoi(r.estimatedRoi)}</td><td title="${financialTitle}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td></tr>`}).join('')||`<tr><td colspan="${dimensions.length+15}" class="empty">没有符合条件的汇总数据</td></tr>`;
   }else{
-    $('#tableHead').innerHTML='<tr>'+planColumns.map(column=>sortHeader(...column)).join('')+'</tr>';
-    $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.optimizer||'--')}</td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.basePrice)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td title="预估赔付金额：${fmt(r.estimatedCompensation)}">${fmtRoi(r.estimatedRoi)}</td><td>${fmt(r.breakEvenBid)}</td><td title="盈亏线出价：${fmt(r.breakEvenBid)}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td><td title="${esc(gapTitle(r.accountId))}">${fmtRoi(r.gap)}</td><td>${fmt(r.price)}</td></tr>`).join('')||'<tr><td colspan="15" class="empty">没有符合条件的计划</td></tr>';
+    $('#tableHead').innerHTML='<tr>'+activePlanColumns().map(column=>sortHeader(...column)).join('')+'</tr>';
+    $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map(r=>`<tr><td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td><td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td><td>${esc(r.optimizer||'--')}</td><td>${esc(r.task||names[r.pricingStatus]||'未匹配')}</td><td>${fmt(r.basePrice)}</td>${[r.cost,r.conversions,r.registrations].map(v=>`<td>${fmt(v)}</td>`).join('')}<td>${r.ratio===null?'--':fmt(r.ratio*100)+'%'}</td><td>${fmt(r.bid)}</td><td title="预估赔付金额：${fmt(r.estimatedCompensation)}">${fmtRoi(r.estimatedRoi)}</td><td>${fmt(r.breakEvenBid)}</td><td title="盈亏线出价：${fmt(r.breakEvenBid)}" class="${r.bidProfitRate===null?'':r.bidProfitRate<0?'bad':'good'}">${fmtPercent(r.bidProfitRate)}</td><td title="${esc(gapTitle(r.accountId))}">${fmtRoi(r.gap)}</td><td>${fmt(r.price)}</td>${optionalColumns.filter(column=>visibleOptionalColumns.has(column[1])).map(column=>`<td>${optionalCell(r,column[1])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${activePlanColumns().length}" class="empty">没有符合条件的计划</td></tr>`;
   }
   const unit=viewMode==='optimizers'?'名优化师':viewMode==='tasks'?'个任务':viewMode==='optimizerTasks'?'个优化师 × 任务组合':'条';
   $('#count').textContent=aggregateMode?`${displayRows.length} ${unit}（${visible.length} 条计划）`:`${displayRows.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!displayRows.length;
@@ -107,16 +128,23 @@ $('#fetch').onclick=async()=>{
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
-for(const id of ['search','viewMode','taskFilter','filter','pageSize'])$('#'+id).addEventListener('input',()=>{page=1;render();});
+for(const id of ['search','viewMode','taskFilter','filter','pageSize','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{page=1;render();});
+$('#columnSettings').addEventListener('change',event=>{
+  const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
+  checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);
+  localStorage.setItem(optionalColumnStorage,JSON.stringify([...visibleOptionalColumns]));page=1;render();
+});
 $('#tableHead').onclick=event=>{const button=event.target.closest('.sort-header');if(!button)return;const nextKey=button.dataset.sortKey;if(nextKey===sortKey)sortDirection=sortDirection==='desc'?'asc':'desc';else{sortKey=nextKey;sortDirection=textSortKeys.has(nextKey)?'asc':'desc';}page=1;render();};
 for(const id of ['startDate','endDate','createdStart','createdEnd'])$('#'+id).onchange=()=>{if(raw.length)message('日期已修改，下方仍为原统计区间数据，请重新查询');};
 $('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};
 $('#export').onclick=()=>{
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewMode==='optimizerTasks'?['optimizer','task']:viewMode==='tasks'?['task']:['optimizer'];
+  const visibleOptional=optionalColumns.filter(column=>visibleOptionalColumns.has(column[1]));
   const rows=aggregateMode?[[...dimensions.map(d=>d==='optimizer'?'优化师':'任务'),'计划数','今日新上计划数','有消耗计划数','账户数','已匹配价格计划数','统计开始','统计结束','总消耗','转化数','注册数','回传比例','佣金','预估赔付金额','现金消耗','现金利润','预估ROI','出价利润率'],
     ...aggregateRows.map(r=>[...dimensions.map(d=>r[d]),r.plans,r.todayPlans,r.spendingPlans,r.accounts,r.priced,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.commission,r.estimatedCompensation,r.cashCost,r.profit,fmtRoi(r.estimatedRoi),fmtPercent(r.bidProfitRate)])]:[['计划ID','计划名称','账户ID','账户名称','优化师','任务','原单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率','gap','实际单价'],
-    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.optimizer,r.task,r.basePrice,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price])];
+    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.optimizer,r.task,r.basePrice,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
+  if(!aggregateMode)rows[0].push(...visibleOptional.map(column=>column[0]));
   const labels={plans:'计划明细',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总'};
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`出价监测_${labels[viewMode]}_${range.start}_${range.end}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };

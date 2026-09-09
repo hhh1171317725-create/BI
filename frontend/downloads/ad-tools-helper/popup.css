@@ -1,0 +1,24 @@
+:root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #191a1d; background: #f5f6f8; }
+* { box-sizing: border-box; }
+body { width: 360px; margin: 0; background: #f5f6f8; }
+header { height: 68px; padding: 0 16px; display: flex; align-items: center; gap: 11px; color: #fff; background: #202226; border-bottom: 3px solid #e1251b; }
+.brand { width: 36px; height: 36px; display: grid; place-items: center; background: #e1251b; font-size: 12px; font-weight: 800; }
+h1 { margin: 0; font-size: 15px; letter-spacing: 0; }
+header p { margin: 3px 0 0; color: #bfc3ca; font-size: 11px; }
+main { padding: 16px; }
+label { display: block; margin-bottom: 7px; color: #4f535a; font-size: 12px; font-weight: 700; }
+textarea { width: 100%; min-height: 104px; resize: vertical; padding: 10px 11px; color: #191a1d; background: #fff; border: 1px solid #bcc1c9; outline: none; line-height: 1.5; }
+textarea:focus { border-color: #e1251b; box-shadow: 0 0 0 3px rgba(225, 37, 27, .1); }
+button { height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; font: inherit; font-weight: 700; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.button-row { margin-top: 10px; display: grid; grid-template-columns: 1fr 1.45fr; gap: 8px; }
+.secondary { padding: 0 12px; color: #464a51; background: #fff; border-color: #bcc1c9; }
+.secondary:hover { color: #e1251b; border-color: #e1251b; }
+.primary { width: 100%; color: #fff; background: #e1251b; }
+.primary:hover:not(:disabled) { background: #bd1710; }
+.plain { width: 100%; height: 36px; margin-top: 8px; color: #555961; background: transparent; border-color: #d8dce2; font-size: 12px; }
+.plain:hover:not(:disabled) { color: #e1251b; border-color: #e1251b; background: #fff; }
+.status { min-height: 38px; margin-top: 12px; padding: 10px 11px; color: #5d6169; background: #fff; border: 1px solid #dfe2e7; font-size: 12px; line-height: 1.4; }
+.status.error { color: #a91c15; background: #fff4f3; border-color: #efc3bf; }
+.status.success { color: #116a49; background: #effaf5; border-color: #b9e2d1; }

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>京东商品主图下载器</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">JD</div>
+      <div><h1>商品主图下载器</h1><p id="version">正在读取版本</p></div>
+    </header>
+
+    <main>
+      <label for="sku-input">SKU 列表</label>
+      <textarea id="sku-input" rows="5" spellcheck="false" placeholder="10105896126923&#10;100058159091"></textarea>
+      <div class="button-row">
+        <button id="open-page" class="secondary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+          <span>打开首个</span>
+        </button>
+        <button id="batch-download" class="primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+          <span>批量下载</span>
+        </button>
+      </div>
+      <button id="download-current" class="plain" type="button">下载当前商品页</button>
+      <div id="status" class="status" role="status">等待操作</div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -16,6 +16,23 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class PetServiceTest {
+  @Test void bidReportUsesCurrentPageDataWithoutReadingOtherReports() {
+    ReportRepository repository=mock(ReportRepository.class);
+    var result=analysisService(repository).chat(Map.of("message","读取页面内容","context",Map.of(
+        "mode","bid","loaded",true,"range",List.of("2026-09-09","2026-09-09"),
+        "summary",Map.of("计划数",2,"消耗",150,"转化数",10,"注册数",100,"价格匹配计划数",1),
+        "cookie","secret-cookie","plans",List.of(Map.of("计划","测试计划","计划ID","123","消耗",100)))));
+    assertEquals("local",result.get("mode"));
+    assertTrue(result.get("scope").toString().contains("当前筛选结果"));
+    assertTrue(result.get("reply").toString().contains("150"));
+    assertTrue(result.get("reply").toString().contains("测试计划"));
+    assertFalse(result.toString().contains("secret-cookie"));
+    org.mockito.Mockito.verifyNoInteractions(repository);
+  }
+  @Test void unloadedBidReportAsksToLoadData() {
+    var result=analysisService(mock(ReportRepository.class)).chat(Map.of("message","分析","context",Map.of("mode","bid","loaded",false)));
+    assertEquals("clarification",result.get("mode"));
+  }
   @Test
   void pageHelpDoesNotReadReportsOrTrustArbitraryPageContents() {
     ReportRepository repository = mock(ReportRepository.class);

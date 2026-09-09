@@ -293,7 +293,7 @@
       const context = typeof window.getPetReportContext === "function"
         ? window.getPetReportContext()
         : { mode: 'page', pagePath: location.pathname };
-      const nextContextKey = JSON.stringify([context.mode, context.pagePath, context.reportType, context.range, context.accountId, context.excludeUnknownOptimizer]);
+      const nextContextKey = JSON.stringify([context.mode, context.pagePath, context.reportType, context.range, context.accountId, context.excludeUnknownOptimizer, context.filters, context.source]);
       if (contextKey && contextKey !== nextContextKey) {
         history.length = 0;
         queryState = null;

@@ -6,6 +6,6 @@
   document.head.appendChild(css);
   const script = document.createElement('script');
   script.dataset.petLoader = 'true';
-  script.src = '/pet.js?v=20260907-global';
+  script.src = '/pet.js?v=20260909-bid';
   document.head.appendChild(script);
 })();

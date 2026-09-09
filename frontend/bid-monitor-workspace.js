@@ -2,7 +2,7 @@
 (() => {
   const report=document.getElementById('report');
   const toolbar=report.querySelector('.report-toolbar');
-  const filters=[['search','关键词',''],['taskFilter','任务',''],['filter','利润率','all'],['appTypeFilter','应用类型',''],['deepBidTypeFilter','深度出价类型',''],['deepExternalActionFilter','深度转化目标',''],['externalActionFilter','转化目标',''],['statusFilter','计划状态',''],['deepCpaBidMin','深度 CPA 最低',''],['deepCpaBidMax','深度 CPA 最高','']];
+  const filters=[['search','关键词',''],['taskFilter','任务',''],['filter','利润率','all'],['dataQualityFilter','数据完整度','all'],['platformFilter','平台',''],['appTypeFilter','应用类型',''],['deepBidTypeFilter','深度出价类型',''],['deepExternalActionFilter','深度转化目标',''],['externalActionFilter','转化目标',''],['statusFilter','计划状态',''],['deepCpaBidMin','深度 CPA 最低',''],['deepCpaBidMax','深度 CPA 最高','']];
   const make=(tag,cls,text)=>{const el=document.createElement(tag);el.className=cls;if(text)el.textContent=text;return el;};
   for(const [id,label] of [['search','搜索计划 / 账户 / 优化师'],['viewMode','统计维度'],['taskFilter','任务'],['filter','利润率条件']]){
     const input=document.getElementById(id),wrapper=make('label','workspace-field',label);

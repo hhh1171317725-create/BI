@@ -62,6 +62,13 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   price=3;revision='p2';stamp='2026-09-08T01:10:00Z';
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='2.40');
+  await page.locator('#dataQualityCards [data-quality="linked"]').click();
+  assert.equal(await page.locator('#count').textContent(),'1 条');
+  await page.locator('.plan-detail-link').click();
+  assert.match(await page.locator('#bidPlanDetail').textContent(),/共享任务/);
+  assert.match(await page.locator('#bidPlanDetail').textContent(),/现金利润 = 佣金 − 现金消耗140.00/);
+  await page.keyboard.press('Escape');
+  await page.locator('#clearReportFilters').click();
   assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

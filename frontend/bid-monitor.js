@@ -25,16 +25,21 @@ function aggregateCell(row,key){
   return `<td${title} class="${tone}">${value}</td>`;
 }
 const cachedAnalysis=B.createAnalysisCache();
-let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
+let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],qualityScope=[],groupCache=new Map();
+function dataQuality(row){
+  if(!row.task||!Number.isFinite(row.price))return 'incomplete';
+  return ['bid-return','inferred'].includes(row.taskSource)?'estimated':'linked';
+}
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
-  gapData=null;render();$('#gapStatus').textContent='正在关联统计结束日前第4天至第2天的大航海账户数据…';
+  gapData=null;render();$('#gapStatus').title='';$('#gapStatus').textContent='正在关联统计结束日前第4天至第2天的大航海账户数据…';
   try{
     const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
-    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end}。${result.basis}`;
+    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 日报单价日期：${result.priceDate||'未返回'} · 点击计划查看依据`;
+    $('#gapStatus').title=result.basis||'';
   }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
 }
 function gapTitle(id,row){
@@ -60,8 +65,8 @@ try{visibleOptionalColumns=new Set(JSON.parse(localStorage.getItem(optionalColum
 let planDisplayKeys=null;
 try{const saved=JSON.parse(localStorage.getItem('bid-plan-display-columns-v2')||'null');if(Array.isArray(saved)){const valid=new Set([...planColumns,...optionalColumns].map(column=>column[1]));planDisplayKeys=['name',...new Set(saved.filter(key=>key!=='name'&&valid.has(key)))];}}catch{}
 const activePlanColumns=()=>planDisplayKeys?planDisplayKeys.map(key=>[...planColumns,...optionalColumns].find(column=>column[1]===key)).filter(Boolean):[...planColumns,...optionalColumns.filter(column=>visibleOptionalColumns.has(column[1]))];
-function planCell(r,key){
-  if(key==='name')return `<td>${esc(r.name||'未命名计划')}<small>${esc(r.id)}</small></td>`;
+function planCell(r,key,index){
+  if(key==='name')return `<td><button type="button" class="plan-detail-link" data-plan-detail="${index}" title="查看计划数据与计算依据">${esc(r.name||'未命名计划')}</button><small>${esc(r.id)}</small></td>`;
   if(key==='account')return `<td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td>`;
   if(key==='task'){const linked=['inferred','daily-report','plan-name','bid-return'].includes(r.taskSource),detail=r.inference||{};const title=r.taskSource==='daily-report'?`查询 ${detail.taskDate||'历史'} 大航海日报：账户任务名 ${detail.reportedTaskName||'--'}`:r.taskSource==='plan-name'?'账户日报未提供任务，按计划/账户名称精确识别日报任务':r.taskSource==='bid-return'?`当前出价 × 回传比例估算结算金额 ${fmt(detail.estimatedSettlementPrice)}，最接近该任务实际单价 ${fmt(detail.matchedActualPrice)}`:r.taskSource==='inferred'?`旧数据兼容：按 ${detail.settlementPriceDate||'历史'} 日报结算单价识别任务`:r.missingReason||'';const suffix=r.taskSource==='daily-report'?'（日报）':r.taskSource==='plan-name'?'（名称识别）':r.taskSource==='bid-return'?'（出价回传估算）':r.taskSource==='inferred'?'（历史识别）':'';return `<td${title?` title="${esc(title)}"`:''}>${esc((r.task||names[r.pricingStatus]||'未匹配')+(linked?suffix:''))}</td>`;}
   const priceSource={manual:'手动设置','daily-account':`${r.priceDate} 账户日报`,'daily-task':`${r.priceDate} 同任务日报参考`}[r.priceSource];
@@ -118,15 +123,17 @@ function render(){
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...displayedMetrics]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value;
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,filter,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  const quality=$('#dataQualityFilter').value;
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,filter,quality,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTask=selected.startsWith('task:')?taskRules[Number(selected.slice(5))]?.name:selected.startsWith('auto:')?decodeURIComponent(selected.slice(5)):'';
-  filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===selectedTask))&&
+  qualityScope=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===selectedTask))&&
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
     (filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null))&&
     optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
+    filteredRows=quality==='all'?qualityScope:qualityScope.filter(row=>dataQuality(row)===quality);
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
   }
   visible=[...filteredRows];
@@ -146,7 +153,7 @@ function render(){
     $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map(r=>`<tr>${dimensions.map(d=>`<td>${viewMode==='accounts'&&d==='account'?`<button type="button" class="account-drill-link" data-account-key="${esc(r.accountKey)}" data-account-label="${esc(r.account+' · '+r.accountId)}">${esc(r[d])}</button>`:esc(r[d])}</td>`).join('')}${displayedMetrics.map(([,key])=>aggregateCell(r,key)).join('')}</tr>`).join('')||`<tr><td colspan="${dimensions.length+displayedMetrics.length}" class="empty">没有符合条件的汇总数据</td></tr>`;
   }else{
     $('#tableHead').innerHTML='<tr>'+activePlanColumns().map(column=>sortHeader(...column)).join('')+'</tr>';
-    $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map(r=>`<tr>${activePlanColumns().map(([,key])=>planCell(r,key)).join('')}</tr>`).join('')||`<tr><td colspan="${activePlanColumns().length}" class="empty">没有符合条件的计划</td></tr>`;
+    $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map((r,index)=>`<tr>${activePlanColumns().map(([,key])=>planCell(r,key,(page-1)*size+index)).join('')}</tr>`).join('')||`<tr><td colspan="${activePlanColumns().length}" class="empty">没有符合条件的计划</td></tr>`;
   }
   const unit=viewMode==='accounts'?'个账户':viewMode==='optimizers'?'名优化师':viewMode==='tasks'?'个任务':viewMode==='optimizerTasks'?'个优化师 × 任务组合':viewMode==='conversionTargets'?'个目标组合':'条';
   $('#count').textContent=aggregateMode?`${displayRows.length} ${unit}（${visible.length} 条计划）`:`${displayRows.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!displayRows.length;
@@ -193,7 +200,7 @@ $('#fetch').onclick=async()=>{
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
-for(const id of ['search','viewMode','taskFilter','filter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
+for(const id of ['search','viewMode','taskFilter','filter','dataQualityFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
   checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);

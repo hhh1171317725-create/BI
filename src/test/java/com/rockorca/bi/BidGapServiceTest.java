@@ -16,6 +16,7 @@ class BidGapServiceTest {
     assertEquals("2026-09-02",result.get("anchor"));
     assertEquals("2026-08-29",result.get("start"));
     assertEquals("2026-08-31",result.get("end"));
+    assertEquals("2026-08-31",result.get("priceDate"));
   }
   private Map<String,Object> row(String date,double settled,double registered){return Map.of("账户ID","123", "日期",date,"结算数",settled,"注册数",registered);}
   private Map<String,Object> pricedRow(String date,double commission,double settled,double registered){return Map.of("账户ID","123","日期",date,"预估佣金",commission,"结算数",settled,"注册数",registered);}
@@ -79,5 +80,64 @@ class BidGapServiceTest {
         "promotion_id","p1","stat_cost",10,"convert_cnt",1,"active_register",2,"cpa_bid",1);
     var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中","price",10),Map.<String,Object>of("name","任务乙","keyword","不会命中2","price",20));
     assertTrue(BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(row)),rules,List.of("任务甲"),(Map<String,Object>)calculated.get("accounts")).getFirst().get("text").contains("日报任务"));
+  }
+  @SuppressWarnings("unchecked")
+  @Test void exposesExactTwoDaysPriorWeightedDailyPriceByAccountAndTask(){
+    var rows=List.of(
+        Map.<String,Object>of("账户ID","123","日期","2026-09-07","任务名","任务甲","消耗",10,"预估佣金",200,"结算数",10,"注册数",100),
+        Map.<String,Object>of("账户ID","123","日期","2026-09-07","任务名","任务甲","消耗",20,"预估佣金",600,"结算数",20,"注册数",100),
+        Map.<String,Object>of("账户ID","123","日期","2026-09-08","任务名","任务甲","消耗",30,"预估佣金",999,"结算数",1,"注册数",100),
+        Map.<String,Object>of("账户ID","456","日期","2026-09-07","任务名","任务甲","消耗",5,"预估佣金",100,"结算数",5,"注册数",50));
+    var result=BidGapService.calculate(rows,LocalDate.of(2026,9,9));
+    assertEquals("2026-09-07",result.get("priceDate"));
+    var account=(Map<String,Object>)((Map<?,?>)result.get("accounts")).get("123");
+    var accountPrice=(Map<String,Object>)account.get("dailyPrice");
+    assertEquals(800d/30d,(double)accountPrice.get("price"),1e-12);
+    assertEquals(800d,accountPrice.get("commission"));assertEquals(30d,accountPrice.get("settlements"));
+    var split=(Map<String,Object>)((Map<?,?>)account.get("dailyPricesByTask")).get("任务甲");
+    assertEquals(800d/30d,(double)split.get("price"),1e-12);
+    var task=(Map<String,Object>)((Map<?,?>)result.get("tasks")).get("任务甲");
+    var taskPrice=(Map<String,Object>)task.get("dailyPrice");
+    assertEquals(900d/35d,(double)taskPrice.get("price"),1e-12);
+    assertEquals(35d/250d,(double)task.get("gap"),1e-12);
+  }
+  @SuppressWarnings("unchecked")
+  @Test void zeroCommissionIsARealDailyPriceButMissingOrZeroSettlementIsExplained(){
+    var result=BidGapService.calculate(List.of(
+        Map.<String,Object>of("账户ID","zero","日期","2026-09-07","任务名","零佣金","消耗",1,"预估佣金",0,"结算数",4,"注册数",10),
+        Map.<String,Object>of("账户ID","empty","日期","2026-09-07","任务名","无结算","消耗",1,"预估佣金",10,"结算数",0,"注册数",10)),LocalDate.of(2026,9,9));
+    var accounts=(Map<String,Object>)result.get("accounts");
+    var zero=(Map<String,Object>)((Map<?,?>)accounts.get("zero")).get("dailyPrice");
+    assertEquals(0d,zero.get("price"));assertNull(zero.get("reason"));
+    var empty=(Map<String,Object>)((Map<?,?>)accounts.get("empty")).get("dailyPrice");
+    assertNull(empty.get("price"));assertTrue(empty.get("reason").toString().contains("不大于0"));
+  }
+  @Test void dingtalkUsesExactDailyPriceWhenManualPriceIsBlank(){
+    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","账户甲",
+        "promotion_id","p1","user_name","张三","stat_cost",100,"convert_cnt",20,"active_register",100,"cpa_bid",10);
+    var snapshot=ReportService.mapOf("rows",List.of(row));
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","账户甲","price",""));
+    var daily=Map.<String,Object>of("date","2026-09-07","price",20);
+    var payload=ReportService.mapOf("priceDate","2026-09-07","accounts",Map.of("123",ReportService.mapOf(
+        "gap",.5,"dailyPricesByTask",Map.of("任务甲",daily))),"tasks",Map.of());
+    String text=BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),payload).getFirst().get("text");
+    assertTrue(text.contains("利润出价80.00%"));assertTrue(text.contains("账户前天日报价"));
+    var stale=new LinkedHashMap<>(daily);stale.put("date","2026-09-06");
+    payload.put("accounts",Map.of("123",ReportService.mapOf("gap",.5,"dailyPricesByTask",Map.of("任务甲",stale))));
+    assertTrue(BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),payload).getFirst().get("text").contains("单价缺失"));
+  }
+  @Test void dingtalkKeepsSameAccountOptimizersInTheirOwnDailyTasks(){
+    var first=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","账户",
+        "promotion_id","p1","user_name","甲","stat_cost",100,"convert_cnt",10,"active_register",20,"cpa_bid",5);
+    var second=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","账户",
+        "promotion_id","p2","user_name","乙","stat_cost",90,"convert_cnt",10,"active_register",20,"cpa_bid",5);
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中甲","price",10),
+        Map.<String,Object>of("name","任务乙","keyword","不会命中乙","price",10));
+    var account=ReportService.mapOf("gap",1,"taskByOptimizer",Map.of(
+        "甲",Map.of("taskName","任务甲","taskDate","2026-09-08"),
+        "乙",Map.of("taskName","任务乙","taskDate","2026-09-08")));
+    String text=BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(first,second)),rules,List.of("任务甲","任务乙"),Map.of("123",account)).getFirst().get("text");
+    assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("甲｜账123｜计p1"));
+    assertTrue(text.contains("【任务乙 TOP5】\n①"));assertTrue(text.contains("乙｜账123｜计p2"));
   }
 }

@@ -117,9 +117,8 @@ public class BidDingtalkService {
     if(!sync.allowed(owner))throw new IllegalArgumentException("网站账户已停用或无出价监测权限");
     if(tasks(state).isEmpty())throw new IllegalArgumentException("请先选择任务并保存推送配置");
     var snapshot=snapshots.readOwned(owner);fresh(snapshot,clock.instant());
-    @SuppressWarnings("unchecked")
-    Map<String,Object> accountGaps=gaps==null?null:(Map<String,Object>)gaps.load(snapshot.get("date").toString()).get("accounts");
-    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state),accountGaps).stream().map(message->{
+    Map<String,Object> gapPayload=gaps==null?null:gaps.load(snapshot.get("date").toString());
+    return BidTop5Formatter.messages(snapshot,rules(state),tasks(state),gapPayload).stream().map(message->{
       var result=new LinkedHashMap<>(message);
       result.put("text",DingtalkRobotClient.content(text(state,"dingKeyword"),message.get("text")));
       return (Map<String,String>)result;

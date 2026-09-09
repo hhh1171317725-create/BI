@@ -41,7 +41,7 @@ test('aggregates every plan by optimizer with weighted metrics',()=>{
  assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,-400);
  assert.equal(result[0].estimatedRoi,(300+50+540)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
 });
-test('aggregate financial metrics use the priced subset without treating unmatched plans as zero',()=>{
+test('aggregate revenue metrics use priced rows while price-independent cash metrics cover every plan',()=>{
  const rules=[{name:'A',keyword:'account-a',price:10}];
  const rows=[
   analyzeTask({id:'1',accountId:'a',account:'account-a',optimizer:'张三',cost:150,conversions:10,registrations:20,bid:10},rules,0,20,false),
@@ -49,7 +49,7 @@ test('aggregate financial metrics use the priced subset without treating unmatch
  ];
  const result=aggregateOptimizers(rows)[0];
  assert.equal(result.plans,2);assert.equal(result.priced,1);assert.equal(result.cost,1050);
- assert.equal(result.commission,200);assert.equal(result.estimatedCompensation,50);assert.equal(result.cashCost,100);assert.equal(result.profit,100);
+ assert.equal(result.commission,200);assert.equal(result.estimatedCompensation,860);assert.equal(result.cashCost,190);assert.equal(result.profit,100);
  assert.equal(result.estimatedRoi,250/150);assert.equal(result.bidProfitRate,.5);
 });
 test('aggregates task and optimizer-task dimensions with new and spending plan counts',()=>{
@@ -152,6 +152,36 @@ test('same-account daily task uses the matching optimizer before the account-wid
  const rules=[{name:'任务甲',keyword:'x',price:10},{name:'任务乙',keyword:'y',price:20}];
  const result=cached(rows,rules,false,{'123':{gap:.5,taskName:'任务乙',taskDate:'2026-09-08',taskByOptimizer:{'甲':{taskName:'任务甲',taskDate:'2026-09-08'}}}})[0];
  assert.equal(result.task,'任务甲');assert.equal(result.taskSource,'daily-report');
+});
+test('manual task price overrides the exact two-days-prior daily price',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({source_platform:'gdt',platform_text:'广点通',advertiser_id:'123',advertiser_nick:'账户',user_name:'甲',stat_cost:100,convert_cnt:10,active_register:20,cpa_bid:8})];
+ const rules=[{name:'任务甲',keyword:'不会命中',price:30}],accounts={'123':{gap:.5,taskName:'任务甲',taskDate:'2026-09-08',dailyPricesByTask:{'任务甲':{date:'2026-09-07',price:20}}}};
+ const result=cached(rows,rules,false,accounts,{priceDate:'2026-09-07',accounts,tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-07',price:25}}}})[0];
+ assert.equal(result.basePrice,30);assert.equal(result.price,15);assert.equal(result.priceSource,'manual');assert.equal(result.gapSource,'account');
+});
+test('unconfigured daily task uses the account daily price and stays filterable by its task',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({source_platform:'gdt',platform_text:'广点通',advertiser_id:'123',advertiser_nick:'账户',user_name:'甲',stat_cost:100,convert_cnt:10,active_register:20,cpa_bid:8})];
+ const accounts={'123':{gap:.5,taskName:'任务甲',taskDate:'2026-09-08',dailyPricesByTask:{'任务甲':{date:'2026-09-07',price:20}}}};
+ const result=cached(rows,[],false,accounts,{priceDate:'2026-09-07',accounts,tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-07',price:25}}}})[0];
+ assert.equal(result.task,'任务甲');assert.equal(result.basePrice,20);assert.equal(result.price,10);assert.equal(result.priceSource,'daily-account');assert.equal(result.priceDate,'2026-09-07');
+});
+test('new account may use an exact task reference but never stale daily prices',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const row=normalize({platform_text:'广点通',advertiser_id:'new',advertiser_nick:'任务甲 新账户',promotion_name:'任务甲 计划',stat_cost:100,convert_cnt:10,active_register:20,cpa_bid:8});
+ const reference={priceDate:'2026-09-07',accounts:{},tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-07',price:25}}}};
+ const result=cached([row],[],false,reference.accounts,reference)[0];
+ assert.equal(result.task,'任务甲');assert.equal(result.basePrice,25);assert.equal(result.gap,.6);assert.equal(result.price,15);assert.equal(result.priceSource,'daily-task');assert.equal(result.gapSource,'task-reference');
+ const stale={...reference,tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-06',price:99}}}};
+ const missing=cached([row],[],false,stale.accounts,stale)[0];assert.equal(missing.basePrice,null);assert.match(missing.missingReason,/2026-09-07/);
+});
+test('mixed-task account never uses its blended account price',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const row=normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'账户',user_name:'甲',stat_cost:1,convert_cnt:1,active_register:2,cpa_bid:1});
+ const accounts={'123':{gap:.5,taskName:'任务甲',dailyPrice:{date:'2026-09-07',price:999},dailyPricesByTask:{'任务甲':{date:'2026-09-06',price:20},'任务乙':{date:'2026-09-07',price:30}}}};
+ const result=cached([row],[],false,accounts,{priceDate:'2026-09-07',accounts,tasks:{}})[0];
+ assert.equal(result.basePrice,null);assert.equal(result.priceSource,'');assert.match(result.priceReason,/2026-09-07/);
 });
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);

@@ -57,8 +57,13 @@ public class BidServerSyncService {
       if(name.isBlank()||name.length()>80||keyword.isBlank()||keyword.length()>80||
           !names.add(name.toLowerCase(Locale.ROOT))||!keywords.add(keyword.toLowerCase(Locale.ROOT)))
         throw new IllegalArgumentException("任务名及账户关键词须为 1 至 80 字，且不能重复");
+      String configuredPrice=Objects.toString(raw.get("price"),"").trim();
+      if(configuredPrice.isBlank()){
+        result.add(Map.of("name",name,"keyword",keyword,"price",""));
+        continue;
+      }
       java.math.BigDecimal price;
-      try{price=new java.math.BigDecimal(Objects.toString(raw.get("price"),""));}
+      try{price=new java.math.BigDecimal(configuredPrice);}
       catch(NumberFormatException error){throw new IllegalArgumentException("请填写有效结算单价");}
       if(price.signum()<=0||price.compareTo(new java.math.BigDecimal("1000000"))>0||price.scale()>6)
         throw new IllegalArgumentException("结算单价须大于 0、不超过 1000000，最多 6 位小数");

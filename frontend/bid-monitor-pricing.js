@@ -2,9 +2,9 @@
 let pricingOwner='',pricingRevision='',pricingDirty=false,pricingBusy=false;
 function pricingStatus(text,bad=false){$('#pricingStatus').textContent=text;$('#pricingStatus').className=bad?'error':'muted';}
 function pricingDraw(){
-  $('#pricingRows').innerHTML=taskRules.map((r,i)=>`<tr><td><input data-index="${i}" data-key="name" aria-label="任务名称 ${i+1}" maxlength="80" value="${esc(r.name)}"></td><td><input data-index="${i}" data-key="keyword" aria-label="账户关键词 ${i+1}" maxlength="80" value="${esc(r.keyword)}"></td><td><input data-index="${i}" data-key="price" aria-label="结算单价 ${i+1}" type="number" min="0.000001" max="1000000" step="0.000001" value="${esc(r.price)}"></td><td><button data-remove="${i}" title="删除任务">删除</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty">暂无任务价格</td></tr>';
+  $('#pricingRows').innerHTML=taskRules.map((r,i)=>`<tr><td><input data-index="${i}" data-key="name" aria-label="任务名称 ${i+1}" maxlength="80" value="${esc(r.name)}"></td><td><input data-index="${i}" data-key="keyword" aria-label="账户关键词 ${i+1}" maxlength="80" value="${esc(r.keyword)}"></td><td><input data-index="${i}" data-key="price" aria-label="结算单价 ${i+1}" placeholder="留空自动读取前天日报" title="手动单价优先；留空使用统计结束日前第 2 天日报单价" type="number" min="0.000001" max="1000000" step="0.000001" value="${esc(r.price)}"></td><td><button data-remove="${i}" title="删除任务">删除</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty">暂无任务价格</td></tr>';
 }
-function pricingChanged(){pricingDirty=true;$('#taskFilter').value='';pricingStatus('任务价格有未保存的修改');render();}
+function pricingChanged(){pricingDirty=true;$('#taskFilter').value='';pricingStatus('任务价格有未保存的修改；单价留空时自动读取前天日报');render();}
 async function pricingLoad(){
   if(!bidCanManage)return;
   if(pricingBusy)return;

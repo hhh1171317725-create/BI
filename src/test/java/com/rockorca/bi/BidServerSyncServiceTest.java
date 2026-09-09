@@ -241,6 +241,7 @@ class BidServerSyncServiceTest {
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(rules.getFirst(),rules.getFirst())));
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","","price",1))));
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",0))));
+    assertEquals("",BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",""))).getFirst().get("price"));
   }
   @Test void renewsLeaseDuringLongCollectionAndCanStopBeforeNextPage()throws Exception{
     service.start(7,input());var pages=Collections.synchronizedList(new ArrayList<Integer>());

@@ -30,7 +30,7 @@
   function taskFor(row,rules,inferred){
     const account=row.account.trim().toLowerCase();
     const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
-    if(inferred?.detail?.method==='daily-report-task'){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim();return{task,price,pricingStatus:price>0?'priced':'price-missing',taskSource:'daily-report',inference:inferred.detail}}
+    if(['daily-report-task','plan-name-task'].includes(inferred?.detail?.method)){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim();return{task,price,pricingStatus:price>0?'priced':'price-missing',taskSource:inferred.detail.method==='daily-report-task'?'daily-report':'plan-name',inference:inferred.detail}}
     if(matches.length!==1){
       if(!matches.length&&inferred){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||'').trim();return{task,price,pricingStatus:'priced',taskSource:'inferred',inference:inferred.detail}}
       return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing',taskSource:''};
@@ -41,12 +41,14 @@
   const canonicalId=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   function buildGapIndex(gaps){const index=new Map();for(const [id,value] of Object.entries(gaps||{})){index.set(String(id),value);const canonical=canonicalId(id);if(canonical)index.set(canonical,value)}return index}
   function gapFor(row,index){for(const id of [row.accountId,row.internalAccountId]){if(index.has(String(id)))return index.get(String(id));const canonical=canonicalId(id);if(canonical&&index.has(canonical))return index.get(canonical)}return null}
-  function inferAccountTasks(rows,rules,gaps){
+  const inferenceIdentity=row=>JSON.stringify([accountIdentity(row),String(row.optimizer||'').trim().toLowerCase()]);
+  function inferAccountTasks(rows,rules,gaps,references){
     const gapIndex=buildGapIndex(gaps);
     const result=new Map(),groups=new Map();
-    for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform))continue;const key=accountIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
+    const remember=(key,row,value)=>{result.set(key,value);const legacy=accountIdentity(row);if(!result.has(legacy))result.set(legacy,value);};
+    for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform)&&taskFor(row,rules).task)continue;const key=inferenceIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     for(const [key,items] of groups){
-      const evidence=gapFor(items[0],gapIndex);if(!evidence)continue;
+      const evidence=gapFor(items[0],gapIndex)||{};
       const optimizer=String(items[0].optimizer||'').trim();
       const optimizerEvidence=Object.entries(evidence.taskByOptimizer||{}).find(([name])=>name.trim().toLowerCase()===optimizer.toLowerCase())?.[1];
       const dailyEvidence=optimizerEvidence?.taskName?optimizerEvidence:evidence;
@@ -55,18 +57,25 @@
         let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===reported);
         if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&(name.includes(reported)||reported.includes(name))});
         const detail={method:'daily-report-task',reportedTaskName:dailyEvidence.taskName,taskDate:dailyEvidence.taskDate,optimizer};
-        if(matched.length===1)result.set(key,{rule:matched[0],detail});
-        else result.set(key,{task:dailyEvidence.taskName,detail});
+        if(matched.length===1)remember(key,items[0],{rule:matched[0],detail});
+        else remember(key,items[0],{task:dailyEvidence.taskName,detail});
         continue
       }
       if(taskFor(items[0],rules).task)continue;
+      if(references?.priceDate){
+        // Exact task-name evidence only: do not guess tasks from a similar price.
+        const name=String(items[0].account||'').toLowerCase(),planNames=items.map(row=>String(row.name||'').toLowerCase());
+        const candidates=Object.keys(references.tasks||{}).filter(task=>task.trim()&&(name.includes(task.toLowerCase())||planNames.every(plan=>plan.includes(task.toLowerCase()))));
+        if(candidates.length===1){const task=candidates[0],matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===task.toLowerCase());remember(key,items[0],{task,rule:matched.length===1?matched[0]:null,detail:{method:'plan-name-task',reportedTaskName:task}});}
+        continue;
+      }
       const historical=number(evidence.settlementPrice);
       if(!(historical>0))continue;
       const ranked=rules.map(rule=>({rule,price:number(rule.price)})).filter(item=>item.price>0)
         .map(item=>({...item,difference:Math.abs(item.price-historical)})).sort((a,b)=>a.difference-b.difference);
       const best=ranked[0];
       if(best&&(!ranked[1]||ranked[1].difference-best.difference>1e-6))
-        result.set(key,{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price,dailyTaskMissing:true}});
+        remember(key,items[0],{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price,dailyTaskMissing:true}});
     }
     return result;
   }
@@ -105,23 +114,43 @@
     const bidProfitRate=bidCommission>0?(bidCommission-validBidCost)/bidCommission:null;
     return{roi:Number.isFinite(roi)?roi:null,estimatedRoi:Number.isFinite(estimatedRoi)?estimatedRoi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
   }
-  function analyzeTask(row,rules,margin,minSample,current,gapValue=1,inferred=null){
-    const task=taskFor(row,rules,inferred);
+  function analyzeTask(row,rules,margin,minSample,current,gapValue=1,inferred=null,resolved=null){
+    const task=resolved?.taskResult||taskFor(row,rules,inferred);
     const gap=Number.isFinite(gapValue)&&gapValue>=0?gapValue:null;
-    const price=task.price!==null&&gap!==null?task.price*gap:null;
+    const basePrice=resolved?resolved.basePrice:task.price;
+    const price=basePrice!==null&&gap!==null?basePrice*gap:null;
     const result=analyze(row,price||1,margin,minSample,current);
-    if(price===null||price===0){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=task.price===null?task.pricingStatus:gap===null?'gap-missing':'zero-price';}
-    return{...result,...task,basePrice:task.price,gap,price,...cashMetrics(row,price)};
+    if(price===null||price===0){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=basePrice===null?task.pricingStatus:gap===null?'gap-missing':'zero-price';}
+    return{...result,...task,basePrice,gap,price,...cashMetrics(row,price),...(resolved?.metadata||{})};
+  }
+  function resolveDailyInputs(row,rules,gapIndex,references,inferred){
+    const taskResult=taskFor(row,rules,inferred),account=gapFor(row,gapIndex),taskName=String(taskResult.inference?.reportedTaskName||taskResult.task||'').trim();
+    const findTask=object=>Object.entries(object||{}).find(([name])=>name.trim().toLowerCase()===taskName.toLowerCase())?.[1];
+    const taskReference=taskName?findTask(references?.tasks):null;
+    const sameDay=value=>value?.date===references?.priceDate&&number(value?.price)!==null;
+    let basePrice=taskResult.price,priceSource=basePrice!==null?'manual':'',priceDate='',priceReason='';
+    if(basePrice===null){
+      const split=account?.dailyPricesByTask||{},splitNames=Object.keys(split);
+      const accountPrice=taskName?(findTask(split)||(splitNames.length===0?account?.dailyPrice:null)):(splitNames.length<=1?account?.dailyPrice:null);
+      if(sameDay(accountPrice)){basePrice=number(accountPrice.price);priceSource='daily-account';priceDate=accountPrice.date;}
+      else if(sameDay(taskReference?.dailyPrice)){basePrice=number(taskReference.dailyPrice.price);priceSource='daily-task';priceDate=taskReference.dailyPrice.date;}
+      else priceReason=references?.priceDate?`${references.priceDate} 无可用日报结算单价${taskName?'':'，且任务未识别'}`:'未取得日报单价数据';
+    }
+    let gap=number(account?.gap),gapSource=gap!==null?'account':'',gapReason='';
+    if(gap===null&&number(taskReference?.gap)!==null){gap=number(taskReference.gap);gapSource='task-reference';}
+    if(gap===null)gapReason=account?'账户及同任务均无可计算的历史 gap':'账户未关联到历史日报，且无同任务 gap';
+    const missingReason=[basePrice===null?priceReason:'',gap===null?gapReason:''].filter(Boolean).join('；');
+    return{taskResult,basePrice,gap,metadata:{priceSource,priceDate,gapSource,referenceTask:taskName,missingReason,priceReason,gapReason}};
   }
   function createAnalysisCache(){
-    let previousRows,previousRules,previousCurrent,previousGaps,result;
-    return (rows,rules,current,gaps)=>{
+    let previousRows,previousRules,previousCurrent,previousGaps,previousReferences,result;
+    return (rows,rules,current,gaps,references)=>{
       // Pricing edits mutate rules in place; compare their small serialized value.
       const ruleKey=JSON.stringify(rules);
-      if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps){
-        const inferred=inferAccountTasks(rows,rules,gaps),gapIndex=buildGapIndex(gaps);
-        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gapFor(row,gapIndex)?.gap??null,inferred.get(accountIdentity(row))));
-        previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;
+      if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps||references!==previousReferences){
+        const inferred=inferAccountTasks(rows,rules,gaps,references),gapIndex=buildGapIndex(gaps);
+        result=rows.map(row=>{const match=inferred.get(inferenceIdentity(row)),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+        previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;previousReferences=references;
       }
       return result;
     };
@@ -143,20 +172,22 @@
     return [...groups.values()].map(({labels,items})=>{
       const cost=sum(items,'cost'),conversions=sum(items,'conversions'),registrations=sum(items,'registrations');
       const pricedItems=items.filter(row=>row.price!==null),cash=summarizeCash(pricedItems);
+      const allCashCost=items.length&&items.every(row=>Number.isFinite(row.cashCost))?sum(items,'cashCost'):null;
+      const allCompensation=items.length&&items.every(row=>Number.isFinite(row.estimatedCompensation))?sum(items,'estimatedCompensation'):null;
+      const pricedCashCost=pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.cashCost))?sum(pricedItems,'cashCost'):null;
       const commission=pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.commission))?sum(pricedItems,'commission'):null;
       return{...labels,plans:items.length,todayPlans:items.filter(row=>statDate&&String(row.createdAt||'').slice(0,10)===statDate).length,
         spendingPlans:items.filter(row=>Number.isFinite(row.cost)&&row.cost>0).length,
         accounts:new Set(items.map(row=>row.accountId||row.account).filter(Boolean)).size,
         cost,conversions,registrations,ratio:registrations>0?conversions/registrations:null,
         priced:pricedItems.length,commission,
-        estimatedCompensation:pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.estimatedCompensation))?sum(pricedItems,'estimatedCompensation'):null,
-        cashCost:pricedItems.length&&pricedItems.every(row=>Number.isFinite(row.cashCost))?sum(pricedItems,'cashCost'):null,
+        estimatedCompensation:allCompensation,cashCost:allCashCost,pricedCashCost,
         estimatedRoi:cash.estimatedRoi,bidProfitRate:cash.bidProfitRate};
-    }).map(row=>({...row,profit:row.commission===null||row.cashCost===null?null:row.commission-row.cashCost}))
+    }).map(row=>({...row,profit:row.commission===null||row.pricedCashCost===null?null:row.commission-row.pricedCashCost}))
       .sort((a,b)=>b.cost-a.cost||dimensions.map(key=>a[key]).join(' ').localeCompare(dimensions.map(key=>b[key]).join(' '),'zh-CN'));
   }
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,inferAccountTasks,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,inferAccountTasks,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

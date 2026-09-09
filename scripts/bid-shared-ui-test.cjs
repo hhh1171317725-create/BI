@@ -26,7 +26,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
    return route.fulfill({json:data});
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html#pricing-settings`);
-  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)')?.textContent==='1.60');
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='1.60');
   assert.equal(new URL(page.url()).hash,'#report');
   assert.equal(await page.locator('#sync-settings').isVisible(),false);
   assert.equal(await page.locator('#pricing-settings').isVisible(),false);
@@ -61,7 +61,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   const csv=fs.readFileSync(await (await download).path(),'utf8');assert.match(csv,/共享计划/);assert.match(csv,/"1.6"/);
   price=3;revision='p2';stamp='2026-09-08T01:10:00Z';
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)')?.textContent==='2.40');
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='2.40');
   assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

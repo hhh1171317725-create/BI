@@ -13,7 +13,7 @@ final class BidTaskInference {
     Map<String,List<Map<?,?>>> grouped=new LinkedHashMap<>();
     for(Object item:rows){
       if(!(item instanceof Map<?,?> row)||!"gdt".equalsIgnoreCase(text(row.get("source_platform"))))continue;
-      String id=inferenceKey(row);if(!id.isBlank())grouped.computeIfAbsent(id,k->new ArrayList<>()).add(row);
+      String id=inferenceKey(row);if(!id.isBlank())grouped.computeIfAbsent(inferenceIdentity(row),k->new ArrayList<>()).add(row);
     }
     Map<String,Map<String,Object>> result=new LinkedHashMap<>();
     grouped.forEach((id,items)->{
@@ -64,6 +64,7 @@ final class BidTaskInference {
   }
 
   static String inferenceKey(Map<?,?> row){String advertiser=text(row.get("advertiser_id"));return advertiser.isBlank()?text(row.get("media_account_id")):advertiser;}
+  static String inferenceIdentity(Map<?,?> row){return inferenceKey(row)+"\u0000"+text(row.get("user_name")).toLowerCase(Locale.ROOT);}
 
   static Object accountEntry(Map<?,?> row,Map<String,Object> accountGaps){
     for(String id:rowIds(row)){

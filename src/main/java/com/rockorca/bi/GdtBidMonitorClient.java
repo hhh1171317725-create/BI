@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -20,6 +21,7 @@ public class GdtBidMonitorClient {
   private final ObjectMapper mapper;
   private final HttpClient client;
 
+  @Autowired
   public GdtBidMonitorClient(ObjectMapper mapper){
     this(mapper,HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
         .followRedirects(HttpClient.Redirect.NEVER).build());

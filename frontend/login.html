@@ -38,7 +38,8 @@
       event.preventDefault();error.textContent='';button.disabled=true;button.textContent='登录中...';
       try{
         const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.username.value,password:form.password.value})});
-        const result=await response.json();
+        const raw=await response.text();let result;
+        try{result=raw?JSON.parse(raw):{};}catch{throw new Error(`后端服务暂不可用（HTTP ${response.status}），请检查服务是否已启动`);}
         if(!response.ok)throw new Error(result.error||'登录失败');
         location.replace(result.redirect||'/');
       }catch(reason){error.textContent=reason.message||'登录失败，请稍后重试';}

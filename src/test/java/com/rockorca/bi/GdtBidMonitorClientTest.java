@@ -6,8 +6,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import tools.jackson.databind.ObjectMapper;
 
 class GdtBidMonitorClientTest {
+  @Test void springCanCreateTheProductionClient(){
+    try(var context=new AnnotationConfigApplicationContext()){
+      context.registerBean(ObjectMapper.class,()->new ObjectMapper());context.register(GdtBidMonitorClient.class);context.refresh();
+      assertNotNull(context.getBean(GdtBidMonitorClient.class));
+    }
+  }
   @Test void buildsTheVerifiedGdtReportRequest(){
     var input=Map.<String,Object>of("createdStart","2026-09-06","createdEnd","2026-09-09");
     var body=GdtBidMonitorClient.requestBody(input,LocalDate.parse("2026-09-09"),LocalDate.parse("2026-09-09"),3);

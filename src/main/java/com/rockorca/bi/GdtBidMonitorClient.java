@@ -78,7 +78,7 @@ public class GdtBidMonitorClient {
     body.put("page",page);body.put("page_size",BidMonitorApiController.PAGE_SIZE);
     body.put("start_date",start.toString());body.put("end_date",end.toString());
     body.put("kpis",List.of("view_count","view_user_count","ctr","cost","conversions_count","conversions_rate",
-        "conversions_cost","deep_conversions_count","deep_conversions_rate","deep_conversions_cost"));
+        "conversions_cost","reg_pv","deep_conversions_count","deep_conversions_rate","deep_conversions_cost"));
     body.put("time_line","REPORTING_TIME");
     return body;
   }
@@ -96,7 +96,7 @@ public class GdtBidMonitorClient {
       row.put("advertiser_id",id(raw.get("advertiser_id")));row.put("media_account_id",id(raw.get("media_account_id")));
       row.put("media_account_name",raw.get("advertiser_nick"));row.put("user_name",raw.get("user_name"));
       row.put("promotion_create_time",raw.get("created_time"));row.put("stat_cost",metric(raw.get("cost")));
-      row.put("convert_cnt",metric(raw.get("conversions_count")));row.put("active_register",metric(raw.get("deep_conversions_count")));
+      row.put("convert_cnt",metric(raw.get("conversions_count")));row.put("active_register",metric(raw.get("reg_pv")));
       row.put("cpa_bid",metric(raw.get("bid_amount")));row.put("app_type_text","");
       row.put("deep_bid_type_text",first(raw,"bid_mode_name","bid_mode"));row.put("deep_cpabid",optionalMetric(raw.get("deep_bid_amount")));
       row.put("deep_external_action_text",first(raw,"deep_conversion_spec_name","deep_conversion_spec"));

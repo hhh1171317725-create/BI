@@ -42,6 +42,7 @@ class GdtBidMonitorClientTest {
     assertEquals("自动出价",row.get("deep_bid_type_text"));assertEquals("付费",row.get("deep_external_action_text"));
     assertEquals("注册",row.get("external_action_text"));assertEquals("投放中",row.get("status_text"));
     assertEquals("gdt",row.get("source_platform"));assertEquals("广点通",row.get("platform_text"));
+    var provider=(Map<?,?>)row.get("provider_data");assertEquals("34",provider.get("deep_conversions_count"));
   }
 
   @Test void keepsZeroMetricsAndRejectsInvalidIds(){

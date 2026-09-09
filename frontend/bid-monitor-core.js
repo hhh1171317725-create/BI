@@ -27,12 +27,44 @@
     else r.status='within';
     return r;
   }
-  function taskFor(row,rules){
+  function taskFor(row,rules,inferred){
     const account=row.account.trim().toLowerCase();
     const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
-    if(matches.length!==1)return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing'};
+    if(matches.length!==1){
+      if(!matches.length&&inferred){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||'').trim();return{task,price,pricingStatus:'priced',taskSource:'inferred',inference:inferred.detail}}
+      return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing',taskSource:''};
+    }
     const price=number(matches[0].price),task=String(matches[0].name||'').trim(),valid=Boolean(task)&&price>0&&price<=1000000;
-    return{task,price:valid?price:null,pricingStatus:valid?'priced':'price-missing'};
+    return{task,price:valid?price:null,pricingStatus:valid?'priced':'price-missing',taskSource:'account-name'};
+  }
+  function inferAccountTasks(rows,rules,gaps){
+    const result=new Map(),groups=new Map();
+    for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform)||taskFor(row,rules).task)continue;const key=accountIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
+    for(const [key,items] of groups){
+      const accountId=items.find(r=>r.accountId)?.accountId, evidence=gaps?.[accountId]?.tasks;
+      if(!Array.isArray(evidence)||!evidence.length)continue;
+      const candidates=[];
+      for(const item of evidence){
+        const evidenceName=String(item.name||'').trim().toLowerCase();
+        let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===evidenceName);
+        if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&evidenceName&&(name.includes(evidenceName)||evidenceName.includes(name))});
+        if(matched.length===1){const gap=number(item.gap),price=number(matched[0].price);if(price>0)candidates.push({rule:matched[0],evidence:item,expected:gap===null?null:price*gap})}
+      }
+      const unique=[...new Map(candidates.map(c=>[String(c.rule.name).toLowerCase(),c])).values()];if(!unique.length)continue;
+      const registrations=items.reduce((s,r)=>s+(Number.isFinite(r.registrations)?r.registrations:0),0);
+      const conversions=items.reduce((s,r)=>s+(Number.isFinite(r.conversions)?r.conversions:0),0);
+      const bidCost=items.reduce((s,r)=>s+(Number.isFinite(r.bid)&&Number.isFinite(r.conversions)?r.bid*r.conversions:0),0);
+      const weightedBid=conversions>0?bidCost/conversions:null,ratio=registrations>0?conversions/registrations:null;
+      const implied=weightedBid!==null&&ratio!==null?weightedBid*ratio:null;
+      let chosen=null,confidence='settlement-only';
+      if(unique.length===1)chosen=unique[0];
+      else if(implied>0){
+        const ranked=unique.filter(c=>c.expected>0).map(c=>({...c,score:Math.abs(Math.log(c.expected/implied))})).sort((a,b)=>a.score-b.score);
+        if(ranked.length&&(!ranked[1]||ranked[1].score-ranked[0].score>=.05)){chosen=ranked[0];confidence='price-match'}
+      }
+      if(chosen)result.set(key,{rule:chosen.rule,detail:{method:confidence,weightedBid,callbackRatio:ratio,impliedSettlementUnit:implied,expectedSettlementUnit:chosen.expected,settlements:number(chosen.evidence.settlements),registrations:number(chosen.evidence.registrations)}});
+    }
+    return result;
   }
   function cashMetrics(row,price){
     const valid=n=>Number.isFinite(n)&&n>=0;
@@ -69,8 +101,8 @@
     const bidProfitRate=bidCommission>0?(bidCommission-validBidCost)/bidCommission:null;
     return{roi:Number.isFinite(roi)?roi:null,estimatedRoi:Number.isFinite(estimatedRoi)?estimatedRoi:null,bidProfitRate:Number.isFinite(bidProfitRate)?bidProfitRate:null};
   }
-  function analyzeTask(row,rules,margin,minSample,current,gapValue=1){
-    const task=taskFor(row,rules);
+  function analyzeTask(row,rules,margin,minSample,current,gapValue=1,inferred=null){
+    const task=taskFor(row,rules,inferred);
     const gap=Number.isFinite(gapValue)&&gapValue>=0?gapValue:null;
     const price=task.price!==null&&gap!==null?task.price*gap:null;
     const result=analyze(row,price||1,margin,minSample,current);
@@ -83,7 +115,8 @@
       // Pricing edits mutate rules in place; compare their small serialized value.
       const ruleKey=JSON.stringify(rules);
       if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps){
-        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gaps?.[row.accountId]?.gap??null));
+        const inferred=inferAccountTasks(rows,rules,gaps);
+        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gaps?.[row.accountId]?.gap??null,inferred.get(accountIdentity(row))));
         previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;
       }
       return result;
@@ -121,5 +154,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,inferAccountTasks,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

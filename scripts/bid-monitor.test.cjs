@@ -105,6 +105,21 @@ test('analysis cache reuses calculations and invalidates price edits, gap and sn
  const refreshed=cached([...rows],rules,false,gaps);assert.notStrictEqual(refreshed,repriced);
  assert.notStrictEqual(cached(rows,rules,true,gaps),refreshed);
 });
+test('infers one GDT account task from bid, callback ratio and settlement evidence',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({source_platform:'gdt',platform_text:'广点通',advertiser_id:'123',advertiser_nick:'无法识别账户',stat_cost:100,convert_cnt:20,reg_pv:100,active_register:100,bid_amount:10,cpa_bid:10})];
+ const rules=[{name:'任务甲',keyword:'甲账户',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
+ const gaps={'123':{gap:.2,tasks:[{name:'任务甲',gap:.2,settlements:20,registrations:100},{name:'任务乙',gap:.5,settlements:50,registrations:100}]}};
+ const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务甲');assert.equal(result.taskSource,'inferred');
+ assert.equal(result.inference.impliedSettlementUnit,2);assert.equal(result.price,2);
+});
+test('explicit account-name task match takes priority over inference',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'乙账户',stat_cost:100,convert_cnt:20,active_register:100,cpa_bid:10})];
+ const rules=[{name:'任务甲',keyword:'甲账户',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
+ const gaps={'123':{gap:.5,tasks:[{name:'任务甲',gap:.2,settlements:20,registrations:100}]}};
+ const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'account-name');assert.equal(result.price,15);
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

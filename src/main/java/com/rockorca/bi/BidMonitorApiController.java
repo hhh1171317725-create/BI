@@ -93,6 +93,7 @@ public class BidMonitorApiController {
       if (!(item instanceof Map<?, ?> map)) throw new IllegalArgumentException("计划数据格式异常");
       Map<String, Object> row = new LinkedHashMap<>();
       map.forEach((key, value) -> row.put(String.valueOf(key), value));
+      row.put("provider_data",new LinkedHashMap<>(row));
       for(String key:List.of("advertiser_id","media_account_id","promotion_id"))row.put(key,idText(row.get(key)));
       row.put("source_platform","byte");row.put("platform_text","字节");
       rows.add(row);

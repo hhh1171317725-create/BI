@@ -40,6 +40,7 @@ final class BidTop5Formatter {
   }
   static List<Map<String,String>> messages(Map<String,Object> snapshot,List<Map<String,Object>> rules,List<String> tasks,Map<String,Object> accountGaps){
     if(!(snapshot.get("rows") instanceof List<?> rows))throw new IllegalArgumentException("没有可推送的快照");
+    var inferred=BidTaskInference.infer(rows,rules,accountGaps);
     var groups=new ArrayList<String>();
     boolean missingOptimizer=false,missingAccountId=false;
     for(String task:tasks){
@@ -48,9 +49,16 @@ final class BidTop5Formatter {
       var selected=new ArrayList<Map<?,?>>();
       for(Object item:rows){
         if(!(item instanceof Map<?,?> row))throw new IllegalArgumentException("快照格式无效");
-        String name=Objects.toString(row.get("media_account_name"),"").toLowerCase(Locale.ROOT);
-        var matches=rules.stream().filter(r->name.contains(r.get("keyword").toString().toLowerCase(Locale.ROOT))).toList();
-        if(matches.size()==1&&task.equals(matches.getFirst().get("name")))selected.add(row);
+        var matched=BidTaskInference.nameRule(row,rules);boolean wasInferred=false;
+        if(matched==null&&"gdt".equalsIgnoreCase(Objects.toString(row.get("source_platform"),""))){
+          Object match=inferred.get(Objects.toString(row.get("advertiser_id"),""));
+          if(match instanceof Map<?,?> detail&&detail.get("rule") instanceof Map<?,?> inferredRule){
+            @SuppressWarnings("unchecked") var cast=(Map<String,Object>)inferredRule;matched=cast;wasInferred=true;
+          }
+        }
+        if(matched!=null&&task.equals(matched.get("name"))){
+          if(wasInferred){var copy=new LinkedHashMap<Object,Object>(row);copy.put("inferred_task",true);selected.add(copy);}else selected.add(row);
+        }
       }
       selected.sort(Comparator.<Map<?,?>,BigDecimal>comparing(r->number(r.get("stat_cost"))).reversed()
           .thenComparing(r->Objects.toString(r.get("promotion_id"),"")));
@@ -69,7 +77,7 @@ final class BidTop5Formatter {
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
         entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
-            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+(gapMissing?"｜gap缺失":"")
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+(Boolean.TRUE.equals(row.get("inferred_task"))?"｜任务反推":"")+(gapMissing?"｜gap缺失":"")
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }
       groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));

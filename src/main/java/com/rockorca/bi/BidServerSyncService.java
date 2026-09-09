@@ -19,13 +19,15 @@ public class BidServerSyncService {
   private final BidMonitorApiController upstream;
   private final GdtBidMonitorClient gdt;
   private final BidSnapshotController snapshots;
+  private final BidProviderRawStore rawStore;
   private final UserService users;
   private final ExecutorService workers=Executors.newFixedThreadPool(2);
   private final Semaphore slots=new Semaphore(2);
 
   public BidServerSyncService(BidServerSyncStore store,BidCredentialCipher cipher,
-      BidMonitorApiController upstream,GdtBidMonitorClient gdt,BidSnapshotController snapshots,UserService users) {
-    this.store=store;this.cipher=cipher;this.upstream=upstream;this.gdt=gdt;this.snapshots=snapshots;this.users=users;
+      BidMonitorApiController upstream,GdtBidMonitorClient gdt,BidSnapshotController snapshots,
+      BidProviderRawStore rawStore,UserService users) {
+    this.store=store;this.cipher=cipher;this.upstream=upstream;this.gdt=gdt;this.snapshots=snapshots;this.rawStore=rawStore;this.users=users;
   }
 
   Map<String,Object> status(long owner) throws Exception { return view(owner,store.get(owner)); }
@@ -176,13 +178,14 @@ public class BidServerSyncService {
       });
       throw error;
     }
-    snapshots.initialize();
+    snapshots.initialize();rawStore.initialize();
     var saved=new LinkedHashMap<String,Object>();
     store.update(owner,(connection,latest)->{
       requireQueryRevision(latest,revision);
       if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
         throw new IllegalArgumentException("同步状态已变更，请重新查询");
       var validated=BidSnapshotController.validate(snapshot);
+      rawStore.replace(connection,owner,String.valueOf(snapshot.get("date")),rawRows(snapshot));
       snapshots.write(connection,owner,validated);
       saved.putAll(validated);
       // Retire overlapping queries/workers before publishing this complete snapshot.
@@ -251,12 +254,13 @@ public class BidServerSyncService {
         current.put("dueAt",System.currentTimeMillis()+180000L);
         current.put("progress",progressValue(done,total,startedAt));
       }));
-      snapshots.initialize();
+      snapshots.initialize();rawStore.initialize();
       store.update(owner,(connection,current)->{
         if(!current(current,token))return;
         if(!allowed(owner))throw new IllegalStateException("permission");
         // Revalidate at commit time to reject a request which crossed Beijing midnight.
         var validated=BidSnapshotController.validate(snapshot);
+        rawStore.replace(connection,owner,String.valueOf(snapshot.get("date")),rawRows(snapshot));
         snapshots.write(connection,owner,validated);
         current.put("lastSuccess",validated.get("updatedAt"));current.put("state","ready");
         current.put("minutes",10);current.put("error","");current.remove("progress");
@@ -307,8 +311,8 @@ public class BidServerSyncService {
         throw new IllegalArgumentException("字节与广点通计划合计超过 100000 条，请缩小计划创建日期范围");
     }
     if(rows.isEmpty())throw new IllegalArgumentException("查询范围内没有字节或广点通计划，保留原有结果");
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
-        "upstreamTotal",rows.size(),"sourceTotal",sourceTotal,"duplicateRows",duplicates,
+    return new LinkedHashMap<>(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
+        "upstreamTotal",(long)rows.size(),"sourceTotal",sourceTotal,"duplicateRows",duplicates,
         "createdStart",start,"createdEnd",today.toString()));
   }
 
@@ -364,7 +368,7 @@ public class BidServerSyncService {
       var row=new LinkedHashMap<String,Object>();
       for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
           "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
-          "deep_external_action_text","external_action_text","status_text","source_platform","platform_text"))row.put(key,raw.get(key));
+          "deep_external_action_text","external_action_text","status_text","source_platform","platform_text","provider_data"))row.put(key,raw.get(key));
       row.putIfAbsent("source_platform",platform);row.putIfAbsent("platform_text","gdt".equals(platform)?"广点通":"字节");
       for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
         Object id=row.get(key);
@@ -375,6 +379,11 @@ public class BidServerSyncService {
       row.put("media_account_name",name==null||name.toString().isBlank()?raw.get("advertiser_nick"):name);rows.add(row);
     }
     return new PageChunk(total,rows);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Map<String,Object>> rawRows(Map<String,Object> snapshot){
+    return (List<Map<String,Object>>)snapshot.get("rows");
   }
 
   static String failure(Exception error) {

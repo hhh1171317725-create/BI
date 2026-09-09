@@ -16,6 +16,7 @@ class BidServerSyncServiceTest {
   private final BidMonitorApiController upstream=mock(BidMonitorApiController.class);
   private final GdtBidMonitorClient gdt=mock(GdtBidMonitorClient.class);
   private final BidSnapshotController snapshots=mock(BidSnapshotController.class);
+  private final BidProviderRawStore rawStore=mock(BidProviderRawStore.class);
   private final UserService users=mock(UserService.class);
   private BidCredentialCipher cipher;
   private BidServerSyncService service;
@@ -35,7 +36,7 @@ class BidServerSyncServiceTest {
     when(users.findById(anyLong())).thenAnswer(call->new UserRepository.UserAccount(call.getArgument(0),"operator","hash","admin",true,1,null,null,null));
     when(users.canUseTool(any(),eq("bidMonitor"))).thenReturn(true);
     when(gdt.page(anyMap())).thenReturn(Map.of("total",0,"rows",List.of()));
-    service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,users);
+    service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
   }
   @AfterEach void close(){service.close();}
   private Map<String,Object> input(){return new LinkedHashMap<>(Map.of("cookie","userId=123; chuangliang_session=private-test-cookie", "clientUser","123","mainUserId","456","minutes",10,"createdDays",7));}
@@ -46,7 +47,8 @@ class BidServerSyncServiceTest {
           "advertiser_nick","account","user_name","optimizer-A","stat_cost",1000-offset-i,"convert_cnt",2,"active_register",20,"cpa_bid",5,"cookie","must-drop"));
       row.put("advertiser_id","1866402186668232");row.put("promotion_create_time","2026-09-05 08:00:00");
       row.put("app_type_text","小程序");row.put("deep_bid_type_text","深度转化");row.put("deep_cpabid",88.5);
-      row.put("deep_external_action_text","深度付费");row.put("external_action_text","注册");row.put("status_text","投放中");rows.add(row);
+      row.put("deep_external_action_text","深度付费");row.put("external_action_text","注册");row.put("status_text","投放中");
+      row.put("provider_data",new LinkedHashMap<>(row));rows.add(row);
     }
     return rows;
   }
@@ -122,6 +124,7 @@ class BidServerSyncServiceTest {
     var result=service.querySnapshot(7,Map.of("queryRevision",prepared.get("queryRevision")));
     assertEquals("7",result.get("userId"));assertEquals(mapper.writeValueAsString(result.get("snapshot")),mapper.writeValueAsString(snapshots.readOwned(7)));
     assertTrue(persisted.get().contains("optimizer-A"));assertFalse(persisted.get().contains("must-drop"));
+    verify(rawStore).replace(eq(store.connection),eq(7L),anyString(),argThat(list->list.toString().contains("must-drop")));
     assertEquals(((Map<?,?>)result.get("snapshot")).get("updatedAt"),service.status(7).get("lastSuccess"));
     assertTrue(((Number)store.get(7).get("dueAt")).longValue()>System.currentTimeMillis()+590000);
     var pricing=service.savePricing(7,Map.of("revision","","rules",List.of(Map.of("name","task","keyword","account","price","10"))));
@@ -171,7 +174,7 @@ class BidServerSyncServiceTest {
     assertEquals("created_window_all",snapshot.get("selection"));
     var row=(Map<?,?>)((List<?>)snapshot.get("rows")).getFirst();assertEquals("account",row.get("media_account_name"));
     assertEquals("2026-09-05 08:00:00",row.get("promotion_create_time"));
-    assertEquals("7681075475580",row.get("promotion_id"));assertFalse(snapshot.toString().contains("must-drop"));
+    assertEquals("7681075475580",row.get("promotion_id"));assertTrue(snapshot.toString().contains("must-drop"));
     assertEquals("optimizer-A",row.get("user_name"));assertEquals("123",row.get("media_account_id"));
     assertEquals("1866402186668232",row.get("advertiser_id"));
     assertEquals("小程序",row.get("app_type_text"));assertEquals("深度转化",row.get("deep_bid_type_text"));
@@ -262,7 +265,7 @@ class BidServerSyncServiceTest {
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
   }
   @Test void persistedScheduleRunsWithoutBrowserAndAfterServiceRestart()throws Exception{
-    service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,users);
+    service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
     when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",rows(0,1)));
     service.run(7);
     verify(snapshots).write(eq(store.connection),eq(7L),anyMap());

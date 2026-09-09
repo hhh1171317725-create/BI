@@ -92,6 +92,8 @@ public class GdtBidMonitorClient {
     for(Object item:list){
       if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("广点通计划数据格式异常");
       Map<String,Object> row=new LinkedHashMap<>();
+      Map<String,Object> providerData=new LinkedHashMap<>();raw.forEach((key,value)->providerData.put(String.valueOf(key),value));
+      row.put("provider_data",providerData);
       row.put("promotion_id",id(raw.get("adgroup_id")));row.put("promotion_name",raw.get("adgroup_name"));
       row.put("advertiser_id",id(raw.get("advertiser_id")));row.put("media_account_id",id(raw.get("media_account_id")));
       row.put("media_account_name",raw.get("advertiser_nick"));row.put("user_name",raw.get("user_name"));

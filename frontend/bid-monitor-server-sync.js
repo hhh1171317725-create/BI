@@ -52,7 +52,7 @@ async function syncLoad(manual=false){
   const snapshot=response.snapshot;
   if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return;}
   if(!manual&&(snapshot.updatedAt===syncStamp||(raw.length&&!followSync)))return;
-  receive(snapshot.rows,'同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
+  receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
     (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
@@ -72,7 +72,7 @@ function syncShow(result){
   $('#syncStop').disabled=syncAction||!result.enabled;
   $('#syncRun').disabled=syncAction||!result.enabled||['running','waiting'].includes(result.state);
   $('#syncForget').disabled=syncAction||!result.configured;
-  const names={waiting:'已排队',running:'正在读取全部计划',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
+  const names={waiting:'已排队',running:'正在读取字节和广点通全部计划',ready:'每 10 分钟自动查询已开启',retrying:'等待下一轮自动查询',paused:'同步已暂停',stopped:'未开启定时同步'};
   const last=result.lastSuccess?'；最近成功：'+new Date(result.lastSuccess).toLocaleString('zh-CN'):'';
   const next=result.enabled&&['ready','retrying'].includes(result.state)&&result.dueAt?'；下次查询：'+new Date(result.dueAt).toLocaleString('zh-CN'):'';
   const progress=syncProgressText(result.progress);
@@ -106,7 +106,7 @@ async function syncRefresh(){
 }
 for(const [id,command] of [['syncStart','start'],['syncRun','run'],['syncStop','stop'],['syncForget','forget']])$('#'+id).onclick=async()=>{
   if(syncAction)return;
-  if(command==='start'&&!confirm('将按当前网站账户加密保存创量登录凭据，并在服务器定时读取数据。关闭浏览器后仍会继续。确认保存并启用？'))return;
+  if(command==='start'&&!confirm('将按当前网站账户加密保存创量登录凭据，并在服务器定时读取字节和广点通数据。关闭浏览器后仍会继续。确认保存并启用？'))return;
   if(command==='forget'&&!confirm('停止定时同步并清除保存的创量凭据？已有数据快照会保留。'))return;
   syncAction=true;syncRevision++;
   for(const button of ['syncStart','syncRun','syncStop','syncForget'])$('#'+button).disabled=true;

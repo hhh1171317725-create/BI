@@ -48,6 +48,13 @@ class BidSnapshotControllerTest {
     assertEquals("深度付费",saved.get("deep_external_action_text"));assertEquals("注册",saved.get("external_action_text"));assertEquals("投放中",saved.get("status_text"));
   }
 
+  @Test void retainsProviderAndAllowsTheSamePlanIdAcrossProviders(){
+    var byteRow=row();byteRow.put("source_platform","byte");byteRow.put("platform_text","字节");
+    var gdtRow=row();gdtRow.put("source_platform","gdt");gdtRow.put("platform_text","广点通");
+    var saved=(List<?>)BidSnapshotController.validate(input(List.of(byteRow,gdtRow))).get("rows");
+    assertEquals(2,saved.size());assertEquals("广点通",((Map<?,?>)saved.get(1)).get("platform_text"));
+  }
+
   @Test void retainsCreationScopeAndRejectsInvalidRanges() {
     var data=new HashMap<>(input(List.of(row())));
     var date=LocalDate.now(ReportService.BEIJING);

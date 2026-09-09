@@ -17,14 +17,15 @@ public class BidServerSyncService {
   private final BidServerSyncStore store;
   private final BidCredentialCipher cipher;
   private final BidMonitorApiController upstream;
+  private final GdtBidMonitorClient gdt;
   private final BidSnapshotController snapshots;
   private final UserService users;
   private final ExecutorService workers=Executors.newFixedThreadPool(2);
   private final Semaphore slots=new Semaphore(2);
 
   public BidServerSyncService(BidServerSyncStore store,BidCredentialCipher cipher,
-      BidMonitorApiController upstream,BidSnapshotController snapshots,UserService users) {
-    this.store=store;this.cipher=cipher;this.upstream=upstream;this.snapshots=snapshots;this.users=users;
+      BidMonitorApiController upstream,GdtBidMonitorClient gdt,BidSnapshotController snapshots,UserService users) {
+    this.store=store;this.cipher=cipher;this.upstream=upstream;this.gdt=gdt;this.snapshots=snapshots;this.users=users;
   }
 
   Map<String,Object> status(long owner) throws Exception { return view(owner,store.get(owner)); }
@@ -131,7 +132,8 @@ public class BidServerSyncService {
       if(input.containsKey(key))request.put(key,input.get(key));
     request.put("cookie",cookie);request.put("clientUser",state.get("clientUser"));request.put("mainUserId",state.get("mainUserId"));
     if(!allowed(owner))throw new IllegalStateException("permission");
-    var result=upstream.page(request);
+    String platform=text(input,"platform");
+    var result="gdt".equals(platform)?gdt.page(request):upstream.page(request);
     requireQueryRevision(store.get(owner),text(input,"queryRevision"));
     if(!allowed(owner))throw new IllegalStateException("permission");
     return result;
@@ -284,6 +286,7 @@ public class BidServerSyncService {
 
   @FunctionalInterface interface Progress { void update(int done,long total)throws Exception; }
   private record PageChunk(long total,List<Map<String,Object>> rows) {}
+  private record SourceRows(long total,long duplicates,List<Map<String,Object>> rows) {}
   static Map<String,Object> progressValue(int done,long total,long startedAt){
     return Map.of("done",done,"total",total,"startedAt",startedAt,"updatedAt",System.currentTimeMillis());
   }
@@ -295,18 +298,32 @@ public class BidServerSyncService {
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
         "createdStart",start,"createdEnd",today.toString()));
-    var rows=new ArrayList<Map<String,Object>>();long received=0,duplicates=0;var ids=new HashSet<String>();
+    var rows=new ArrayList<Map<String,Object>>();long sourceTotal=0,duplicates=0;var ids=new HashSet<String>();
     progress.update(0,-1);
-    PageChunk first=fetchPage(input,1,-1),chunk=first;long total=first.total();
+    for(String platform:List.of("byte","gdt")){
+      SourceRows source=collectSource(input,platform,ids,rows.size(),sourceTotal,progress);
+      rows.addAll(source.rows());sourceTotal+=source.total();duplicates+=source.duplicates();
+      if(rows.size()>BidMonitorApiController.MAX_PLAN_ROWS)
+        throw new IllegalArgumentException("字节与广点通计划合计超过 100000 条，请缩小计划创建日期范围");
+    }
+    if(rows.isEmpty())throw new IllegalArgumentException("查询范围内没有字节或广点通计划，保留原有结果");
+    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
+        "upstreamTotal",rows.size(),"sourceTotal",sourceTotal,"duplicateRows",duplicates,
+        "createdStart",start,"createdEnd",today.toString()));
+  }
+
+  private SourceRows collectSource(Map<String,Object> input,String platform,Set<String> ids,int completed,long completedTotal,Progress progress)throws Exception{
+    var rows=new ArrayList<Map<String,Object>>();long received=0,duplicates=0;
+    PageChunk first=fetchPage(input,platform,1,-1),chunk=first;long total=first.total();
     int pages=(int)((total+BidMonitorApiController.PAGE_SIZE-1)/BidMonitorApiController.PAGE_SIZE);
-    for(var row:chunk.rows()){if(ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))rows.add(row);else duplicates++;}
-    received+=chunk.rows().size();progress.update((int)received,total);
+    for(var row:chunk.rows()){if(ids.add(planKey(row)))rows.add(row);else duplicates++;}
+    received+=chunk.rows().size();progress.update(completed+(int)received,completedTotal+total);
     try(var executor=Executors.newVirtualThreadPerTaskExecutor()){
       for(int firstPage=2;firstPage<=pages;firstPage+=PAGE_CONCURRENCY){
         int lastPage=Math.min(pages,firstPage+PAGE_CONCURRENCY-1);
         var pending=new ArrayList<Future<PageChunk>>();
         for(int page=firstPage;page<=lastPage;page++){
-          int requestedPage=page;pending.add(executor.submit(()->fetchPage(input,requestedPage,total)));
+          int requestedPage=page;pending.add(executor.submit(()->fetchPage(input,platform,requestedPage,total)));
         }
         for(Future<PageChunk> future:pending){
           try{chunk=future.get();}
@@ -314,24 +331,26 @@ public class BidServerSyncService {
             if(error.getCause() instanceof Exception cause)throw cause;
             throw new IllegalStateException("分页查询失败",error.getCause());
           }
-          for(var row:chunk.rows()){if(ids.add(row.get("media_account_id")+":"+row.get("promotion_id")))rows.add(row);else duplicates++;}
-          received+=chunk.rows().size();progress.update((int)received,total);
+          for(var row:chunk.rows()){if(ids.add(planKey(row)))rows.add(row);else duplicates++;}
+          received+=chunk.rows().size();progress.update(completed+(int)received,completedTotal+total);
         }
       }
     }
-    return BidSnapshotController.validate(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
-        "upstreamTotal",rows.size(),"sourceTotal",total,"duplicateRows",duplicates,
-        "createdStart",start,"createdEnd",today.toString()));
+    return new SourceRows(total,duplicates,rows);
   }
 
-  private PageChunk fetchPage(Map<String,Object> base,int page,long expectedTotal)throws Exception{
+  private static String planKey(Map<String,Object> row){
+    return row.get("source_platform")+":"+row.get("media_account_id")+":"+row.get("promotion_id");
+  }
+
+  private PageChunk fetchPage(Map<String,Object> base,String platform,int page,long expectedTotal)throws Exception{
     if(page<1||page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
       throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
     var input=new LinkedHashMap<>(base);input.put("page",page);if(expectedTotal>=0)input.put("total",expectedTotal);
-    var result=upstream.page(input);long total;
+    var result="gdt".equals(platform)?gdt.page(input):upstream.page(input);long total;
     try{total=Long.parseLong(String.valueOf(result.get("total")));}
     catch(Exception error){throw new IllegalArgumentException("第 "+page+" 页缺少有效的计划总数");}
-    if(total<1)throw new IllegalArgumentException("查询范围内没有计划，保留原有结果");
+    if(total<0)throw new IllegalArgumentException("第 "+page+" 页的计划总数无效");
     if(total>BidMonitorApiController.MAX_PLAN_ROWS)
       throw new IllegalArgumentException("计划总数 "+total+" 超过 100000 条，请缩小计划创建日期范围");
     if(expectedTotal>=0&&expectedTotal!=total)
@@ -345,7 +364,8 @@ public class BidServerSyncService {
       var row=new LinkedHashMap<String,Object>();
       for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
           "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
-          "deep_external_action_text","external_action_text","status_text"))row.put(key,raw.get(key));
+          "deep_external_action_text","external_action_text","status_text","source_platform","platform_text"))row.put(key,raw.get(key));
+      row.putIfAbsent("source_platform",platform);row.putIfAbsent("platform_text","gdt".equals(platform)?"广点通":"字节");
       for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
         Object id=row.get(key);
         if(id instanceof Float||id instanceof Double)throw new IllegalArgumentException("第 "+page+" 页的账户或计划 ID 精度异常");
@@ -363,7 +383,7 @@ public class BidServerSyncService {
     // Do not persist upstream bodies, cookies, or exception stacks in user-visible status.
     String message=Objects.toString(error.getMessage(),"");
     var code=java.util.regex.Pattern.compile("code=([0-9-]{1,10})").matcher(message);
-    return "服务器同步失败"+(code.find()?"（创量 code="+code.group(1)+"）":"")
+    return "服务器同步失败"+(code.find()?"（上游 code="+code.group(1)+"）":"")
         +"，已暂停并保留旧快照。请核对有效登录凭据、接口权限及网络后重新启用；不会绕过验证。";
   }
 

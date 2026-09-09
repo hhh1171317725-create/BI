@@ -21,7 +21,7 @@ public class BidSnapshotController {
   private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
       "media_account_id", "advertiser_id", "media_account_name", "user_name", "promotion_create_time",
       "stat_cost", "convert_cnt", "active_register", "cpa_bid", "app_type_text", "deep_bid_type_text",
-      "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text");
+      "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "source_platform", "platform_text");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
     this(sessions,reports,mapper,null);
@@ -121,7 +121,7 @@ public class BidSnapshotController {
       record.put("advertiser_id",BidMonitorApiController.idText(record.get("advertiser_id")));
       Object id = record.get("promotion_id");
       if (id == null || !id.toString().matches("[0-9]+")
-          || !ids.add(record.get("media_account_id") + ":" + id))
+          || !ids.add(record.get("source_platform") + ":" + record.get("media_account_id") + ":" + id))
         throw new IllegalArgumentException("计划 ID 缺失或重复");
       for (String field : List.of("stat_cost", "convert_cnt", "active_register", "cpa_bid")) {
         Object value = record.get(field);

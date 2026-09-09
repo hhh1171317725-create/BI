@@ -42,10 +42,10 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const fmt=v=>v===null||v===undefined?'--':Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtPercent=v=>Number.isFinite(v)?fmt(v*100)+'%':'--';
 const fmtRoi=v=>Number.isFinite(v)?Number(v).toLocaleString('zh-CN',{minimumFractionDigits:3,maximumFractionDigits:3}):'--';
-const textSortKeys=new Set(['name','account','accountId','optimizer','task','appType','deepBidType','deepExternalAction','externalAction','planStatus']);
+const textSortKeys=new Set(['name','platform','account','accountId','optimizer','task','appType','deepBidType','deepExternalAction','externalAction','planStatus']);
 const planColumns=[['计划','name'],['账户','account'],['优化师','optimizer'],['任务','task'],['原单价','basePrice'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['当前出价','bid'],['预估 ROI','estimatedRoi'],['盈亏线出价','breakEvenBid'],['出价利润率','bidProfitRate'],['gap','gap'],['实际单价','price']];
-const optionalColumns=[['应用类型','appType'],['深度出价类型','deepBidType'],['深度 CPA 出价','deepCpaBid'],['深度转化目标','deepExternalAction'],['转化目标','externalAction'],['计划状态','planStatus']];
-const optionalTextKeys=['appType','deepBidType','deepExternalAction','externalAction','planStatus'];
+const optionalColumns=[['平台','platform'],['应用类型','appType'],['深度出价类型','deepBidType'],['深度 CPA 出价','deepCpaBid'],['深度转化目标','deepExternalAction'],['转化目标','externalAction'],['计划状态','planStatus']];
+const optionalTextKeys=['platform','appType','deepBidType','deepExternalAction','externalAction','planStatus'];
 const optionalColumnStorage='bid-monitor-visible-columns-v1';
 let visibleOptionalColumns=new Set();
 try{visibleOptionalColumns=new Set(JSON.parse(localStorage.getItem(optionalColumnStorage)||'[]').filter(key=>optionalColumns.some(column=>column[1]===key)));}catch{}
@@ -62,7 +62,7 @@ function planCell(r,key){
   return `<td title="${esc(title)}" class="${tone}">${value}</td>`;
 }
 const aggregateColumns=[['计划数','plans'],['今日新上','todayPlans'],['有消耗计划','spendingPlans'],['账户数','accounts'],['价格匹配','priced'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['佣金','commission'],['预估赔付','estimatedCompensation'],['现金消耗','cashCost'],['现金利润','profit'],['预估 ROI','estimatedRoi'],['出价利润率','bidProfitRate']];
-const dimensionLabels={account:'账户名称',accountId:'账户ID',optimizer:'优化师',task:'任务',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型'};
+const dimensionLabels={platform:'平台',account:'账户名称',accountId:'账户ID',optimizer:'优化师',task:'任务',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型'};
 const viewDimensions=view=>view==='conversionTargets'?['externalAction','deepExternalAction','appType']:view==='optimizerTasks'?['optimizer','task']:view==='tasks'?['task']:view==='accounts'?['account','accountId']:['optimizer'];
 function sortHeader(label,key){const state=key===sortKey?sortDirection:'none',aria=state==='asc'?'ascending':state==='desc'?'descending':'none',description=state==='asc'?'当前升序':state==='desc'?'当前降序':'点击排序';return `<th aria-sort="${aria}"><button class="sort-header" type="button" data-sort-key="${key}" data-sort-state="${state}" aria-label="按${label}排序，${description}">${label}</button></th>`;}
 function sortRows(rows){return rows.sort((a,b)=>{const left=a[sortKey],right=b[sortKey],leftMissing=left===null||left===undefined||Number.isNaN(left),rightMissing=right===null||right===undefined||Number.isNaN(right);if(leftMissing||rightMissing)return leftMissing===rightMissing?0:leftMissing?1:-1;const result=typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right),'zh-CN',{numeric:true});return sortDirection==='asc'?result:-result;});}
@@ -83,7 +83,7 @@ function optionValue(value){return `<option value="${esc(value)}">${esc(value||'
 function drawValueFilters(){
   if(valueFilterRows===analyzed)return;
   valueFilterRows=analyzed;
-  for(const [key,id] of [['appType','appTypeFilter'],['deepBidType','deepBidTypeFilter'],['deepExternalAction','deepExternalActionFilter'],['externalAction','externalActionFilter'],['planStatus','statusFilter']]){
+  for(const [key,id] of [['platform','platformFilter'],['appType','appTypeFilter'],['deepBidType','deepBidTypeFilter'],['deepExternalAction','deepExternalActionFilter'],['externalAction','externalActionFilter'],['planStatus','statusFilter']]){
     const select=$('#'+id),chosen=select.value,values=[...new Set(analyzed.map(row=>row[key]).filter(value=>value!==''))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
     select.innerHTML='<option value="">全部</option>'+values.map(optionValue).join('');
     if([...select.options].some(option=>option.value===chosen))select.value=chosen;
@@ -105,12 +105,13 @@ function render(){
   $('#accountDrill').hidden=!selectedAccount;$('#accountDrillLabel').textContent=selectedAccount?'当前账户：'+selectedAccount.label:'';
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...displayedMetrics]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value;
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,filter,...optionalTextKeys.map(key=>$('#'+(key==='planStatus'?'statusFilter':key+'Filter')).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,filter,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===taskRules[Number(selected.slice(5))]?.name))&&
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
     (filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null))&&
-    optionalTextKeys.every(key=>{const id=key==='planStatus'?'statusFilter':key+'Filter';return !$('#'+id).value||r[key]===$('#'+id).value;})&&
+    optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
@@ -154,26 +155,31 @@ $('#fetch').onclick=async()=>{
         (data.snapshot.duplicateRows?` · 已去除 ${data.snapshot.duplicateRows} 条上游重复记录`:''),{start:data.snapshot.date,end:data.snapshot.date},true);
       syncStamp=data.snapshot.updatedAt;return;
     }
-    let all=[],total=null,received=0,duplicates=0;const ids=new Set();
-    for(let p=1;total===null||received<total;p++){
-      if(p>1000)throw Error('计划总数超过 100000 条，请缩小计划创建日期范围');
-      message(`正在读取第 ${p} 页，已读取 ${received}${total===null?'':' / '+total} 条`);
-      const data=await api('/api/bid-monitor/server-sync/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,page:p,total}),signal:abort.signal});
-      const n=Number(data.total);
-      if(data.total==null||!Number.isSafeInteger(n)||n<0)throw Error('接口总条数异常');
-      if(total!==null&&total!==n)throw Error('分页期间计划总数变化，请重试');total=n;
-      if(total>100000)throw Error('计划总数超过 100000 条，请缩小计划创建日期范围');
-      if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,total-received)))throw Error('分页数据不完整，保留原有结果');
-      for(const row of data.rows){const r=B.normalize(row),id=`${r.accountId}:${r.id}`;if(!r.id)throw Error('分页出现计划 ID 缺失，保留原有结果');if(ids.has(id)){duplicates++;continue;}ids.add(id);all.push(row);}
-      received+=data.rows.length;
+    let all=[],combinedTotal=0,duplicates=0;const ids=new Set();
+    for(const platform of ['byte','gdt']){
+      let total=null,received=0;const label=platform==='gdt'?'广点通':'字节';
+      for(let p=1;total===null||received<total;p++){
+        if(p>1000)throw Error(`${label}计划总数超过 100000 条，请缩小计划创建日期范围`);
+        message(`正在读取${label}第 ${p} 页，已读取 ${received}${total===null?'':' / '+total} 条`);
+        const data=await api('/api/bid-monitor/server-sync/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,platform,page:p,total}),signal:abort.signal});
+        const n=Number(data.total);
+        if(data.total==null||!Number.isSafeInteger(n)||n<0)throw Error(`${label}接口总条数异常`);
+        if(total!==null&&total!==n)throw Error(`${label}分页期间计划总数变化，请重试`);total=n;
+        if(total>100000)throw Error(`${label}计划总数超过 100000 条，请缩小计划创建日期范围`);
+        if(!Array.isArray(data.rows)||data.rows.length!==Math.min(100,Math.max(0,total-received)))throw Error(`${label}分页数据不完整，保留原有结果`);
+        for(const row of data.rows){const r=B.normalize(row),id=`${platform}:${r.accountId}:${r.id}`;if(!r.id)throw Error(`${label}分页出现计划 ID 缺失，保留原有结果`);if(ids.has(id)){duplicates++;continue;}ids.add(id);all.push(row);}
+        received+=data.rows.length;
+      }
+      combinedTotal+=total;
     }
-    if(received!==total)throw Error('全部计划读取不完整，保留原有结果');
-    receive(all,'创量查询 · 全部 '+new Date().toLocaleTimeString('zh-CN')+(duplicates?` · 已去除 ${duplicates} 条上游重复记录`:'')+` · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
+    if(all.length>100000)throw Error('字节与广点通计划合计超过 100000 条，请缩小计划创建日期范围');
+    if(!all.length)throw Error('字节和广点通均未返回计划，保留原有结果');
+    receive(all,'创量查询 · 字节 + 广点通 · 全部 '+new Date().toLocaleTimeString('zh-CN')+(duplicates?` · 已去除 ${duplicates} 条上游重复记录`:'')+` · 上游 ${combinedTotal} 条 · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
   }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);}finally{setBusy(false);}
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
-for(const id of ['search','viewMode','taskFilter','filter','pageSize','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
+for(const id of ['search','viewMode','taskFilter','filter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
   checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);
@@ -189,12 +195,12 @@ $('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render(
 $('#export').onclick=()=>{
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
-  const visibleOptional=optionalColumns.filter(column=>visibleOptionalColumns.has(column[1]));
+  const visibleOptional=optionalColumns.filter(column=>column[1]!=='platform'&&visibleOptionalColumns.has(column[1]));
   const exportMetrics=currentAggregateColumns(viewMode);
   const exportLabel={todayPlans:'今日新上计划数',spendingPlans:'有消耗计划数',priced:'已匹配价格计划数',estimatedCompensation:'预估赔付金额',estimatedRoi:'预估ROI'};
   let rows=aggregateMode?[[...dimensions.map(d=>dimensionLabels[d]),'统计开始','统计结束',...exportMetrics.map(([label,key])=>exportLabel[key]||label)],
-    ...aggregateRows.map(r=>[...dimensions.map(d=>r[d]),range.start,range.end,...exportMetrics.map(([,key])=>key==='estimatedRoi'?fmtRoi(r[key]):key==='bidProfitRate'?fmtPercent(r[key]):r[key])])]:[['计划ID','计划名称','账户ID','账户名称','优化师','任务','原单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率','gap','实际单价'],
-    ...visible.map(r=>[r.id,r.name,r.accountId,r.account,r.optimizer,r.task,r.basePrice,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
+    ...aggregateRows.map(r=>[...dimensions.map(d=>r[d]),range.start,range.end,...exportMetrics.map(([,key])=>key==='estimatedRoi'?fmtRoi(r[key]):key==='bidProfitRate'?fmtPercent(r[key]):r[key])])]:[['计划ID','计划名称','平台','账户ID','账户名称','优化师','任务','原单价','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率','gap','实际单价'],
+    ...visible.map(r=>[r.id,r.name,r.platform,r.accountId,r.account,r.optimizer,r.task,r.basePrice,range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
   if(!aggregateMode)rows[0].push(...visibleOptional.map(column=>column[0]));
   if(!aggregateMode&&planDisplayKeys){const columns=activePlanColumns();rows=[['计划ID','账户ID','统计开始','统计结束',...columns.map(column=>column[0])],...visible.map(r=>[r.id,r.accountId,range.start,range.end,...columns.map(([,key])=>['ratio','bidProfitRate'].includes(key)?fmtPercent(r[key]):['estimatedRoi','gap'].includes(key)?fmtRoi(r[key]):r[key])])];}
   const labels={plans:'计划明细',accounts:'账户汇总',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总',conversionTargets:'转化目标组合汇总'};
@@ -206,11 +212,11 @@ $('#gapReload').onclick=()=>void loadGap();
 
 // Only report fields are exposed to the assistant; configuration credentials stay out.
 window.getPetReportContext=()=>{
-  const fields={id:'计划ID',name:'计划',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',cost:'消耗',conversions:'转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'原单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
+  const fields={id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',cost:'消耗',conversions:'转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'原单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const item={...row,profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};
-  const filters=Object.fromEntries(['search','taskFilter','filter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).value]));
+  const filters=Object.fromEntries(['search','taskFilter','filter','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).value]));
   return {mode:'bid',reportType:'出价监测',range:range?[range.start,range.end]:[],loaded:!!range,source,
     filters:JSON.stringify({...filters,account:selectedAccount?.label||''}),view:$('#viewMode').value,
     summary:pick(totals),plans:ranked.slice(0,30).map(pick),

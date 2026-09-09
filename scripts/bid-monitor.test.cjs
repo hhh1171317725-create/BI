@@ -24,7 +24,8 @@ test('retains optimizer from upstream, snapshots and Excel without inventing mis
  assert.equal(r.id,'7681075475582042163');assert.equal(r.accountId,'7676449794404745237');
 });
 test('retains optional Chuangliang fields for report columns and filters',()=>{
- const result=normalize({app_type_text:'小程序',deep_bid_type_text:'深度转化',deep_cpabid:'88.5',deep_external_action_text:'深度付费',external_action_text:'注册',status_text:'投放中'});
+ const result=normalize({platform_text:'广点通',app_type_text:'小程序',deep_bid_type_text:'深度转化',deep_cpabid:'88.5',deep_external_action_text:'深度付费',external_action_text:'注册',status_text:'投放中'});
+ assert.equal(result.platform,'广点通');
  assert.equal(result.appType,'小程序');assert.equal(result.deepBidType,'深度转化');assert.equal(result.deepCpaBid,88.5);
  assert.equal(result.deepExternalAction,'深度付费');assert.equal(result.externalAction,'注册');assert.equal(result.planStatus,'投放中');
 });
@@ -88,6 +89,9 @@ test('aggregates account dimension by account name and advertiser ID',()=>{
  assert.equal(account.account,'同名账户');assert.equal(account.plans,2);assert.equal(account.accounts,1);assert.equal(account.cost,15);
  const renamed=require('../frontend/bid-monitor-core.js').aggregateGroups([...rows,{account:'改名账户',accountId:'1001',cost:7,price:null}],['account','accountId']);
  assert.equal(renamed.length,2);assert.equal(renamed.find(row=>row.accountId==='1001').cost,22);
+ const platforms=require('../frontend/bid-monitor-core.js').aggregateGroups([
+  {...rows[0],platform:'字节'},{...rows[0],platform:'广点通'}],['account','accountId']);
+ assert.equal(platforms.length,2);
 });
 test('analysis cache reuses calculations and invalidates price edits, gap and snapshots',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();

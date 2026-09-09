@@ -14,6 +14,7 @@ class BidServerSyncServiceTest {
   @TempDir Path dir;
   private final MemoryStore store=new MemoryStore();
   private final BidMonitorApiController upstream=mock(BidMonitorApiController.class);
+  private final GdtBidMonitorClient gdt=mock(GdtBidMonitorClient.class);
   private final BidSnapshotController snapshots=mock(BidSnapshotController.class);
   private final UserService users=mock(UserService.class);
   private BidCredentialCipher cipher;
@@ -28,12 +29,13 @@ class BidServerSyncServiceTest {
       var state=get(owner);action.apply(connection,state);states.put(owner,state);return get(owner);
     }
   }
-  @BeforeEach void setup(){
+  @BeforeEach void setup()throws Exception{
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
     cipher=new BidCredentialCipher(config);
     when(users.findById(anyLong())).thenAnswer(call->new UserRepository.UserAccount(call.getArgument(0),"operator","hash","admin",true,1,null,null,null));
     when(users.canUseTool(any(),eq("bidMonitor"))).thenReturn(true);
-    service=new BidServerSyncService(store,cipher,upstream,snapshots,users);
+    when(gdt.page(anyMap())).thenReturn(Map.of("total",0,"rows",List.of()));
+    service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,users);
   }
   @AfterEach void close(){service.close();}
   private Map<String,Object> input(){return new LinkedHashMap<>(Map.of("cookie","userId=123; chuangliang_session=private-test-cookie", "clientUser","123","mainUserId","456","minutes",10,"createdDays",7));}
@@ -96,6 +98,14 @@ class BidServerSyncServiceTest {
     verify(upstream,times(1)).page(anyMap());
     service.prepareQuery(7,input());assertThrows(IllegalArgumentException.class,()->service.queryPage(7,query));
     service.command(7,"forget");assertFalse(store.get(7).containsKey("credentialRevision"));
+  }
+  @Test void queryRoutesGdtPagesThroughTheSecondProvider()throws Exception{
+    var prepared=service.prepareQuery(7,input());
+    when(gdt.page(anyMap())).thenReturn(Map.of("total",2,"rows",List.of()));
+    var result=service.queryPage(7,Map.of("expectedUserId","7","queryRevision",prepared.get("queryRevision"),
+        "platform","gdt","page",1,"startDate","2026-09-09","endDate","2026-09-09"));
+    assertEquals(2,result.get("total"));verify(gdt).page(argThat(request->request.get("page").equals(1)));
+    verifyNoInteractions(upstream);
   }
   @Test void queryRejectsAccountChangedDuringNetworkRequest()throws Exception{
     var prepared=service.prepareQuery(7,input());
@@ -167,6 +177,16 @@ class BidServerSyncServiceTest {
     assertEquals("小程序",row.get("app_type_text"));assertEquals("深度转化",row.get("deep_bid_type_text"));
     assertEquals(88.5,row.get("deep_cpabid"));assertEquals("深度付费",row.get("deep_external_action_text"));
     assertEquals("注册",row.get("external_action_text"));assertEquals("投放中",row.get("status_text"));
+    assertEquals("字节",row.get("platform_text"));assertEquals("byte",row.get("source_platform"));
+  }
+  @Test void mergesByteAndGdtRowsWithoutCrossPlatformIdCollisions()throws Exception{
+    var byteRows=rows(0,1);var gdtRows=rows(0,1);
+    gdtRows.getFirst().put("source_platform","gdt");gdtRows.getFirst().put("platform_text","广点通");
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",byteRows));
+    when(gdt.page(anyMap())).thenReturn(Map.of("total",1,"rows",gdtRows));
+    var snapshot=service.collect(input(),input().get("cookie").toString());
+    assertEquals(2,((List<?>)snapshot.get("rows")).size());assertEquals(2L,snapshot.get("upstreamTotal"));
+    assertEquals(2L,snapshot.get("sourceTotal"));assertEquals(0L,snapshot.get("duplicateRows"));
   }
   @Test void creationWindowIncludesTodayAndThreePriorDates(){
     assertEquals(java.time.LocalDate.parse("2026-09-01"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-04")));
@@ -242,7 +262,7 @@ class BidServerSyncServiceTest {
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
   }
   @Test void persistedScheduleRunsWithoutBrowserAndAfterServiceRestart()throws Exception{
-    service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,snapshots,users);
+    service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,users);
     when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",rows(0,1)));
     service.run(7);
     verify(snapshots).write(eq(store.connection),eq(7L),anyMap());

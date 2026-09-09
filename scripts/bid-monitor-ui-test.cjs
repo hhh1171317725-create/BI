@@ -5,7 +5,7 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../frontend');
 const todayChina=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
-const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
+const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,source_platform:i%2?'gdt':'byte',platform_text:i%2?'广点通':'字节',user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -18,7 +18,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   const columns=async changes=>{await page.locator('#openBidColumns').click();for(const [key,checked] of Object.entries(changes))await page.locator(`#bidColumnsDialog [data-column-key="${key}"]`).setChecked(checked);await page.locator('#bidColumnsDialog .primary').click();};
   const resetColumns=async()=>{await page.locator('#openBidColumns').click();await page.locator('#bidColumnsDialog .dialog-reset').click();await page.locator('#bidColumnsDialog .primary').click();};
   let snapshot={date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)},snapshotQueries=0;
-  const syncCommands=[],queriedPages=[],preparedQueries=[];let savedRules=[],pricingRevision='';
+  const syncCommands=[],queriedPages=[],preparedQueries=[];let gdtQueries=0,savedRules=[],pricingRevision='';
   let syncStatus={userId:'1',configured:false,enabled:false,state:'stopped',minutes:10,createdDays:4};
   let ding={userId:'1',configured:false,enabled:false,time:'18:00',tasks:[],keyword:'',revision:'',state:'',lastResult:'尚未发送'},dingSent=0;
   await page.route('**/api/bid-monitor/dingtalk**',async route=>{
@@ -54,7 +54,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    if(action==='page'){
     const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');assert.equal(input.queryRevision,'owned-revision');
     assert.equal(input.cookie,undefined);assert.equal(input.clientUser,undefined);
-    const p=input.page;queriedPages.push(p);
+    const p=input.page;if(input.platform==='gdt'){gdtQueries++;await route.fulfill({json:{total:0,rows:[]}});return;}queriedPages.push(p);
     await route.fulfill({json:{total:450,rows:Array.from({length:p===5?50:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))}});return;
    }
    if(request.method()==='POST'){
@@ -105,6 +105,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
+  await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
+  await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),16);assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
   assert.equal(await page.locator('#rows tr td').count(),15);
@@ -179,10 +181,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#source').textContent(),/2026-09-03/);
   await page.locator('#cookie').fill('test-session');await page.locator('#fetch').click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');assert.deepEqual(queriedPages,[1,2,3,4,5]);
-  assert.match(await page.locator('#source').textContent(),/创量查询 · 全部/);
+  assert.match(await page.locator('#source').textContent(),/创量查询 · 字节 \+ 广点通 · 全部/);assert.equal(gdtQueries,1);
   assert.equal(await page.locator('#cookie').inputValue(),'');assert.equal(preparedQueries[0].cookie,'test-session');
   await page.locator('#fetch').click();await page.waitForFunction(()=>!document.querySelector('#fetch').disabled);
-  assert.deepEqual(queriedPages,[1,2,3,4,5,1,2,3,4,5]);assert.equal(preparedQueries[1].cookie,'');
+  assert.deepEqual(queriedPages,[1,2,3,4,5,1,2,3,4,5]);assert.equal(gdtQueries,2);assert.equal(preparedQueries[1].cookie,'');
   // Historical queries and imports are not replaced by automatic snapshot polling.
   await page.evaluate(()=>syncLoad());assert.equal(await page.locator('#count').textContent(),'450 条');
   const dates=await page.evaluate(()=>{const end=today(),d=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-3);return{end,start:d.toISOString().slice(0,10)}});

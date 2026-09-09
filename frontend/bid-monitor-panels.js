@@ -13,7 +13,7 @@
  }
  const filter=dialog('bidFilterDialog','更多筛选','设置筛选条件，点击确认后应用到当前已加载的数据。');
  filter.body.classList.add('bid-filter-fields');filter.reset.textContent='重置条件';
- const filterIds=['appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'];
+ const filterIds=['platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'];
  const filterError=make('p','bid-dialog-error');filterError.setAttribute('role','alert');filter.element.querySelector('footer').before(filterError);
  const more=make('button','more-filters','▽ 更多筛选');more.id='openBidFilters';more.type='button';
  report.querySelector('.report-toolbar').insertBefore(more,document.getElementById('export'));

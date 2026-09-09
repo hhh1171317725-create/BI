@@ -28,7 +28,7 @@ let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],gr
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
-  gapData=null;render();$('#gapStatus').textContent='正在关联大航海日报近3日账户数据…';
+  gapData=null;render();$('#gapStatus').textContent='正在关联统计结束日前第4天至第2天的大航海账户数据…';
   try{
     const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
     if(generation!==gapGeneration)return;

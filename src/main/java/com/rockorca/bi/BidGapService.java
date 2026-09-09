@@ -11,13 +11,13 @@ public class BidGapService {
   public BidGapService(ReportRepository repository, ReportService reports) { this.repository=repository; this.reports=reports; }
 
   public Map<String,Object> load(String endDate) {
-    LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(3), end=anchor.minusDays(1);
+    LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(4), end=anchor.minusDays(2);
     List<Map<String,Object>> rows=reports.buildDhhAccountRows(repository.readDhhRows(start.toString(),end.toString(),""));
     return calculate(rows,anchor);
   }
 
   static Map<String,Object> calculate(List<Map<String,Object>> rows,LocalDate anchor) {
-    LocalDate start=anchor.minusDays(3), end=anchor.minusDays(1);
+    LocalDate start=anchor.minusDays(4), end=anchor.minusDays(2);
     Map<String,Map<String,double[]>> grouped=new LinkedHashMap<>();
     for(var row:rows){
       String id=ReportService.text(row.get("账户ID")),date=ReportService.text(row.get("日期"));
@@ -38,6 +38,6 @@ public class BidGapService {
       accounts.put(id,ReportService.mapOf("gap",valid==0?null:sum/valid,"validDays",valid,"days",detail));
     });
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),"accounts",accounts,
-        "basis","大航海日报账户分摊口径；每日汇总结算数÷注册数后取算术平均；无数据或注册数为0的日期不参与平均");
+        "basis","使用统计结束日前一天之前的3天（不含前一天）；大航海日报账户分摊口径；每日汇总结算数÷注册数后取算术平均；无数据或注册数为0的日期不参与平均");
   }
 }

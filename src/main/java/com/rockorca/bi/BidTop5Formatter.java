@@ -68,7 +68,7 @@ final class BidTop5Formatter {
       for(var row:selected.stream().limit(5).toList()){
         BigDecimal price=number(rule.get("price"));boolean gapMissing=false;
         if(accountGaps!=null){
-          Object entry=accountGaps.get(Objects.toString(row.get("advertiser_id"),""));
+          Object entry=BidTaskInference.accountEntry(row,accountGaps);
           Object gap=entry instanceof Map<?,?> m?m.get("gap"):null;
           gapMissing=gap==null;price=gapMissing?BigDecimal.ZERO:price.multiply(number(gap));
         }

@@ -1,9 +1,9 @@
 (function(root){
   'use strict';
-  const aliases={id:['promotion_id','计划ID','广告ID','计划 ID'],name:['promotion_name','计划名称','广告名称'],platform:['platform_text','投放平台','平台'],account:['media_account_name','advertiser_nick','account_name','账户名称','广告账户名称'],optimizer:['user_name','优化师','优化师姓名'],accountId:['advertiser_id','账户ID','账户 ID'],createdAt:['promotion_create_time','计划创建时间','创建时间'],cost:['stat_cost','消耗','总消耗'],conversions:['convert_cnt','转化数'],registrations:['active_register','注册数','注册'],bid:['cpa_bid','出价','目标转化出价','目标转化成本'],appType:['app_type_text','应用类型'],deepBidType:['deep_bid_type_text','深度出价类型'],deepCpaBid:['deep_cpabid','深度CPA出价'],deepExternalAction:['deep_external_action_text','深度转化目标'],externalAction:['external_action_text','转化目标'],planStatus:['status_text','计划状态']};
+  const aliases={id:['promotion_id','计划ID','广告ID','计划 ID'],name:['promotion_name','计划名称','广告名称'],platform:['platform_text','投放平台','平台'],account:['media_account_name','advertiser_nick','account_name','账户名称','广告账户名称'],optimizer:['user_name','优化师','优化师姓名'],accountId:['advertiser_id','账户ID','账户 ID'],internalAccountId:['media_account_id'],createdAt:['promotion_create_time','计划创建时间','创建时间'],cost:['stat_cost','消耗','总消耗'],conversions:['convert_cnt','转化数'],registrations:['active_register','注册数','注册'],bid:['cpa_bid','出价','目标转化出价','目标转化成本'],appType:['app_type_text','应用类型'],deepBidType:['deep_bid_type_text','深度出价类型'],deepCpaBid:['deep_cpabid','深度CPA出价'],deepExternalAction:['deep_external_action_text','深度转化目标'],externalAction:['external_action_text','转化目标'],planStatus:['status_text','计划状态']};
   function value(row,keys){for(const key of keys){if(row[key]!==undefined&&row[key]!==null&&row[key]!=='')return row[key]}return null}
   function number(v){if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(String(v).replaceAll(',','').trim());return Number.isFinite(n)&&n>=0?n:null}
-  function normalize(row){const out={};for(const [key,keys] of Object.entries(aliases))out[key]=value(row,keys);for(const key of ['cost','conversions','registrations','bid','deepCpaBid'])out[key]=number(out[key]);for(const key of ['id','name','platform','account','accountId','optimizer','createdAt','appType','deepBidType','deepExternalAction','externalAction','planStatus'])out[key]=String(out[key]??'');if(!out.account&&row.account_info&&typeof row.account_info==='object')out.account=String(row.account_info.media_account_name||row.account_info.account_name||'');return out}
+  function normalize(row){const out={};for(const [key,keys] of Object.entries(aliases))out[key]=value(row,keys);for(const key of ['cost','conversions','registrations','bid','deepCpaBid'])out[key]=number(out[key]);for(const key of ['id','name','platform','account','accountId','internalAccountId','optimizer','createdAt','appType','deepBidType','deepExternalAction','externalAction','planStatus'])out[key]=String(out[key]??'');if(!out.account&&row.account_info&&typeof row.account_info==='object')out.account=String(row.account_info.media_account_name||row.account_info.account_name||'');return out}
   function analyze(row,price,margin,minSample,current){
     const r={...row,ratio:null,cpa:null,breakEven:null,ceiling:null,revenue:null,profit:null,impliedCost:null,bidRoi:null,actualRoi:null,projectedCost:null,projectedProfit:null,status:'missing'};
     if(!(price>0)||!(margin>=0&&margin<100)||!(minSample>=1))throw Error('结算价必须大于 0，毛利率为 0–99%，最小样本至少为 1');
@@ -37,16 +37,20 @@
     const price=number(matches[0].price),task=String(matches[0].name||'').trim(),valid=Boolean(task)&&price>0&&price<=1000000;
     return{task,price:valid?price:null,pricingStatus:valid?'priced':'price-missing',taskSource:'account-name'};
   }
+  const canonicalId=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
+  function buildGapIndex(gaps){const index=new Map();for(const [id,value] of Object.entries(gaps||{})){index.set(String(id),value);const canonical=canonicalId(id);if(canonical)index.set(canonical,value)}return index}
+  function gapFor(row,index){for(const id of [row.accountId,row.internalAccountId]){if(index.has(String(id)))return index.get(String(id));const canonical=canonicalId(id);if(canonical&&index.has(canonical))return index.get(canonical)}return null}
   function inferAccountTasks(rows,rules,gaps){
+    const gapIndex=buildGapIndex(gaps);
     const result=new Map(),groups=new Map();
     for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform)||taskFor(row,rules).task)continue;const key=accountIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     for(const [key,items] of groups){
-      const accountId=items.find(r=>r.accountId)?.accountId, evidence=gaps?.[accountId],historical=number(evidence?.settlementPrice);
+      const evidence=gapFor(items[0],gapIndex),historical=number(evidence?.settlementPrice);
       if(!(historical>0))continue;
       const ranked=rules.map(rule=>({rule,price:number(rule.price)})).filter(item=>item.price>0)
-        .map(item=>({...item,score:Math.abs(Math.log(item.price/historical)),difference:Math.abs(item.price-historical)})).sort((a,b)=>a.score-b.score);
-      const best=ranked[0],tolerance=Math.max(.02,historical*.02);
-      if(best&&best.difference<=tolerance&&(!ranked[1]||ranked[1].score-best.score>=.01))
+        .map(item=>({...item,difference:Math.abs(item.price-historical)})).sort((a,b)=>a.difference-b.difference);
+      const best=ranked[0];
+      if(best&&(!ranked[1]||ranked[1].difference-best.difference>1e-6))
         result.set(key,{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price}});
     }
     return result;
@@ -100,8 +104,8 @@
       // Pricing edits mutate rules in place; compare their small serialized value.
       const ruleKey=JSON.stringify(rules);
       if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps){
-        const inferred=inferAccountTasks(rows,rules,gaps);
-        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gaps?.[row.accountId]?.gap??null,inferred.get(accountIdentity(row))));
+        const inferred=inferAccountTasks(rows,rules,gaps),gapIndex=buildGapIndex(gaps);
+        result=rows.map(row=>analyzeTask(row,rules,0,20,current,gapFor(row,gapIndex)?.gap??null,inferred.get(accountIdentity(row))));
         previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;
       }
       return result;

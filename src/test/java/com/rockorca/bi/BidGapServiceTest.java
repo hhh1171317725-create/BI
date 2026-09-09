@@ -49,11 +49,11 @@ class BidGapServiceTest {
     assertEquals(630d,account.get("settlementCommission"));assertEquals(30d,account.get("settlementCount"));
   }
   @Test void dingtalkInfersGdtTaskFromHistoricalSettlementUnitPrice(){
-    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","无法识别账户",
+    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_id","456","media_account_name","无法识别账户",
         "promotion_id","p1","user_name","张三","stat_cost",100,"convert_cnt",20,"active_register",100,"cpa_bid",10);
     var snapshot=ReportService.mapOf("rows",List.of(row));
     var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","甲账户","price",10),Map.<String,Object>of("name","任务乙","keyword","乙账户","price",30));
-    String output=BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),Map.of("123",Map.of("gap",.2,"settlementPrice",10.01,"settlementPriceDate","2026-09-08"))).getFirst().get("text");
-    assertTrue(output.contains("历史结算价反推"));assertFalse(output.contains("暂无匹配计划"));
+    String output=BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),Map.of("000456.0",Map.of("gap",.2,"settlementPrice",10.01,"settlementPriceDate","2026-09-08"))).getFirst().get("text");
+    assertTrue(output.contains("历史结算价反推"));assertFalse(output.contains("暂无匹配计划"));assertFalse(output.contains("gap缺失"));
   }
 }

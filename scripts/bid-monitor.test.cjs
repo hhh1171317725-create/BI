@@ -120,11 +120,17 @@ test('explicit account-name task match takes priority over inference',()=>{
  const gaps={'123':{gap:.5,settlementPrice:10,settlementPriceDate:'2026-09-08'}};
  const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'account-name');assert.equal(result.price,15);
 });
-test('historical settlement price inference rejects distant and ambiguous task prices',()=>{
+test('historical settlement price inference chooses the nearest task and rejects equal-distance ties',()=>{
  const {inferAccountTasks}=require('../frontend/bid-monitor-core.js');
  const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'未知',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
- assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:20}],{'123':{settlementPrice:10}}).size,0);
- assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:10},{name:'B',keyword:'b',price:10.01}],{'123':{settlementPrice:10}}).size,0);
+ assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:20}],{'123':{settlementPrice:10}}).get(require('../frontend/bid-monitor-core.js').accountIdentity(rows[0])).rule.name,'A');
+ assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:10},{name:'B',keyword:'b',price:20}],{'123':{settlementPrice:15}}).size,0);
+});
+test('GDT matching accepts the provider internal account ID when the daily report uses it',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'external-123',media_account_id:'456',advertiser_nick:'未知',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
+ const result=cached(rows,[{name:'A',keyword:'不会命中',price:10}],false,{'000456.0':{gap:.8,settlementPrice:10,settlementPriceDate:'2026-09-08'}})[0];
+ assert.equal(result.task,'A');assert.equal(result.gap,.8);assert.equal(result.price,8);
 });
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);

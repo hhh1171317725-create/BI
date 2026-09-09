@@ -8,6 +8,8 @@ final class BidTaskInference {
 
   static Map<String,Map<String,Object>> infer(List<?> rows,List<Map<String,Object>> rules,Map<String,Object> accountGaps){
     if(accountGaps==null)return Map.of();
+    Map<String,Object> gapIndex=new HashMap<>();
+    accountGaps.forEach((id,value)->{gapIndex.put(id,value);String canonical=canonicalId(id);if(!canonical.isBlank())gapIndex.put(canonical,value);});
     Map<String,List<Map<?,?>>> grouped=new LinkedHashMap<>();
     for(Object item:rows){
       if(!(item instanceof Map<?,?> row)||!"gdt".equalsIgnoreCase(text(row.get("source_platform"))))continue;
@@ -16,18 +18,16 @@ final class BidTaskInference {
     }
     Map<String,Map<String,Object>> result=new LinkedHashMap<>();
     grouped.forEach((id,items)->{
-      Object accountEntry=accountGaps.get(id);
+      Object accountEntry=gapEntry(rowIds(items.getFirst()),gapIndex);
       if(!(accountEntry instanceof Map<?,?> account))return;
       BigDecimal historical=positive(account.get("settlementPrice"));if(historical==null)return;
       var ranked=rules.stream().map(rule->new Candidate(rule,positive(rule.get("price"))))
           .filter(candidate->candidate.price()!=null)
-          .map(candidate->new Scored(candidate,Math.abs(Math.log(candidate.price().doubleValue()/historical.doubleValue()))))
-          .sorted(Comparator.comparingDouble(Scored::score)).toList();
+          .map(candidate->new Scored(candidate,candidate.price().subtract(historical).abs()))
+          .sorted(Comparator.comparing(Scored::difference)).toList();
       if(ranked.isEmpty())return;
       var best=ranked.getFirst();
-      BigDecimal tolerance=historical.multiply(new BigDecimal("0.02")).max(new BigDecimal("0.02"));
-      if(best.candidate().price().subtract(historical).abs().compareTo(tolerance)>0)return;
-      if(ranked.size()>1&&ranked.get(1).score()-best.score()<.01)return;
+      if(ranked.size()>1&&ranked.get(1).difference().subtract(best.difference()).abs().compareTo(new BigDecimal("0.000001"))<=0)return;
       result.put(id,ReportService.mapOf("rule",best.candidate().rule(),"method","historical-settlement-price",
           "settlementPrice",historical,"settlementPriceDate",account.get("settlementPriceDate"),"matchedPrice",best.candidate().price()));
     });
@@ -40,9 +40,21 @@ final class BidTaskInference {
     return matches.size()==1?matches.getFirst():null;
   }
 
+  static Object accountEntry(Map<?,?> row,Map<String,Object> accountGaps){
+    for(String id:rowIds(row)){
+      Object value=accountGaps.get(id);if(value!=null)return value;
+      String canonical=canonicalId(id);
+      for(var entry:accountGaps.entrySet())if(canonical.equals(canonicalId(entry.getKey())))return entry.getValue();
+    }
+    return null;
+  }
+
   private static BigDecimal positive(Object value){var number=nonnegative(value);return number!=null&&number.signum()>0?number:null;}
   private static BigDecimal nonnegative(Object value){try{var number=new BigDecimal(text(value));return number.signum()>=0?number:null;}catch(Exception ignored){return null;}}
   private static String text(Object value){return Objects.toString(value,"").trim();}
+  private static List<String> rowIds(Map<?,?> row){return List.of(text(row.get("advertiser_id")),text(row.get("media_account_id")));}
+  private static Object gapEntry(List<String> ids,Map<String,Object> index){for(String id:ids){Object value=index.get(id);if(value==null)value=index.get(canonicalId(id));if(value!=null)return value;}return null;}
+  private static String canonicalId(String id){return id.replaceFirst("\\.0+$","").replaceFirst("^0+(?=\\d)","");}
   private record Candidate(Map<String,Object> rule,BigDecimal price){}
-  private record Scored(Candidate candidate,double score){}
+  private record Scored(Candidate candidate,BigDecimal difference){}
 }

@@ -84,6 +84,15 @@ const root = path.resolve(__dirname, '../frontend');
     await page.reload();await page.waitForFunction(()=>document.getElementById('favoriteToolsOnly')?.textContent==='只看收藏（0）');
     await page.getByRole('button',{name:'收藏：Todo 任务',exact:true}).click();
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('marketing-tool-favorites-v1:test-user-1')).includes('builtin:todo')),false);
+    await page.locator('.uc-more-filters').click();
+    const filters=page.locator('#unifiedControlsDialog');
+    await filters.locator('[data-original="toolSearch"]').fill('无匹配工具');
+    await filters.locator('.uc-cancel').click();assert.equal(await page.locator('#toolSearch').inputValue(),'');
+    await page.locator('.uc-more-filters').click();
+    await filters.locator('[data-original="toolSearch"]').fill('无匹配工具');await filters.locator('.uc-apply').click();
+    assert.equal(await page.locator('.tool:visible').count(),0);
+    await page.locator('.uc-more-filters').click();await filters.locator('.uc-reset').click();await filters.locator('.uc-apply').click();
+    assert.equal(await page.locator('.tool:visible').count(),1);
     assert.deepEqual(errors, []);
     console.log('TOOLS UI PASS: permissions, search, categories, disabled terminal entry, mobile width');
   } finally {

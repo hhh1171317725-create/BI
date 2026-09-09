@@ -596,6 +596,7 @@
   <link rel="stylesheet" href="/site-polish.css?v=1" /><script src="/site-polish.js?v=1" defer></script>
   <link rel="stylesheet" href="/workflow-shortcuts.css?v=1" /><script src="/report-date-presets.js?v=1" defer></script>
   <script src="/pet-loader.js?v=20260907-global" defer></script>
+  <link rel="stylesheet" href="/unified-controls.css?v=1" /><script src="/unified-controls.js?v=1" defer></script>
 </head>
 <body>
   <header>
@@ -946,6 +947,8 @@
         const wasOpen = target.querySelector("details")?.open;
         const selectedCount = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column)).length;
         target.dataset.tableScope = scope;
+        target.dataset.selectedColumns = JSON.stringify(selectedColumns);
+        target.dataset.defaultColumns = JSON.stringify(selectedTableColumns({}, allColumns, fixedColumns));
         target.innerHTML = `
           <details class="column-menu" ${wasOpen ? "open" : ""}>
             <summary>选择列（${selectedCount}/${allColumns.length}）</summary>
@@ -965,7 +968,7 @@
       function tableView(rows, allColumns, fixedColumns, scope, tools) {
         const setting = tableSetting(scope);
         const selectedColumns = selectedTableColumns(setting, allColumns, fixedColumns);
-        const columns = allColumns.filter((column) => fixedColumns.includes(column) || selectedColumns.includes(column));
+        const columns = [...new Set([...fixedColumns, ...selectedColumns])].filter(column => allColumns.includes(column));
         renderTableTools(tools, scope, allColumns, fixedColumns);
         return { rows: sortRows(rows, scope), columns };
       }

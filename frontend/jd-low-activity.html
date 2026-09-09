@@ -68,6 +68,7 @@
   </style>
   <link rel="stylesheet" href="/app-ui.css?v=4" /><script src="/app-ui.js?v=4" defer></script>
   <script src="/pet-loader.js?v=20260907-global" defer></script>
+  <link rel="stylesheet" href="/unified-controls.css?v=1" /><script src="/unified-controls.js?v=1" defer></script>
 </head>
 <body>
   <header>
@@ -115,14 +116,14 @@
       <button class="tab" data-view="by_admin" type="button" role="tab" aria-selected="false">管理员</button>
     </nav>
     <div class="table-meta"><span id="tableSummary"></span><span id="sortSummary">按消耗降序</span></div>
-    <div class="table-wrap"><table id="table"></table></div>
+    <div class="uc-table-tools" id="mainColumnTools"></div><div class="table-wrap"><table id="table"></table></div>
     <div class="pager" id="pager"></div>
   </section>
 
   <section class="account-detail hidden" id="accountDetail">
     <div class="section-head"><div><h2>账户关联日期</h2><p class="note">选择账户查看逐日消耗、佣金、成本与订单变化。</p></div><label>账户<select id="accountSelect"></select></label></div>
     <div class="chart" id="accountChart" role="img" aria-label="账户每日趋势图"></div>
-    <div class="detail-table"><table id="accountTable"></table></div>
+    <div class="uc-table-tools" id="detailColumnTools"></div><div class="detail-table"><table id="accountTable"></table></div>
   </section>
 
   <script src="/echarts.min.js"></script>
@@ -227,10 +228,11 @@
       }).join('')}</tr>`).join(''):`<tr><td colspan="${columns.length}">当前范围没有数据</td></tr>`;
       return head+`<tbody>${body}</tbody>`;
     }
+    function visibleColumns(){const config=viewConfig[activeView];return window.BIControls?.tableColumns($("#mainColumnTools"),activeView,config.columns,config.identity,renderTable)||config.columns}
     function renderTable(){
       const config=viewConfig[activeView],rows=sortedRows(),pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));page=Math.min(page,pages);
       const visible=rows.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
-      $('#table').innerHTML=tableHtml(visible,config.columns,activeView==='by_account');
+      $('#table').innerHTML=tableHtml(visible,visibleColumns(),activeView==='by_account');
       $('#tableSummary').textContent=`${config.label}维度共 ${number.format(rows.length)} 行`;
       $('#sortSummary').textContent=`按${sortField}${sortDirection<0?'降序':'升序'}`;
       $('#pager').innerHTML=`<button type="button" data-page="-1" ${page<=1?'disabled':''}>上一页</button><span>第 ${page} / ${pages} 页</span><button type="button" data-page="1" ${page>=pages?'disabled':''}>下一页</button>`;
@@ -262,7 +264,7 @@
       accountChart=accountChart||echarts.init($('#accountChart'));
       accountChart.setOption(lineOptions(rows,account?.账户名称||'账户'),true);
       const columns=['日期','消耗','佣金','利润','ROI','点击','成功转化数','转化成本','有效父订单数','有效订单成本','T3订单数'];
-      $('#accountTable').innerHTML=tableHtml(rows,columns,false,false);
+      $('#accountTable').innerHTML=tableHtml(rows,window.BIControls?.tableColumns($("#detailColumnTools"),"account-detail",columns,["日期"],()=>renderAccountDetail(select.value))||columns,false,false);
     }
     function renderAll(){
       renderCards();renderSourceNote();renderTrend();renderTable();setTaskOptions();renderAccountDetail();
@@ -291,7 +293,7 @@
     }
     function exportCurrent(){
       if(!report)return;
-      const config=viewConfig[activeView],rows=sortedRows(),columns=config.columns;
+      const config=viewConfig[activeView],rows=sortedRows(),columns=visibleColumns();
       const cell=value=>`"${String(value??'').replaceAll('"','""')}"`;
       const csv=[columns.map(cell).join(','),...rows.map(row=>columns.map(column=>cell(row[column])).join(','))].join('\r\n');
       const blob=new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});

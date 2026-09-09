@@ -6,49 +6,44 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class BidGapService {
+  private static final int TASK_HISTORY_DAYS=30;
   private final ReportRepository repository;
   private final ReportService reports;
   public BidGapService(ReportRepository repository, ReportService reports) { this.repository=repository; this.reports=reports; }
 
   public Map<String,Object> load(String endDate) {
-    LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(4), end=anchor.minusDays(2);
+    LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(TASK_HISTORY_DAYS), end=anchor.minusDays(1);
     List<Map<String,Object>> rows=reports.buildDhhAccountRows(repository.readDhhRows(start.toString(),end.toString(),""));
     return calculate(rows,anchor);
   }
 
   static Map<String,Object> calculate(List<Map<String,Object>> rows,LocalDate anchor) {
     LocalDate start=anchor.minusDays(4), end=anchor.minusDays(2);
-    Map<String,Map<String,double[]>> grouped=new LinkedHashMap<>();
-    Map<String,Map<String,Map<String,double[]>>> taskGrouped=new LinkedHashMap<>();
+    LocalDate historyStart=anchor.minusDays(TASK_HISTORY_DAYS),historyEnd=anchor.minusDays(1);
+    Map<String,Map<String,double[]>> grouped=new LinkedHashMap<>(),history=new LinkedHashMap<>();
     for(var row:rows){
       String id=ReportService.text(row.get("账户ID")),date=ReportService.text(row.get("日期"));
-      if(id.isBlank()||date.compareTo(start.toString())<0||date.compareTo(end.toString())>0)continue;
-      double[] totals=grouped.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
-      totals[0]+=ReportService.number(row.get("结算数"));totals[1]+=ReportService.number(row.get("注册数"));
-      String task=ReportService.text(row.get("任务名"));
-      if(!task.isBlank()){
-        double[] taskTotals=taskGrouped.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(task,k->new LinkedHashMap<>())
-            .computeIfAbsent(date,k->new double[2]);
-        taskTotals[0]+=ReportService.number(row.get("结算数"));taskTotals[1]+=ReportService.number(row.get("注册数"));
+      if(id.isBlank()||date.compareTo(historyStart.toString())<0||date.compareTo(historyEnd.toString())>0)continue;
+      double[] historical=history.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
+      historical[0]+=ReportService.number(row.get("预估佣金"));historical[1]+=ReportService.number(row.get("结算数"));
+      if(date.compareTo(start.toString())>=0&&date.compareTo(end.toString())<=0){
+        double[] totals=grouped.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
+        totals[0]+=ReportService.number(row.get("结算数"));totals[1]+=ReportService.number(row.get("注册数"));
       }
     }
     Map<String,Object> accounts=new LinkedHashMap<>();
-    grouped.forEach((id,days)->{
-      var summary=summarize(days,start,end);
-      List<Map<String,Object>> tasks=new ArrayList<>();
-      taskGrouped.getOrDefault(id,Map.of()).forEach((name,taskDays)->{
-        var taskSummary=summarize(taskDays,start,end);
-        double settlements=taskDays.values().stream().mapToDouble(v->v[0]).sum();
-        double registrations=taskDays.values().stream().mapToDouble(v->v[1]).sum();
-        tasks.add(ReportService.mapOf("name",name,"settlements",settlements,"registrations",registrations,
-            "gap",taskSummary.get("gap"),"validDays",taskSummary.get("validDays")));
-      });
-      tasks.sort(Comparator.<Map<String,Object>>comparingDouble(v->-ReportService.number(v.get("registrations")))
-          .thenComparing(v->ReportService.text(v.get("name"))));
-      summary.put("tasks",tasks);accounts.put(id,summary);
+    history.forEach((id,historyDays)->{
+      var summary=summarize(grouped.getOrDefault(id,Map.of()),start,end);
+      String latest=historyDays.entrySet().stream().filter(entry->entry.getValue()[1]>0)
+          .map(Map.Entry::getKey).max(String::compareTo).orElse(null);
+      double[] values=latest==null?null:historyDays.get(latest);
+      summary.put("settlementPrice",values==null?null:values[0]/values[1]);
+      summary.put("settlementPriceDate",latest);summary.put("settlementCommission",values==null?null:values[0]);
+      summary.put("settlementCount",values==null?null:values[1]);accounts.put(id,summary);
     });
-    return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),"accounts",accounts,
-        "basis","使用统计结束日前一天之前的3天（不含前一天）；大航海日报账户分摊口径；每日汇总结算数÷注册数后取算术平均；无数据或注册数为0的日期不参与平均");
+    return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
+        "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
+        "basis","gap使用统计结束日前第4天至第2天；任务识别查询统计日前30天，取账户最近一个有结算的日报日期，以预估佣金÷结算数得到历史结算单价并匹配任务价格");
   }
 
   private static Map<String,Object> summarize(Map<String,double[]> days,LocalDate start,LocalDate end){

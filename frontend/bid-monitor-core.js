@@ -41,28 +41,13 @@
     const result=new Map(),groups=new Map();
     for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform)||taskFor(row,rules).task)continue;const key=accountIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     for(const [key,items] of groups){
-      const accountId=items.find(r=>r.accountId)?.accountId, evidence=gaps?.[accountId]?.tasks;
-      if(!Array.isArray(evidence)||!evidence.length)continue;
-      const candidates=[];
-      for(const item of evidence){
-        const evidenceName=String(item.name||'').trim().toLowerCase();
-        let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===evidenceName);
-        if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&evidenceName&&(name.includes(evidenceName)||evidenceName.includes(name))});
-        if(matched.length===1){const gap=number(item.gap),price=number(matched[0].price);if(price>0)candidates.push({rule:matched[0],evidence:item,expected:gap===null?null:price*gap})}
-      }
-      const unique=[...new Map(candidates.map(c=>[String(c.rule.name).toLowerCase(),c])).values()];if(!unique.length)continue;
-      const registrations=items.reduce((s,r)=>s+(Number.isFinite(r.registrations)?r.registrations:0),0);
-      const conversions=items.reduce((s,r)=>s+(Number.isFinite(r.conversions)?r.conversions:0),0);
-      const bidCost=items.reduce((s,r)=>s+(Number.isFinite(r.bid)&&Number.isFinite(r.conversions)?r.bid*r.conversions:0),0);
-      const weightedBid=conversions>0?bidCost/conversions:null,ratio=registrations>0?conversions/registrations:null;
-      const implied=weightedBid!==null&&ratio!==null?weightedBid*ratio:null;
-      let chosen=null,confidence='settlement-only';
-      if(unique.length===1)chosen=unique[0];
-      else if(implied>0){
-        const ranked=unique.filter(c=>c.expected>0).map(c=>({...c,score:Math.abs(Math.log(c.expected/implied))})).sort((a,b)=>a.score-b.score);
-        if(ranked.length&&(!ranked[1]||ranked[1].score-ranked[0].score>=.05)){chosen=ranked[0];confidence='price-match'}
-      }
-      if(chosen)result.set(key,{rule:chosen.rule,detail:{method:confidence,weightedBid,callbackRatio:ratio,impliedSettlementUnit:implied,expectedSettlementUnit:chosen.expected,settlements:number(chosen.evidence.settlements),registrations:number(chosen.evidence.registrations)}});
+      const accountId=items.find(r=>r.accountId)?.accountId, evidence=gaps?.[accountId],historical=number(evidence?.settlementPrice);
+      if(!(historical>0))continue;
+      const ranked=rules.map(rule=>({rule,price:number(rule.price)})).filter(item=>item.price>0)
+        .map(item=>({...item,score:Math.abs(Math.log(item.price/historical)),difference:Math.abs(item.price-historical)})).sort((a,b)=>a.score-b.score);
+      const best=ranked[0],tolerance=Math.max(.02,historical*.02);
+      if(best&&best.difference<=tolerance&&(!ranked[1]||ranked[1].score-best.score>=.01))
+        result.set(key,{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price}});
     }
     return result;
   }

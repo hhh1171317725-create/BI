@@ -77,7 +77,7 @@ final class BidTop5Formatter {
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
         entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
-            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+(Boolean.TRUE.equals(row.get("inferred_task"))?"｜任务反推":"")+(gapMissing?"｜gap缺失":"")
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+(Boolean.TRUE.equals(row.get("inferred_task"))?"｜历史结算价反推":"")+(gapMissing?"｜gap缺失":"")
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }
       groups.add("【"+clip(task,80)+" TOP5】\n"+String.join("\n",entries));

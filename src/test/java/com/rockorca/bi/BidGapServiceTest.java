@@ -140,4 +140,16 @@ class BidGapServiceTest {
     assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("甲｜账123｜计p1"));
     assertTrue(text.contains("【任务乙 TOP5】\n①"));assertTrue(text.contains("乙｜账123｜计p2"));
   }
+  @Test void dingtalkUsesBidAndReturnRatioForOtherwiseUnmatchedPlans(){
+    var row=Map.<String,Object>of("source_platform","byte","advertiser_id","new","media_account_name","未知账户",
+        "promotion_id","p1","user_name","甲","stat_cost",981.68,"convert_cnt",11,"active_register",195,"cpa_bid",12);
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中甲","price",""),
+        Map.<String,Object>of("name","任务乙","keyword","不会命中乙","price",""));
+    var payload=ReportService.mapOf("priceDate","2026-09-08","accounts",Map.of("new",Map.of("gap",.888)),"tasks",Map.of(
+        "任务甲",ReportService.mapOf("gap",.888,"dailyPrice",Map.of("date","2026-09-08","price",1)),
+        "任务乙",ReportService.mapOf("gap",.843,"dailyPrice",Map.of("date","2026-09-08","price",.24))));
+    String text=BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(row)),rules,List.of("任务甲","任务乙"),payload).getFirst().get("text");
+    assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("出价回传估算任务"));
+    assertTrue(text.contains("【任务乙 TOP5】\n暂无匹配计划"));
+  }
 }

@@ -30,7 +30,7 @@
   function taskFor(row,rules,inferred){
     const account=row.account.trim().toLowerCase();
     const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
-    if(['daily-report-task','plan-name-task'].includes(inferred?.detail?.method)){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim();return{task,price,pricingStatus:price>0?'priced':'price-missing',taskSource:inferred.detail.method==='daily-report-task'?'daily-report':'plan-name',inference:inferred.detail}}
+    if(['daily-report-task','plan-name-task','bid-return-estimate'].includes(inferred?.detail?.method)){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim(),sources={'daily-report-task':'daily-report','plan-name-task':'plan-name','bid-return-estimate':'bid-return'};return{task,price:price>0?price:null,pricingStatus:price>0?'priced':'price-missing',taskSource:sources[inferred.detail.method],inference:inferred.detail}}
     if(matches.length!==1){
       if(!matches.length&&inferred){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||'').trim();return{task,price,pricingStatus:'priced',taskSource:'inferred',inference:inferred.detail}}
       return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing',taskSource:''};
@@ -78,6 +78,26 @@
         remember(key,items[0],{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price,dailyTaskMissing:true}});
     }
     return result;
+  }
+  function inferTaskFromBidReturn(row,rules,account,references){
+    const direct=taskFor(row,rules);
+    if(direct.task||direct.pricingStatus==='task-conflict'||!Number.isFinite(row.bid)||row.bid<0||!Number.isFinite(row.conversions)||row.conversions<0||!Number.isFinite(row.registrations)||row.registrations<=0)return null;
+    const ratio=row.conversions/row.registrations,estimated=row.bid*ratio;
+    if(!Number.isFinite(estimated)||estimated<0)return null;
+    const exact=(object,name)=>Object.entries(object||{}).find(([key])=>key.trim().toLowerCase()===name.trim().toLowerCase())?.[1];
+    const names=[...new Set([...Object.keys(references?.tasks||{}),...rules.map(rule=>String(rule.name||'').trim()).filter(Boolean)])];
+    const candidates=[];
+    for(const task of names){
+      const rule=rules.find(item=>String(item.name||'').trim().toLowerCase()===task.trim().toLowerCase()),taskReference=exact(references?.tasks,task);
+      const splits=account?.dailyPricesByTask||{},split=exact(splits,task),manual=number(rule?.price),accountDaily=split||(Object.keys(splits).length===0?account?.dailyPrice:null);
+      const daily=accountDaily?.date===references?.priceDate?accountDaily:taskReference?.dailyPrice?.date===references?.priceDate?taskReference.dailyPrice:null;
+      const basePrice=manual>0?manual:number(daily?.price),gap=number(account?.gap)??number(taskReference?.gap);
+      const actualPrice=basePrice!==null&&gap!==null?basePrice*gap:null;
+      if(Number.isFinite(actualPrice)&&actualPrice>=0)candidates.push({task,rule,actualPrice,difference:Math.abs(actualPrice-estimated)});
+    }
+    candidates.sort((a,b)=>a.difference-b.difference||a.task.localeCompare(b.task,'zh-CN'));
+    const best=candidates[0];if(!best||candidates[1]&&Math.abs(candidates[1].difference-best.difference)<=1e-6)return null;
+    return{task:best.task,rule:best.rule||null,detail:{method:'bid-return-estimate',estimatedSettlementPrice:estimated,matchedActualPrice:best.actualPrice,difference:best.difference,returnRatio:ratio}};
   }
   function cashMetrics(row,price){
     const valid=n=>Number.isFinite(n)&&n>=0;
@@ -149,7 +169,7 @@
       const ruleKey=JSON.stringify(rules);
       if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps||references!==previousReferences){
         const inferred=inferAccountTasks(rows,rules,gaps,references),gapIndex=buildGapIndex(gaps);
-        result=rows.map(row=>{const match=inferred.get(inferenceIdentity(row)),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+        result=rows.map(row=>{const account=gapFor(row,gapIndex),match=inferred.get(inferenceIdentity(row))||inferTaskFromBidReturn(row,rules,account,references),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
         previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;previousReferences=references;
       }
       return result;
@@ -189,5 +209,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,inferAccountTasks,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

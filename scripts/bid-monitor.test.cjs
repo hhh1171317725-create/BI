@@ -183,6 +183,27 @@ test('mixed-task account never uses its blended account price',()=>{
  const result=cached([row],[],false,accounts,{priceDate:'2026-09-07',accounts,tasks:{}})[0];
  assert.equal(result.basePrice,null);assert.equal(result.priceSource,'');assert.match(result.priceReason,/2026-09-07/);
 });
+test('unmatched plan estimates settlement from bid and return ratio to select the nearest task',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const row=normalize({platform_text:'字节',advertiser_id:'new',advertiser_nick:'无法匹配账户',promotion_name:'普通计划',stat_cost:981.68,convert_cnt:11,active_register:195,cpa_bid:12});
+ const accounts={new:{gap:.888}},reference={priceDate:'2026-09-08',accounts,tasks:{
+  '淘宝促购增量-UV（日披）':{gap:.888,dailyPrice:{date:'2026-09-08',price:1}},
+  '另一任务':{gap:.843,dailyPrice:{date:'2026-09-08',price:.24}}
+ }};
+ const result=cached([row],[],false,accounts,reference)[0];
+ assert.equal(result.task,'淘宝促购增量-UV（日披）');assert.equal(result.taskSource,'bid-return');
+ assert.ok(Math.abs(result.inference.estimatedSettlementPrice-12*11/195)<1e-12);
+ assert.equal(result.inference.matchedActualPrice,.888);assert.equal(result.basePrice,1);assert.equal(result.price,.888);
+});
+test('bid-return estimate refuses equal-distance ties, missing ratios and conflicting keywords',()=>{
+ const {inferTaskFromBidReturn}=require('../frontend/bid-monitor-core.js');
+ const base=normalize({platform_text:'字节',advertiser_id:'new',advertiser_nick:'未知',promotion_name:'普通计划',convert_cnt:5,active_register:10,cpa_bid:1});
+ const refs={priceDate:'2026-09-08',tasks:{A:{gap:1,dailyPrice:{date:'2026-09-08',price:.4}},B:{gap:1,dailyPrice:{date:'2026-09-08',price:.6}}}};
+ assert.equal(inferTaskFromBidReturn(base,[],null,refs),null);
+  assert.equal(inferTaskFromBidReturn({...base,registrations:0},[],null,refs),null);
+  assert.equal(inferTaskFromBidReturn({...base,bid:null},[],null,refs),null);
+ assert.equal(inferTaskFromBidReturn({...base,account:'both'},[{name:'A',keyword:'both',price:.4},{name:'B',keyword:'both',price:.6}],null,refs),null);
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

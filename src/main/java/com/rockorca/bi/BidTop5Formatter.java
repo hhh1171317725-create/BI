@@ -46,7 +46,7 @@ final class BidTop5Formatter {
     Map<String,Object> taskGaps=gapPayload!=null&&gapPayload.get("tasks") instanceof Map<?,?> taskEntries
         ?(Map<String,Object>)taskEntries:Map.of();
     String priceDate=gapPayload==null?"":Objects.toString(gapPayload.get("priceDate"),"");
-    var inferred=BidTaskInference.infer(rows,rules,accountGaps);
+    var inferred=BidTaskInference.infer(rows,rules,accountGaps,priceDate.isBlank());
     var groups=new ArrayList<String>();
     boolean missingOptimizer=false,missingAccountId=false;
     for(String task:tasks){
@@ -63,6 +63,12 @@ final class BidTop5Formatter {
             if("daily-report-task".equals(method)||matched==null){
               @SuppressWarnings("unchecked") var cast=(Map<String,Object>)inferredRule;matched=cast;inferredSource=method;
             }
+          }
+        }
+        if(matched==null){
+          var estimated=BidTaskInference.bidReturnRule(row,rules,accountGaps,taskGaps,priceDate);
+          if(estimated!=null&&estimated.get("rule") instanceof Map<?,?> estimatedRule){
+            @SuppressWarnings("unchecked") var cast=(Map<String,Object>)estimatedRule;matched=cast;inferredSource="bid-return-estimate";
           }
         }
         if(matched!=null&&task.equals(matched.get("name"))){
@@ -94,7 +100,7 @@ final class BidTop5Formatter {
         String accountId=field(row.get("advertiser_id"));missingAccountId|=accountId.equals("--");
         entries.add(rank(++index)+" 利润出价"+metrics.get("rate")
             +"｜消耗"+displayMoney(number(row.get("stat_cost")))+"｜回传"+metrics.get("ratio")
-            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+("daily-report-task".equals(row.get("task_source"))?"｜日报任务":"historical-settlement-price".equals(row.get("task_source"))?"｜历史结算价反推":"")
+            +"｜出价"+displayMoney(number(row.get("cpa_bid")))+("daily-report-task".equals(row.get("task_source"))?"｜日报任务":"bid-return-estimate".equals(row.get("task_source"))?"｜出价回传估算任务":"historical-settlement-price".equals(row.get("task_source"))?"｜历史结算价反推":"")
             +(priceMissing?"｜单价缺失":"手动单价".equals(priceSource)?"":"｜"+priceSource)+(gapMissing?"｜gap缺失":gapSource)
             +"\n   "+optimizer+"｜账"+accountId+"｜计"+field(row.get("promotion_id")));
       }

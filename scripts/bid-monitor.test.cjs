@@ -132,6 +132,14 @@ test('GDT matching accepts the provider internal account ID when the daily repor
  const result=cached(rows,[{name:'A',keyword:'不会命中',price:10}],false,{'000456.0':{gap:.8,settlementPrice:10,settlementPriceDate:'2026-09-08'}})[0];
  assert.equal(result.task,'A');assert.equal(result.gap,.8);assert.equal(result.price,8);
 });
+test('latest daily-report task name assigns GDT task without settlements and overrides account keyword',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'甲账户',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
+ const rules=[{name:'任务甲',keyword:'甲账户',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
+ const result=cached(rows,rules,false,{'123':{gap:.5,taskName:'任务乙',taskDate:'2026-09-08',settlementPrice:null}})[0];
+ assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'daily-report');assert.equal(result.price,15);
+ assert.equal(result.inference.reportedTaskName,'任务乙');
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

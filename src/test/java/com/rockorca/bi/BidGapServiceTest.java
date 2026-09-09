@@ -19,6 +19,7 @@ class BidGapServiceTest {
   }
   private Map<String,Object> row(String date,double settled,double registered){return Map.of("账户ID","123", "日期",date,"结算数",settled,"注册数",registered);}
   private Map<String,Object> pricedRow(String date,double commission,double settled,double registered){return Map.of("账户ID","123","日期",date,"预估佣金",commission,"结算数",settled,"注册数",registered);}
+  private Map<String,Object> taskRow(String date,String task,double spend){return Map.of("账户ID","123","日期",date,"任务名",task,"消耗",spend,"预估佣金",0,"结算数",0,"注册数",0);}
   @SuppressWarnings("unchecked")
   @Test void averagesDailyRatiosAfterCombiningSameDayRows(){
     var result=BidGapService.calculate(List.of(row("2026-09-05",40,100),row("2026-09-05",10,100),row("2026-09-06",90,100),row("2026-09-07",60,100),row("2026-09-08",900,100),row("2026-09-09",900,100),row("2026-09-04",900,100)),LocalDate.of(2026,9,9));
@@ -55,5 +56,16 @@ class BidGapServiceTest {
     var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","甲账户","price",10),Map.<String,Object>of("name","任务乙","keyword","乙账户","price",30));
     String output=BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),Map.of("000456.0",Map.of("gap",.2,"settlementPrice",10.01,"settlementPriceDate","2026-09-08"))).getFirst().get("text");
     assertTrue(output.contains("历史结算价反推"));assertFalse(output.contains("暂无匹配计划"));assertFalse(output.contains("gap缺失"));
+  }
+  @Test void latestDailyReportTaskNameWorksWithoutSettlementAndOverridesAccountKeyword(){
+    var calculated=BidGapService.calculate(List.of(taskRow("2026-09-07","任务甲",100),taskRow("2026-09-08","任务乙",20)),LocalDate.of(2026,9,9));
+    var account=(Map<?,?>)((Map<?,?>)calculated.get("accounts")).get("123");
+    assertEquals("任务乙",account.get("taskName"));assertEquals("2026-09-08",account.get("taskDate"));assertNull(account.get("settlementPrice"));
+    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","甲账户",
+        "promotion_id","p1","user_name","张三","stat_cost",100,"convert_cnt",20,"active_register",100,"cpa_bid",10);
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","甲账户","price",10),Map.<String,Object>of("name","任务乙","keyword","乙账户","price",30));
+    String output=BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(row)),rules,List.of("任务乙"),
+        Map.of("123",Map.of("gap",.5,"taskName","任务乙","taskDate","2026-09-08"))).getFirst().get("text");
+    assertTrue(output.contains("日报任务"));assertFalse(output.contains("暂无匹配计划"));
   }
 }

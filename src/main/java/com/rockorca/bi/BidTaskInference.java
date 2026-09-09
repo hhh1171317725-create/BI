@@ -13,13 +13,19 @@ final class BidTaskInference {
     Map<String,List<Map<?,?>>> grouped=new LinkedHashMap<>();
     for(Object item:rows){
       if(!(item instanceof Map<?,?> row)||!"gdt".equalsIgnoreCase(text(row.get("source_platform"))))continue;
-      if(nameRule(row,rules)!=null)continue;
-      String id=text(row.get("advertiser_id"));if(!id.isBlank())grouped.computeIfAbsent(id,k->new ArrayList<>()).add(row);
+      String id=inferenceKey(row);if(!id.isBlank())grouped.computeIfAbsent(id,k->new ArrayList<>()).add(row);
     }
     Map<String,Map<String,Object>> result=new LinkedHashMap<>();
     grouped.forEach((id,items)->{
       Object accountEntry=gapEntry(rowIds(items.getFirst()),gapIndex);
       if(!(accountEntry instanceof Map<?,?> account))return;
+      Map<String,Object> reportedRule=taskRule(text(account.get("taskName")),rules);
+      if(reportedRule!=null){
+        result.put(id,ReportService.mapOf("rule",reportedRule,"method","daily-report-task",
+            "reportedTaskName",account.get("taskName"),"taskDate",account.get("taskDate")));
+        return;
+      }
+      if(nameRule(items.getFirst(),rules)!=null)return;
       BigDecimal historical=positive(account.get("settlementPrice"));if(historical==null)return;
       var ranked=rules.stream().map(rule->new Candidate(rule,positive(rule.get("price"))))
           .filter(candidate->candidate.price()!=null)
@@ -39,6 +45,16 @@ final class BidTaskInference {
     var matches=rules.stream().filter(rule->{String keyword=text(rule.get("keyword")).toLowerCase(Locale.ROOT);return !keyword.isBlank()&&name.contains(keyword);}).toList();
     return matches.size()==1?matches.getFirst():null;
   }
+
+  private static Map<String,Object> taskRule(String reported,List<Map<String,Object>> rules){
+    String task=reported.toLowerCase(Locale.ROOT);if(task.isBlank())return null;
+    var exact=rules.stream().filter(rule->text(rule.get("name")).toLowerCase(Locale.ROOT).equals(task)).toList();
+    if(exact.size()==1)return exact.getFirst();
+    var contained=rules.stream().filter(rule->{String name=text(rule.get("name")).toLowerCase(Locale.ROOT);return !name.isBlank()&&(name.contains(task)||task.contains(name));}).toList();
+    return contained.size()==1?contained.getFirst():null;
+  }
+
+  static String inferenceKey(Map<?,?> row){String advertiser=text(row.get("advertiser_id"));return advertiser.isBlank()?text(row.get("media_account_id")):advertiser;}
 
   static Object accountEntry(Map<?,?> row,Map<String,Object> accountGaps){
     for(String id:rowIds(row)){

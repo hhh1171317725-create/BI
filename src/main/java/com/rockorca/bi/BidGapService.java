@@ -21,11 +21,15 @@ public class BidGapService {
     LocalDate start=anchor.minusDays(4), end=anchor.minusDays(2);
     LocalDate historyStart=anchor.minusDays(TASK_HISTORY_DAYS),historyEnd=anchor.minusDays(1);
     Map<String,Map<String,double[]>> grouped=new LinkedHashMap<>(),history=new LinkedHashMap<>();
+    Map<String,Map<String,Map<String,Double>>> taskHistory=new LinkedHashMap<>();
     for(var row:rows){
       String id=ReportService.text(row.get("账户ID")),date=ReportService.text(row.get("日期"));
       if(id.isBlank()||date.compareTo(historyStart.toString())<0||date.compareTo(historyEnd.toString())>0)continue;
       double[] historical=history.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
       historical[0]+=ReportService.number(row.get("预估佣金"));historical[1]+=ReportService.number(row.get("结算数"));
+      String task=ReportService.text(row.get("任务名"));
+      if(!task.isBlank()&&!List.of("未填写","--","-").contains(task))taskHistory.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new LinkedHashMap<>())
+          .merge(task,ReportService.number(row.get("消耗")),Double::sum);
       if(date.compareTo(start.toString())>=0&&date.compareTo(end.toString())<=0){
         double[] totals=grouped.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
         totals[0]+=ReportService.number(row.get("结算数"));totals[1]+=ReportService.number(row.get("注册数"));
@@ -39,11 +43,21 @@ public class BidGapService {
       double[] values=latest==null?null:historyDays.get(latest);
       summary.put("settlementPrice",values==null?null:values[0]/values[1]);
       summary.put("settlementPriceDate",latest);summary.put("settlementCommission",values==null?null:values[0]);
-      summary.put("settlementCount",values==null?null:values[1]);accounts.put(id,summary);
+      summary.put("settlementCount",values==null?null:values[1]);
+      var accountTasks=taskHistory.getOrDefault(id,Map.of());
+      String taskDate=accountTasks.keySet().stream().max(String::compareTo).orElse(null),taskName=null;
+      List<Map<String,Object>> taskCandidates=new ArrayList<>();
+      if(taskDate!=null){
+        var candidates=accountTasks.get(taskDate).entrySet().stream()
+            .sorted(Map.Entry.<String,Double>comparingByValue().reversed().thenComparing(Map.Entry::getKey)).toList();
+        for(var candidate:candidates)taskCandidates.add(ReportService.mapOf("name",candidate.getKey(),"spend",candidate.getValue()));
+        if(candidates.size()==1||candidates.getFirst().getValue()-candidates.get(1).getValue()>0.000001)taskName=candidates.getFirst().getKey();
+      }
+      summary.put("taskName",taskName);summary.put("taskDate",taskDate);summary.put("taskCandidates",taskCandidates);accounts.put(id,summary);
     });
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
         "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
-        "basis","gap使用统计结束日前第4天至第2天；任务识别查询统计日前30天，取账户最近一个有结算的日报日期，以预估佣金÷结算数得到历史结算单价并匹配任务价格");
+        "basis","gap使用统计结束日前第4天至第2天；广点通任务优先使用统计日前30天内该账户最近一日报记录的任务名，同日多个任务时取账户消耗最高且唯一的任务；任务名无法匹配时再以历史结算单价匹配");
   }
 
   private static Map<String,Object> summarize(Map<String,double[]> days,LocalDate start,LocalDate end){

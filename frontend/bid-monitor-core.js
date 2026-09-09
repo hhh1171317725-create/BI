@@ -30,7 +30,7 @@
   function taskFor(row,rules,inferred){
     const account=row.account.trim().toLowerCase();
     const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
-    if(inferred?.detail?.method==='daily-report-task'){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||'').trim();return{task,price,pricingStatus:'priced',taskSource:'daily-report',inference:inferred.detail}}
+    if(inferred?.detail?.method==='daily-report-task'){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim();return{task,price,pricingStatus:price>0?'priced':'price-missing',taskSource:'daily-report',inference:inferred.detail}}
     if(matches.length!==1){
       if(!matches.length&&inferred){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||'').trim();return{task,price,pricingStatus:'priced',taskSource:'inferred',inference:inferred.detail}}
       return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing',taskSource:''};
@@ -47,11 +47,17 @@
     for(const row of rows){if(!/(广点通|gdt)/i.test(row.platform))continue;const key=accountIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     for(const [key,items] of groups){
       const evidence=gapFor(items[0],gapIndex);if(!evidence)continue;
-      const reported=String(evidence.taskName||'').trim().toLowerCase();
+      const optimizer=String(items[0].optimizer||'').trim();
+      const optimizerEvidence=Object.entries(evidence.taskByOptimizer||{}).find(([name])=>name.trim().toLowerCase()===optimizer.toLowerCase())?.[1];
+      const dailyEvidence=optimizerEvidence?.taskName?optimizerEvidence:evidence;
+      const reported=String(dailyEvidence.taskName||'').trim().toLowerCase();
       if(reported){
         let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===reported);
         if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&(name.includes(reported)||reported.includes(name))});
-        if(matched.length===1){result.set(key,{rule:matched[0],detail:{method:'daily-report-task',reportedTaskName:evidence.taskName,taskDate:evidence.taskDate}});continue}
+        const detail={method:'daily-report-task',reportedTaskName:dailyEvidence.taskName,taskDate:dailyEvidence.taskDate,optimizer};
+        if(matched.length===1)result.set(key,{rule:matched[0],detail});
+        else result.set(key,{task:dailyEvidence.taskName,detail});
+        continue
       }
       if(taskFor(items[0],rules).task)continue;
       const historical=number(evidence.settlementPrice);
@@ -60,7 +66,7 @@
         .map(item=>({...item,difference:Math.abs(item.price-historical)})).sort((a,b)=>a.difference-b.difference);
       const best=ranked[0];
       if(best&&(!ranked[1]||ranked[1].difference-best.difference>1e-6))
-        result.set(key,{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price}});
+        result.set(key,{rule:best.rule,detail:{method:'historical-settlement-price',settlementPrice:historical,settlementPriceDate:evidence.settlementPriceDate,matchedPrice:best.price,dailyTaskMissing:true}});
     }
     return result;
   }

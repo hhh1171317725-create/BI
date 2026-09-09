@@ -22,14 +22,20 @@ public class BidGapService {
     LocalDate historyStart=anchor.minusDays(TASK_HISTORY_DAYS),historyEnd=anchor.minusDays(1);
     Map<String,Map<String,double[]>> grouped=new LinkedHashMap<>(),history=new LinkedHashMap<>();
     Map<String,Map<String,Map<String,Double>>> taskHistory=new LinkedHashMap<>();
+    Map<String,Map<String,Map<String,Map<String,Double>>>> optimizerTaskHistory=new LinkedHashMap<>();
     for(var row:rows){
       String id=ReportService.text(row.get("账户ID")),date=ReportService.text(row.get("日期"));
       if(id.isBlank()||date.compareTo(historyStart.toString())<0||date.compareTo(historyEnd.toString())>0)continue;
       double[] historical=history.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
       historical[0]+=ReportService.number(row.get("预估佣金"));historical[1]+=ReportService.number(row.get("结算数"));
       String task=ReportService.text(row.get("任务名"));
-      if(!task.isBlank()&&!List.of("未填写","--","-").contains(task))taskHistory.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new LinkedHashMap<>())
-          .merge(task,ReportService.number(row.get("消耗")),Double::sum);
+      if(!task.isBlank()&&!List.of("未填写","--","-").contains(task)){
+        double spend=ReportService.number(row.get("消耗"));
+        taskHistory.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new LinkedHashMap<>()).merge(task,spend,Double::sum);
+        String optimizer=ReportService.text(row.get("优化师"));
+        if(!optimizer.isBlank())optimizerTaskHistory.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(optimizer,k->new LinkedHashMap<>())
+            .computeIfAbsent(date,k->new LinkedHashMap<>()).merge(task,spend,Double::sum);
+      }
       if(date.compareTo(start.toString())>=0&&date.compareTo(end.toString())<=0){
         double[] totals=grouped.computeIfAbsent(id,k->new LinkedHashMap<>()).computeIfAbsent(date,k->new double[2]);
         totals[0]+=ReportService.number(row.get("结算数"));totals[1]+=ReportService.number(row.get("注册数"));
@@ -44,16 +50,10 @@ public class BidGapService {
       summary.put("settlementPrice",values==null?null:values[0]/values[1]);
       summary.put("settlementPriceDate",latest);summary.put("settlementCommission",values==null?null:values[0]);
       summary.put("settlementCount",values==null?null:values[1]);
-      var accountTasks=taskHistory.getOrDefault(id,Map.of());
-      String taskDate=accountTasks.keySet().stream().max(String::compareTo).orElse(null),taskName=null;
-      List<Map<String,Object>> taskCandidates=new ArrayList<>();
-      if(taskDate!=null){
-        var candidates=accountTasks.get(taskDate).entrySet().stream()
-            .sorted(Map.Entry.<String,Double>comparingByValue().reversed().thenComparing(Map.Entry::getKey)).toList();
-        for(var candidate:candidates)taskCandidates.add(ReportService.mapOf("name",candidate.getKey(),"spend",candidate.getValue()));
-        if(candidates.size()==1||candidates.getFirst().getValue()-candidates.get(1).getValue()>0.000001)taskName=candidates.getFirst().getKey();
-      }
-      summary.put("taskName",taskName);summary.put("taskDate",taskDate);summary.put("taskCandidates",taskCandidates);accounts.put(id,summary);
+      summary.putAll(taskSummary(taskHistory.getOrDefault(id,Map.of())));
+      Map<String,Object> taskByOptimizer=new LinkedHashMap<>();
+      optimizerTaskHistory.getOrDefault(id,Map.of()).forEach((optimizer,days)->taskByOptimizer.put(optimizer,taskSummary(days)));
+      summary.put("taskByOptimizer",taskByOptimizer);accounts.put(id,summary);
     });
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
         "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
@@ -70,5 +70,17 @@ public class BidGapService {
           "registrations",totals==null?null:totals[1],"ratio",ratio));
     }
     return ReportService.mapOf("gap",valid==0?null:sum/valid,"validDays",valid,"days",detail);
+  }
+
+  private static Map<String,Object> taskSummary(Map<String,Map<String,Double>> history){
+    String taskDate=history.keySet().stream().max(String::compareTo).orElse(null),taskName=null;
+    List<Map<String,Object>> candidatesOutput=new ArrayList<>();
+    if(taskDate!=null){
+      var candidates=history.get(taskDate).entrySet().stream()
+          .sorted(Map.Entry.<String,Double>comparingByValue().reversed().thenComparing(Map.Entry::getKey)).toList();
+      for(var candidate:candidates)candidatesOutput.add(ReportService.mapOf("name",candidate.getKey(),"spend",candidate.getValue()));
+      if(candidates.size()==1||candidates.getFirst().getValue()-candidates.get(1).getValue()>0.000001)taskName=candidates.getFirst().getKey();
+    }
+    return ReportService.mapOf("taskName",taskName,"taskDate",taskDate,"taskCandidates",candidatesOutput);
   }
 }

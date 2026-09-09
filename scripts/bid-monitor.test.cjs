@@ -140,6 +140,19 @@ test('latest daily-report task name assigns GDT task without settlements and ove
  assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'daily-report');assert.equal(result.price,15);
  assert.equal(result.inference.reportedTaskName,'任务乙');
 });
+test('daily report task is shown even before its task price is configured',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'未知',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
+ const result=cached(rows,[{name:'其他任务',keyword:'无',price:10}],false,{'123':{taskName:'日报原始任务',taskDate:'2026-09-08'}})[0];
+ assert.equal(result.task,'日报原始任务');assert.equal(result.taskSource,'daily-report');assert.equal(result.price,null);assert.equal(result.pricingStatus,'price-missing');
+});
+test('same-account daily task uses the matching optimizer before the account-wide result',()=>{
+ const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'未知',user_name:'甲',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
+ const rules=[{name:'任务甲',keyword:'x',price:10},{name:'任务乙',keyword:'y',price:20}];
+ const result=cached(rows,rules,false,{'123':{gap:.5,taskName:'任务乙',taskDate:'2026-09-08',taskByOptimizer:{'甲':{taskName:'任务甲',taskDate:'2026-09-08'}}}})[0];
+ assert.equal(result.task,'任务甲');assert.equal(result.taskSource,'daily-report');
+});
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);
  assert.equal(r.ratio,.15);assert.ok(Math.abs(r.breakEven-143.3333333333)<1e-6);

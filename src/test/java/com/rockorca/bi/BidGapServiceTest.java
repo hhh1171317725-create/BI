@@ -68,4 +68,16 @@ class BidGapServiceTest {
         Map.of("123",Map.of("gap",.5,"taskName","任务乙","taskDate","2026-09-08"))).getFirst().get("text");
     assertTrue(output.contains("日报任务"));assertFalse(output.contains("暂无匹配计划"));
   }
+  @Test void dailyTaskUsesTheSameOptimizerBeforeTheAccountWideTask(){
+    var calculated=BidGapService.calculate(List.of(
+        Map.of("账户ID","123","日期","2026-09-08","优化师","甲","任务名","任务甲","消耗",10,"预估佣金",0,"结算数",0,"注册数",0),
+        Map.of("账户ID","123","日期","2026-09-08","优化师","乙","任务名","任务乙","消耗",20,"预估佣金",0,"结算数",0,"注册数",0)),LocalDate.of(2026,9,9));
+    var account=(Map<?,?>)((Map<?,?>)calculated.get("accounts")).get("123");
+    assertEquals("任务乙",account.get("taskName"));
+    assertEquals("任务甲",((Map<?,?>)((Map<?,?>)account.get("taskByOptimizer")).get("甲")).get("taskName"));
+    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_name","账户","user_name","甲",
+        "promotion_id","p1","stat_cost",10,"convert_cnt",1,"active_register",2,"cpa_bid",1);
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中","price",10),Map.<String,Object>of("name","任务乙","keyword","不会命中2","price",20));
+    assertTrue(BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(row)),rules,List.of("任务甲"),(Map<String,Object>)calculated.get("accounts")).getFirst().get("text").contains("日报任务"));
+  }
 }

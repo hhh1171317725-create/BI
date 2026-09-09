@@ -19,10 +19,11 @@ final class BidTaskInference {
     grouped.forEach((id,items)->{
       Object accountEntry=gapEntry(rowIds(items.getFirst()),gapIndex);
       if(!(accountEntry instanceof Map<?,?> account))return;
-      Map<String,Object> reportedRule=taskRule(text(account.get("taskName")),rules);
+      Map<?,?> taskEvidence=taskEvidence(account,items.getFirst());
+      Map<String,Object> reportedRule=taskRule(text(taskEvidence.get("taskName")),rules);
       if(reportedRule!=null){
         result.put(id,ReportService.mapOf("rule",reportedRule,"method","daily-report-task",
-            "reportedTaskName",account.get("taskName"),"taskDate",account.get("taskDate")));
+            "reportedTaskName",taskEvidence.get("taskName"),"taskDate",taskEvidence.get("taskDate")));
         return;
       }
       if(nameRule(items.getFirst(),rules)!=null)return;
@@ -52,6 +53,14 @@ final class BidTaskInference {
     if(exact.size()==1)return exact.getFirst();
     var contained=rules.stream().filter(rule->{String name=text(rule.get("name")).toLowerCase(Locale.ROOT);return !name.isBlank()&&(name.contains(task)||task.contains(name));}).toList();
     return contained.size()==1?contained.getFirst():null;
+  }
+
+  private static Map<?,?> taskEvidence(Map<?,?> account,Map<?,?> row){
+    String optimizer=text(row.get("user_name"));
+    if(account.get("taskByOptimizer") instanceof Map<?,?> byOptimizer&&!optimizer.isBlank()){
+      for(var entry:byOptimizer.entrySet())if(text(entry.getKey()).equalsIgnoreCase(optimizer)&&entry.getValue() instanceof Map<?,?> value&& !text(value.get("taskName")).isBlank())return value;
+    }
+    return account;
   }
 
   static String inferenceKey(Map<?,?> row){String advertiser=text(row.get("advertiser_id"));return advertiser.isBlank()?text(row.get("media_account_id")):advertiser;}

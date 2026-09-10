@@ -38,7 +38,7 @@ class GdtBidMonitorClientTest {
     assertEquals(301,result.get("total"));var row=(Map<?,?>)((List<?>)result.get("rows")).getFirst();
     assertEquals("134008243258",row.get("promotion_id"));assertEquals("89696535",row.get("advertiser_id"));
     assertEquals("123.45",row.get("stat_cost"));assertEquals("12",row.get("convert_cnt"));assertEquals("56",row.get("active_register"));
-    assertEquals("5.5",row.get("cpa_bid"));assertEquals("12.345",row.get("ecpm"));assertEquals("账户甲",row.get("media_account_name"));assertEquals("优化师甲",row.get("user_name"));
+    assertEquals("5.5",row.get("cpa_bid"));assertEquals("10000",row.get("show_cnt"));assertEquals("账户甲",row.get("media_account_name"));assertEquals("优化师甲",row.get("user_name"));
     assertEquals("自动出价",row.get("deep_bid_type_text"));assertEquals("付费",row.get("deep_external_action_text"));
     assertEquals("注册",row.get("external_action_text"));assertEquals("投放中",row.get("status_text"));
     assertEquals("gdt",row.get("source_platform"));assertEquals("广点通",row.get("platform_text"));

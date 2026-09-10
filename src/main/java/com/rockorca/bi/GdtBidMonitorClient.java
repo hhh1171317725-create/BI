@@ -99,7 +99,7 @@ public class GdtBidMonitorClient {
       row.put("media_account_name",raw.get("advertiser_nick"));row.put("user_name",raw.get("user_name"));
       row.put("promotion_create_time",raw.get("created_time"));row.put("stat_cost",metric(raw.get("cost")));
       row.put("convert_cnt",metric(raw.get("conversions_count")));row.put("active_register",metric(raw.get("reg_pv")));
-      row.put("cpa_bid",metric(raw.get("bid_amount")));row.put("ecpm",ecpm(raw));row.put("app_type_text","");
+      row.put("cpa_bid",metric(raw.get("bid_amount")));row.put("show_cnt",metric(raw.get("view_count")));row.put("app_type_text","");
       row.put("deep_bid_type_text",first(raw,"bid_mode_name","bid_mode"));row.put("deep_cpabid",optionalMetric(raw.get("deep_bid_amount")));
       row.put("deep_external_action_text",first(raw,"deep_conversion_spec_name","deep_conversion_spec"));
       row.put("external_action_text",first(raw,"optimization_goal_name","optimization_goal"));
@@ -117,10 +117,6 @@ public class GdtBidMonitorClient {
   private static Object optionalMetric(Object value){
     if(value==null)return null;String text=value.toString().trim().replace(",","");
     return text.isBlank()||"--".equals(text)||"-".equals(text)?null:text;
-  }
-  private static Object ecpm(Map<?,?> row){
-    Object direct=optionalMetric(first(row,"ecpm","cpm_platform","cpm"));if(direct!=null)return direct;
-    try{double cost=Double.parseDouble(String.valueOf(row.get("cost")).replace(",","")),views=Double.parseDouble(String.valueOf(row.get("view_count")).replace(",",""));return views>0&&Double.isFinite(cost)?java.math.BigDecimal.valueOf(cost*1000/views).stripTrailingZeros().toPlainString():null;}catch(Exception ignored){return null;}
   }
   private static String id(Object value){return BidMonitorApiController.idText(value);}
   private static Object first(Map<?,?> row,String... keys){for(String key:keys){Object value=row.get(key);if(value!=null&&!value.toString().isBlank())return value;}return "";}

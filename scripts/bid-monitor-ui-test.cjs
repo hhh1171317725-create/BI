@@ -5,7 +5,7 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../frontend');
 const todayChina=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
-const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,source_platform:i%2?'gdt':'byte',platform_text:i%2?'广点通':'字节',user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,cpm_platform:10+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
+const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promotion_name:`测试计划 ${i}`,source_platform:i%2?'gdt':'byte',platform_text:i%2?'广点通':'字节',user_name:i%2?'李四':'张三',media_account_name:i%2?'客户-B-01':'客户-A-01',advertiser_id:i%2?'1870049327502852':'1866402186668232',media_account_id:String(900+i%2),promotion_create_time:(i<10?todayChina:'2026-09-01')+' 08:00:00',stat_cost:100+i,show_cnt:30000,cpm_platform:10+i,convert_cnt:30,active_register:200,cpa_bid:100+i,app_type_text:i%2?'应用':'小程序',deep_bid_type_text:i%2?'深度转化':'普通出价',deep_cpabid:50+i,deep_external_action_text:i%2?'深度付费':'深度注册',external_action_text:i%2?'付费':'注册',status_text:i%2?'投放中':'已暂停'}));
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html;charset=utf-8');res.end(fs.readFileSync(file))});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -118,10 +118,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(savedStrategies.length,1);assert.match(await page.locator('#strategyDetail').textContent(),/低价放量测试/);assert.match(await page.locator('#strategyDetail').textContent(),/8,056\.00/);
   await page.locator('.section-nav a[href="#all"]').click();
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
-  await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),18);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
+  await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),18);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'预估 eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
-  assert.equal(await page.locator('#rows tr td').count(),17);assert.equal(await page.locator('#rows tr td').nth(16).textContent(),'114.00');
+  assert.equal(await page.locator('#rows tr td').count(),17);assert.equal(await page.locator('#rows tr td').nth(16).textContent(),'204.00');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'21.078');
   assert.equal(await page.locator('#rows tr td').nth(12).textContent(),'143.33');
   assert.equal(await page.locator('.table-wrap:not(.pricing-table) th').nth(11).textContent(),'预估 ROI');

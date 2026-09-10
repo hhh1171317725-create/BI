@@ -412,7 +412,7 @@ public class BidServerSyncService {
       var row=new LinkedHashMap<String,Object>();
       for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
           "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
-          "deep_external_action_text","external_action_text","status_text","cpm_platform","ecpm","source_platform","platform_text","provider_data"))row.put(key,raw.get(key));
+          "deep_external_action_text","external_action_text","status_text","show_cnt","cpm_platform","ecpm","source_platform","platform_text","provider_data"))row.put(key,raw.get(key));
       row.putIfAbsent("source_platform",platform);row.putIfAbsent("platform_text","gdt".equals(platform)?"广点通":"字节");
       for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
         Object id=row.get(key);

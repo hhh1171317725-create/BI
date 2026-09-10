@@ -27,6 +27,15 @@
     }
     if(!count)chips.append(make('span','filter-placeholder','未设置筛选 · 当前展示已加载数据'));
     reset.hidden=!count;
+    const empty=report.querySelector('#rows .empty');
+    if(empty){
+      const note=make('p','empty-guidance',count?'试试减少筛选条件；清除筛选不会重新请求数据。':'请先查询或导入计划；如果正在查看单个账户，可返回账户汇总。');
+      empty.append(note);
+      if(count){const clear=make('button','','清除筛选，查看结果');clear.type='button';clear.onclick=()=>reset.click();empty.append(clear);}
+    }
+    const sort=report.querySelector('th[aria-sort="ascending"],th[aria-sort="descending"]');
+    const guidance=report.querySelector('.table-guidance');
+    if(guidance)guidance.textContent=sort?`当前按${sort.textContent.trim()}${sort.getAttribute('aria-sort')==='ascending'?'升序':'降序'} · 点击表头切换排序`:'点击表头排序 · 横向滚动查看更多指标';
   }
   reset.onclick=()=>{
     filters.forEach(([id,,empty])=>{const input=document.getElementById(id);if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;});
@@ -53,5 +62,7 @@
   window.addEventListener('hashchange',()=>setFocus(false));
   tools.append(density,focus);report.querySelector('.table-wrap').before(tools);
   report.querySelector('.table-wrap').setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');
+  const legend=make('p','table-value-legend','数值 0 表示已取得零值；-- 表示缺失或不适用。点击计划名称可查看数据来源与计算依据。');
+  report.querySelector('.table-wrap').after(legend);
   refresh();
 })();

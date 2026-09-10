@@ -109,7 +109,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
+  await page.evaluate(()=>window.testTaskOption=document.querySelector('#taskFilter option'));
   await page.locator('#lastPage').click();assert.equal(await page.locator('#rows tr').count(),5);
+  assert.equal(await page.evaluate(()=>window.testTaskOption===document.querySelector('#taskFilter option')),true);
   assert.equal(await page.locator('#pageRange').textContent(),'当前显示 101–105 项');
   await page.locator('#pageJump').fill('2');await page.locator('#pageJump').press('Enter');
   assert.equal(await page.locator('#pageLabel').textContent(),'第 2 / 3 页');
@@ -401,7 +403,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#platformFilter').inputValue(),'');
   assert.equal(await page.locator('#count').textContent(),'3 条');
   await page.locator('#search').fill('无匹配词');assert.match(await card('cost').textContent(),/0.00.*0 条计划/);
-  await page.locator('#clearReportFilters').click();
+  await page.getByRole('button',{name:'清除筛选，查看结果',exact:true}).click();
+  assert.equal(await page.locator('#search').inputValue(),'');
+  assert.match(await page.locator('.table-guidance').textContent(),/当前按/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);console.log('UI PASS: report views, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}

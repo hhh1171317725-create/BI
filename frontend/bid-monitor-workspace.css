@@ -35,6 +35,8 @@ body[data-page="bid-monitor"] .credential-details:not([open])>summary{margin:0}
 .multi-filter-count{flex-basis:100%;font-size:11px;color:#718198}
 .multi-filter-list .column-choice[hidden]{display:none!important}
 .bid-multi-dropdown .column-no-results{margin:14px 0}
+.table-value-legend,.empty-guidance{font-size:12px;color:#718198;line-height:1.7;margin:10px 0}
+#report .empty button{margin:6px 0 12px}
 .batch-search-hint{font-size:11px;color:#718198;font-weight:400;line-height:1.5}
 #report .pager{flex-wrap:wrap;row-gap:10px}
 .page-jump-label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

@@ -26,7 +26,7 @@ function aggregateCell(row,key){
   return `<td${title} class="${tone}">${value}</td>`;
 }
 const cachedAnalysis=B.createAnalysisCache();
-let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
+let valueFilterRows=null,taskFilterRows=null,taskFilterRules='',filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
@@ -120,11 +120,15 @@ function render(){
   const current=range?range.end>=today():true;$('#lag').hidden=!current;
   analyzed=cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData);
   drawValueFilters();
+  const taskSignature=JSON.stringify(taskRules.map(rule=>rule.name));
+  if(taskFilterRows!==analyzed||taskFilterRules!==taskSignature){
+  taskFilterRows=analyzed;taskFilterRules=taskSignature;
   const chosen=new Set([...$('#taskFilter').selectedOptions].map(option=>option.value));
   const configuredTasks=taskRules.map((rule,index)=>({name:rule.name,value:`task:${index}`})),configuredNames=new Set(configuredTasks.map(item=>item.name));
   const automaticTasks=[...new Set(analyzed.map(row=>row.task).filter(Boolean))].filter(name=>!configuredNames.has(name)).sort((a,b)=>a.localeCompare(b,'zh-CN')).map(name=>({name,value:`auto:${encodeURIComponent(name)}`}));
   $('#taskFilter').innerHTML='<option value="__unmatched">未匹配 / 冲突</option>'+[...configuredTasks,...automaticTasks].map(item=>`<option value="${esc(item.value)}">${esc(item.name)}</option>`).join('');
   for(const option of $('#taskFilter').options)option.selected=chosen.has(option.value);
+  }
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
   drawAggregateColumns(viewMode);
   const displayedMetrics=currentAggregateColumns(viewMode);
@@ -135,15 +139,19 @@ function render(){
   // Keep IDs as strings: advertising IDs may exceed Number.MAX_SAFE_INTEGER.
   const batchIds=searchParts.length>1&&searchParts.every(value=>/^\d+$/.test(value))?new Set(searchParts):null;
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,[...selectedOptimizers],q,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  const textFilters=optionalTextKeys.map(key=>[key,$('#'+filterId(key)).value]);
+  const activeTextFilters=textFilters.filter(([,value])=>value!=='');
+  const minValue=$('#deepCpaBidMin').value,maxValue=$('#deepCpaBidMax').value;
+  const minBid=minValue===''?null:Number(minValue),maxBid=maxValue===''?null:Number(maxValue);
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,[...selectedOptimizers],q,...textFilters.map(([,value])=>value),minValue,maxValue]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTasks=new Set(selected.map(value=>value.startsWith('task:')?taskRules[Number(value.slice(5))]?.name:value.startsWith('auto:')?decodeURIComponent(value.slice(5)):'').filter(Boolean));
   filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected.length||(selected.includes('__unmatched')&&!r.task)||selectedTasks.has(r.task))&&
     (!selectedOptimizers.size||selectedOptimizers.has(r.optimizer||'未填写'))&&
     (!q||(batchIds?batchIds.has(String(r.id))||batchIds.has(String(r.accountId)):[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q)))&&
-    optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
-    (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
-    (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
+    activeTextFilters.every(([key,value])=>r[key]===value)&&
+    (minBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=minBid)&&
+    (maxBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=maxBid));
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
   }
   visible=[...filteredRows];

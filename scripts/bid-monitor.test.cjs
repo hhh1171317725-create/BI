@@ -29,6 +29,12 @@ test('retains optional Chuangliang fields for report columns and filters',()=>{
  assert.equal(result.ecpm,18.75);assert.equal(result.appType,'小程序');assert.equal(result.deepBidType,'深度转化');assert.equal(result.deepCpaBid,88.5);
  assert.equal(result.deepExternalAction,'深度付费');assert.equal(result.externalAction,'注册');assert.equal(result.planStatus,'投放中');
 });
+test('estimates eCPM for an old snapshot by deriving impressions from spend and media CPM',()=>{
+ const result=normalize({stat_cost:'200',cpm_platform:'10',convert_cnt:'15',cpa_bid:'25'});
+ assert.equal(result.impressions,20000);assert.equal(result.impressionsEstimated,true);assert.equal(result.ecpm,18.75);
+ const missing=normalize({stat_cost:'200',convert_cnt:'15',cpa_bid:'25'});
+ assert.equal(missing.impressions,null);assert.equal(missing.ecpm,null);
+});
 test('aggregates every plan by optimizer with weighted metrics',()=>{
  const rules=[{name:'A',keyword:'account',price:10}];
  const rows=[

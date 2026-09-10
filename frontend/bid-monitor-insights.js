@@ -1,7 +1,10 @@
 // Read-only report insights. Uses the same filtered rows and formulas as the table/export.
 (() => {
   const cards=$('#summaryCards');
+  let displayedRows=null;
   function drawCards(){
+    if(displayedRows===filteredRows)return;
+    displayedRows=filteredRows;
     const rows=filteredRows,priced=rows.filter(row=>Number.isFinite(row.price)&&Number.isFinite(row.commission)&&Number.isFinite(row.cashCost));
     const cost=rows.reduce((sum,row)=>sum+(Number.isFinite(row.cost)?row.cost:0),0);
     const commission=priced.reduce((sum,row)=>sum+row.commission,0);

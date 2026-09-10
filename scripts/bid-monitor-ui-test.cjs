@@ -110,8 +110,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.evaluate(()=>window.testTaskOption=document.querySelector('#taskFilter option'));
+  await page.evaluate(()=>window.testSummaryCard=document.querySelector('#summaryCards').firstElementChild);
   await page.locator('#lastPage').click();assert.equal(await page.locator('#rows tr').count(),5);
   assert.equal(await page.evaluate(()=>window.testTaskOption===document.querySelector('#taskFilter option')),true);
+  assert.equal(await page.evaluate(()=>window.testSummaryCard===document.querySelector('#summaryCards').firstElementChild),true);
   assert.equal(await page.locator('#pageRange').textContent(),'当前显示 101–105 项');
   await page.locator('#pageJump').fill('2');await page.locator('#pageJump').press('Enter');
   assert.equal(await page.locator('#pageLabel').textContent(),'第 2 / 3 页');

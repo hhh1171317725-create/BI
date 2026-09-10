@@ -9,6 +9,9 @@
     if(id==='search')wrapper.classList.add('workspace-search');
     input.before(wrapper);wrapper.append(input);
   }
+  const searchHint=make('small','batch-search-hint','批量查找：多个计划 / 账户 ID 用空格或逗号分隔');searchHint.id='batchSearchHint';
+  document.getElementById('search').after(searchHint);
+  document.getElementById('search').setAttribute('aria-describedby','batchSearchHint');
   const summary=make('div','filter-summary');summary.id='filterSummary';
   const chips=make('div','filter-chips');
   const reset=make('button','filter-reset','清除全部筛选');reset.type='button';reset.id='clearReportFilters';

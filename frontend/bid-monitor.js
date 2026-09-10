@@ -131,13 +131,16 @@ function render(){
   $('#accountDrill').hidden=!selectedAccount;$('#accountDrillLabel').textContent=selectedAccount?'当前账户：'+selectedAccount.label:'';
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...displayedMetrics]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=[...$('#taskFilter').selectedOptions].map(option=>option.value),selectedOptimizers=new Set([...$('#optimizerFilter').selectedOptions].map(option=>option.value)),q=$('#search').value.trim().toLowerCase();
+  const searchParts=q.split(/[\s,，;；]+/).filter(Boolean);
+  // Keep IDs as strings: advertising IDs may exceed Number.MAX_SAFE_INTEGER.
+  const batchIds=searchParts.length>1&&searchParts.every(value=>/^\d+$/.test(value))?new Set(searchParts):null;
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
   const filterKey=JSON.stringify([selectedAccount?.key,selected,[...selectedOptimizers],q,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTasks=new Set(selected.map(value=>value.startsWith('task:')?taskRules[Number(value.slice(5))]?.name:value.startsWith('auto:')?decodeURIComponent(value.slice(5)):'').filter(Boolean));
   filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected.length||(selected.includes('__unmatched')&&!r.task)||selectedTasks.has(r.task))&&
     (!selectedOptimizers.size||selectedOptimizers.has(r.optimizer||'未填写'))&&
-    (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
+    (!q||(batchIds?batchIds.has(String(r.id))||batchIds.has(String(r.accountId)):[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q)))&&
     optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
@@ -164,6 +167,11 @@ function render(){
   }
   const unit=viewMode==='accounts'?'个账户':viewMode==='optimizers'?'名优化师':viewMode==='tasks'?'个任务':viewMode==='optimizerTasks'?'个优化师 × 任务组合':viewMode==='conversionTargets'?'个目标组合':'条';
   $('#count').textContent=aggregateMode?`${displayRows.length} ${unit}（${visible.length} 条计划）`:`${displayRows.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!displayRows.length;
+  $('#firstPage').disabled=page<=1;$('#lastPage').disabled=page>=pages;
+  $('#pageJump').setCustomValidity('');$('#pageJump').max=String(pages);$('#pageJump').value=String(page);$('#pageJump').disabled=!displayRows.length;
+  $('#pageJumpButton').disabled=!displayRows.length;
+  $('#pageRange').textContent=displayRows.length?`当前显示 ${(page-1)*size+1}–${Math.min(page*size,displayRows.length)} 项`:'当前无结果';
+  $('#batchSearchHint').textContent=batchIds?`已按 ${batchIds.size} 个 ID 精确查询，匹配 ${filteredRows.length} 条计划`:'批量查找：多个计划 / 账户 ID 用空格或逗号分隔';
   document.dispatchEvent(new CustomEvent('bid:rendered'));
 }
 $('#fetch').onclick=async()=>{
@@ -220,6 +228,16 @@ $('#accountDrillBack').onclick=()=>{selectedAccount=null;$('#viewMode').value='a
 $('#tableHead').onclick=event=>{const button=event.target.closest('.sort-header');if(!button)return;const nextKey=button.dataset.sortKey;if(nextKey===sortKey)sortDirection=sortDirection==='desc'?'asc':'desc';else{sortKey=nextKey;sortDirection=textSortKeys.has(nextKey)?'asc':'desc';}page=1;render();};
 for(const id of ['startDate','endDate','createdStart','createdEnd'])$('#'+id).onchange=()=>{if(raw.length)message('日期已修改，下方仍为原统计区间数据，请重新查询');};
 $('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};
+function jumpToPage(value){
+  const pages=Number($('#pageJump').max)||1;
+  if(!Number.isInteger(value)||value<1||value>pages){$('#pageJump').setCustomValidity(`请输入 1 到 ${pages} 的整数页码`);$('#pageJump').reportValidity();return;}
+  $('#pageJump').setCustomValidity('');page=value;render();$('#report .table-wrap').scrollTop=0;
+}
+$('#firstPage').onclick=()=>jumpToPage(1);
+$('#lastPage').onclick=()=>jumpToPage(Number($('#pageJump').max));
+$('#pageJumpButton').onclick=()=>jumpToPage(Number($('#pageJump').value));
+$('#pageJump').oninput=()=>$('#pageJump').setCustomValidity('');
+$('#pageJump').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();jumpToPage(Number(event.currentTarget.value));}};
 $('#export').onclick=()=>{
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);

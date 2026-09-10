@@ -41,10 +41,10 @@ class BidSnapshotControllerTest {
   }
 
   @Test void retainsOptionalChuangliangFieldsForSharedReports() {
-    var item=row();item.put("app_type_text","小程序");item.put("deep_bid_type_text","深度转化");item.put("deep_cpabid",88.5);
+    var item=row();item.put("cpm_platform",18.75);item.put("app_type_text","小程序");item.put("deep_bid_type_text","深度转化");item.put("deep_cpabid",88.5);
     item.put("deep_external_action_text","深度付费");item.put("external_action_text","注册");item.put("status_text","投放中");
     var saved=(Map<?,?>)((List<?>)BidSnapshotController.validate(input(List.of(item))).get("rows")).getFirst();
-    assertEquals("小程序",saved.get("app_type_text"));assertEquals("深度转化",saved.get("deep_bid_type_text"));assertEquals(88.5,saved.get("deep_cpabid"));
+    assertEquals(18.75,saved.get("cpm_platform"));assertEquals("小程序",saved.get("app_type_text"));assertEquals("深度转化",saved.get("deep_bid_type_text"));assertEquals(88.5,saved.get("deep_cpabid"));
     assertEquals("深度付费",saved.get("deep_external_action_text"));assertEquals("注册",saved.get("external_action_text"));assertEquals("投放中",saved.get("status_text"));
   }
 

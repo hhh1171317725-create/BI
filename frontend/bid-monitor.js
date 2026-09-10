@@ -62,7 +62,7 @@ const fmt=v=>v===null||v===undefined?'--':Number(v).toLocaleString('zh-CN',{mini
 const fmtPercent=v=>Number.isFinite(v)?fmt(v*100)+'%':'--';
 const fmtRoi=v=>Number.isFinite(v)?Number(v).toLocaleString('zh-CN',{minimumFractionDigits:3,maximumFractionDigits:3}):'--';
 const textSortKeys=new Set(['name','platform','account','accountId','optimizer','task','priceSource','appType','deepBidType','deepExternalAction','externalAction','planStatus']);
-const planColumns=[['计划','name'],['账户','account'],['优化师','optimizer'],['任务','task'],['结算单价','basePrice'],['单价来源','priceSource'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['当前出价','bid'],['预估 ROI','estimatedRoi'],['盈亏线出价','breakEvenBid'],['出价利润率','bidProfitRate'],['gap','gap'],['实际单价','price']];
+const planColumns=[['计划','name'],['账户','account'],['优化师','optimizer'],['任务','task'],['结算单价','basePrice'],['单价来源','priceSource'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['当前出价','bid'],['预估 ROI','estimatedRoi'],['盈亏线出价','breakEvenBid'],['出价利润率','bidProfitRate'],['gap','gap'],['实际单价','price'],['eCPM','ecpm']];
 const optionalColumns=[['平台','platform'],['应用类型','appType'],['深度出价类型','deepBidType'],['深度 CPA 出价','deepCpaBid'],['深度转化目标','deepExternalAction'],['转化目标','externalAction'],['计划状态','planStatus']];
 const optionalTextKeys=['platform','appType','deepBidType','deepExternalAction','externalAction','planStatus'];
 const optionalColumnStorage='bid-monitor-visible-columns-v1';
@@ -123,7 +123,7 @@ function render(){
   const chosen=new Set([...$('#taskFilter').selectedOptions].map(option=>option.value));
   const configuredTasks=taskRules.map((rule,index)=>({name:rule.name,value:`task:${index}`})),configuredNames=new Set(configuredTasks.map(item=>item.name));
   const automaticTasks=[...new Set(analyzed.map(row=>row.task).filter(Boolean))].filter(name=>!configuredNames.has(name)).sort((a,b)=>a.localeCompare(b,'zh-CN')).map(name=>({name,value:`auto:${encodeURIComponent(name)}`}));
-  $('#taskFilter').innerHTML='<option value="__unmatched">未匹配 / 冲突</option>'+[...configuredTasks,...automaticTasks].map(item=>`<option value="${esc(item.value)}">${esc(item.name)}${item.value.startsWith('auto:')?'（日报自动）':''}</option>`).join('');
+  $('#taskFilter').innerHTML='<option value="__unmatched">未匹配 / 冲突</option>'+[...configuredTasks,...automaticTasks].map(item=>`<option value="${esc(item.value)}">${esc(item.name)}</option>`).join('');
   for(const option of $('#taskFilter').options)option.selected=chosen.has(option.value);
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
   drawAggregateColumns(viewMode);
@@ -241,7 +241,7 @@ $('#gapReload').onclick=()=>void loadGap();
 
 // Only report fields are exposed to the assistant; configuration credentials stay out.
 window.getPetReportContext=()=>{
-  const fields={id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',conversions:'转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
+  const fields={id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'eCPM',conversions:'转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};

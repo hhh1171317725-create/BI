@@ -24,9 +24,9 @@ test('retains optimizer from upstream, snapshots and Excel without inventing mis
  assert.equal(r.id,'7681075475582042163');assert.equal(r.accountId,'7676449794404745237');
 });
 test('retains optional Chuangliang fields for report columns and filters',()=>{
- const result=normalize({platform_text:'广点通',app_type_text:'小程序',deep_bid_type_text:'深度转化',deep_cpabid:'88.5',deep_external_action_text:'深度付费',external_action_text:'注册',status_text:'投放中'});
+ const result=normalize({platform_text:'广点通',cpm_platform:'18.75',app_type_text:'小程序',deep_bid_type_text:'深度转化',deep_cpabid:'88.5',deep_external_action_text:'深度付费',external_action_text:'注册',status_text:'投放中'});
  assert.equal(result.platform,'广点通');
- assert.equal(result.appType,'小程序');assert.equal(result.deepBidType,'深度转化');assert.equal(result.deepCpaBid,88.5);
+ assert.equal(result.ecpm,18.75);assert.equal(result.appType,'小程序');assert.equal(result.deepBidType,'深度转化');assert.equal(result.deepCpaBid,88.5);
  assert.equal(result.deepExternalAction,'深度付费');assert.equal(result.externalAction,'注册');assert.equal(result.planStatus,'投放中');
 });
 test('aggregates every plan by optimizer with weighted metrics',()=>{

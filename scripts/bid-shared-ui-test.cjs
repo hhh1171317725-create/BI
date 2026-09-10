@@ -62,7 +62,9 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   price=3;revision='p2';stamp='2026-09-08T01:10:00Z';
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='2.40');
-  await page.locator('#dataQualityCards [data-quality="linked"]').click();
+  assert.match(await page.locator('#summaryCards [data-summary="cost"]').textContent(),/100.00/);
+  await page.locator('#taskFilterButton').click();await page.locator('#bidMultiFilterDialog input[value="task:0"]').check();await page.locator('#bidMultiFilterDialog .primary').click();
+  await page.locator('#optimizerFilterButton').click();await page.locator('#bidMultiFilterDialog input[value="张三"]').check();await page.locator('#bidMultiFilterDialog .primary').click();
   assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('.plan-detail-link').click();
   assert.match(await page.locator('#bidPlanDetail').textContent(),/共享任务/);

@@ -2,9 +2,9 @@
 (() => {
   const report=document.getElementById('report');
   const toolbar=report.querySelector('.report-toolbar');
-  const filters=[['search','关键词',''],['taskFilter','任务',''],['platformFilter','平台',''],['appTypeFilter','应用类型',''],['deepBidTypeFilter','深度出价类型',''],['deepExternalActionFilter','深度转化目标',''],['externalActionFilter','转化目标',''],['statusFilter','计划状态',''],['deepCpaBidMin','深度 CPA 最低',''],['deepCpaBidMax','深度 CPA 最高','']];
+  const filters=[['search','关键词',''],['taskFilter','任务',''],['optimizerFilter','优化师',''],['platformFilter','平台',''],['appTypeFilter','应用类型',''],['deepBidTypeFilter','深度出价类型',''],['deepExternalActionFilter','深度转化目标',''],['externalActionFilter','转化目标',''],['statusFilter','计划状态',''],['deepCpaBidMin','深度 CPA 最低',''],['deepCpaBidMax','深度 CPA 最高','']];
   const make=(tag,cls,text)=>{const el=document.createElement(tag);el.className=cls;if(text)el.textContent=text;return el;};
-  for(const [id,label] of [['search','搜索计划 / 账户 / 优化师'],['viewMode','统计维度'],['taskFilter','任务'],['platformFilter','投放平台']]){
+  for(const [id,label] of [['search','搜索计划 / 账户 / 优化师'],['viewMode','统计维度'],['taskFilterButton','任务'],['optimizerFilterButton','优化师'],['platformFilter','投放平台']]){
     const input=document.getElementById(id),wrapper=make('label','workspace-field',label);
     if(id==='search')wrapper.classList.add('workspace-search');
     input.before(wrapper);wrapper.append(input);
@@ -16,17 +16,17 @@
   function refresh(){
     chips.replaceChildren();let count=0;
     for(const [id,label,empty] of filters){
-      const input=document.getElementById(id);if(input.value===empty)continue;count++;
-      const value=input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value;
+      const input=document.getElementById(id),values=input.multiple?[...input.selectedOptions].map(option=>option.textContent):[];if(input.multiple?values.length===0:input.value===empty)continue;count++;
+      const value=input.multiple?(values.length<=2?values.join('、'):`${values.slice(0,2).join('、')}等 ${values.length} 项`):input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value;
       const chip=make('button','filter-chip',`${label}：${value} ×`);chip.type='button';chip.title=`清除${label}`;
       chip.setAttribute('aria-label',`清除${label}筛选`);
-      chip.onclick=()=>{input.value=empty;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};chips.append(chip);
+      chip.onclick=()=>{if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;input.dispatchEvent(new Event('input',{bubbles:true}));const trigger=document.getElementById(id+'Button');if(trigger)trigger.focus();else input.focus();};chips.append(chip);
     }
     if(!count)chips.append(make('span','filter-placeholder','未设置筛选 · 当前展示已加载数据'));
     reset.hidden=!count;
   }
   reset.onclick=()=>{
-    filters.forEach(([id,,empty])=>document.getElementById(id).value=empty);
+    filters.forEach(([id,,empty])=>{const input=document.getElementById(id);if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;});
     // One event renders once; do not clear columns, sort order or account drilldown.
     document.getElementById('search').dispatchEvent(new Event('input',{bubbles:true}));
     document.getElementById('search').focus();

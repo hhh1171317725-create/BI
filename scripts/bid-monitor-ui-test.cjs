@@ -129,8 +129,13 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#search').fill('测试计划 104');
   assert.equal(await page.locator('#rows tr td').nth(13).textContent(),'-42.33%');
   assert.equal(await page.locator('#rows tr td').nth(13).getAttribute('title'),'盈亏线出价：143.33');
-  await page.locator('#search').fill('');await page.locator('#taskFilter').selectOption('task:1');assert.equal(await page.locator('#count').textContent(),'52 条');
-  await page.locator('#taskFilter').selectOption('');
+  await page.locator('#search').fill('');await page.locator('#taskFilterButton').click();
+  await page.locator('#bidMultiFilterDialog input[value="task:0"]').check();await page.locator('#bidMultiFilterDialog input[value="task:1"]').check();
+  await page.locator('#bidMultiFilterDialog .primary').click();assert.equal(await page.locator('#count').textContent(),'105 条');assert.equal(await page.locator('#taskFilterButton').textContent(),'任务（2）');
+  await page.locator('#taskFilterButton').click();await page.locator('#bidMultiFilterDialog input[value="task:0"]').uncheck();await page.locator('#bidMultiFilterDialog .primary').click();assert.equal(await page.locator('#count').textContent(),'52 条');
+  await page.locator('#optimizerFilterButton').click();await page.locator('#bidMultiFilterDialog input[value="李四"]').check();await page.locator('#bidMultiFilterDialog .primary').click();assert.equal(await page.locator('#count').textContent(),'52 条');
+  assert.equal(await page.getByRole('button',{name:'清除任务筛选',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'清除优化师筛选',exact:true}).count(),1);
+  await page.locator('#clearReportFilters').click();assert.equal(await page.locator('#taskFilter').evaluate(select=>select.selectedOptions.length),0);assert.equal(await page.locator('#optimizerFilter').evaluate(select=>select.selectedOptions.length),0);
   assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('main').textContent(),/预估 ROI/);
   assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
   await page.locator('#viewMode').selectOption('accounts');

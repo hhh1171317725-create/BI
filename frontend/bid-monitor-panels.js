@@ -29,6 +29,20 @@
   for(const id of filterIds)document.getElementById(id).value=document.getElementById('draft-'+id).value;
   document.getElementById(filterIds[0]).dispatchEvent(new Event('input',{bubbles:true}));filter.element.close();
  };
+ const multi=dialog('bidMultiFilterDialog','多选筛选','勾选一个或多个值，确认后应用。未勾选表示全部。');
+ multi.body.classList.add('multi-filter-body');multi.reset.textContent='清空选择';let multiTarget=null;
+ function openMulti(id,title){
+  multiTarget=document.getElementById(id);multi.element.querySelector('h2').textContent=title+'筛选';multi.body.replaceChildren();
+  const search=make('input','column-search');search.type='search';search.placeholder='搜索'+title;search.setAttribute('aria-label','搜索'+title);
+  const list=make('div','multi-filter-list');
+  for(const option of multiTarget.options){const label=make('label','column-choice'),box=make('input');box.type='checkbox';box.value=option.value;box.checked=option.selected;label.append(box,document.createTextNode(option.textContent));label.dataset.search=option.textContent.toLowerCase();list.append(label);}
+  search.oninput=()=>{const term=search.value.trim().toLowerCase();for(const label of list.children)label.hidden=!!term&&!label.dataset.search.includes(term);};
+  multi.body.append(search,list);multi.element.showModal();search.focus();
+ }
+ document.getElementById('taskFilterButton').onclick=()=>openMulti('taskFilter','任务');
+ document.getElementById('optimizerFilterButton').onclick=()=>openMulti('optimizerFilter','优化师');
+ multi.reset.onclick=()=>multi.body.querySelectorAll('input[type="checkbox"]').forEach(box=>box.checked=false);
+ multi.apply.onclick=()=>{const selected=new Set([...multi.body.querySelectorAll('input[type="checkbox"]:checked')].map(box=>box.value));for(const option of multiTarget.options)option.selected=selected.has(option.value);multiTarget.dispatchEvent(new Event('input',{bubbles:true}));multi.element.close();};
  const chooser=dialog('bidColumnsDialog','自定义列','按当前统计维度保存。左侧选择字段，右侧调整顺序；基础维度列固定保留。');
  chooser.body.classList.add('column-layout');
  const available=make('section','column-available'),chosen=make('section','column-chosen');
@@ -68,7 +82,11 @@
   }else{if(useDefaults)delete aggregateSettings[view];else aggregateSettings[view]=selection.filter(key=>!fixed.includes(key));saveAggregateSettings();}
   page=1;render();chooser.element.close();
  };
- function indicators(){const count=filterIds.filter(id=>document.getElementById(id).value!=='').length;more.textContent='▽ 更多筛选'+(count?`（${count}）`:'');const mode=document.getElementById('viewMode').value,total=mode==='plans'?activePlanColumns().length:viewDimensions(mode).length+currentAggregateColumns(mode).length;open.textContent=`☷ 选择列（${total}）`;}
+ function indicators(){
+  const count=filterIds.filter(id=>document.getElementById(id).value!=='').length;more.textContent='▽ 更多筛选'+(count?`（${count}）`:'');
+  for(const [id,label] of [['taskFilter','任务'],['optimizerFilter','优化师']]){const selected=document.getElementById(id).selectedOptions.length,button=document.getElementById(id+'Button');button.textContent=selected?`${label}（${selected}）`:`全部${label}`;button.classList.toggle('has-selection',selected>0);}
+  const mode=document.getElementById('viewMode').value,total=mode==='plans'?activePlanColumns().length:viewDimensions(mode).length+currentAggregateColumns(mode).length;open.textContent=`☷ 选择列（${total}）`;
+ }
  document.addEventListener('bid:rendered',indicators);indicators();
  document.body.classList.add('bid-compact-controls');
 })();

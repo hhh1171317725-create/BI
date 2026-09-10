@@ -12,7 +12,7 @@ function bidSharedAccess(data){
 async function bidApplyShared(data){
   bidSharedAccess(data);
   if(bidCanManage)return;
-  if(bidSharedPricing!==data.pricingRevision)document.getElementById('taskFilter').value='';
+  if(bidSharedPricing!==data.pricingRevision)for(const option of document.getElementById('taskFilter').options)option.selected=false;
   bidSharedPricing=data.pricingRevision||'';
   taskRules=Array.isArray(data.rules)?data.rules:[];
   if(data.snapshot){

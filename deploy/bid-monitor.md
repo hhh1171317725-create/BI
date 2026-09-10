@@ -1,5 +1,13 @@
 # Bid Monitor
 
+## Account task and price precomputation
+
+The application now creates `bid_account_references` automatically (requires the same CREATE TABLE permission as the snapshot store). Each statistical date stores the derived account tasks, optimizer-specific tasks, dated settlement prices and gap, plus task-level references, in a versioned JSON payload. Manual user prices are still applied separately and take precedence.
+
+Twenty seconds after startup, a background job prepares today's China-time references and checks again every minute. Completed DHH/all imports change the source version; requests and the background job then regenerate the references. A calculation spanning an import is retried before saving. Repeated requests reuse up to eight in-memory date/version results; after restart, the matching database result is read without rebuilding 30 days of account rows. Previously unopened historical dates calculate on first access. Direct SQL edits outside the application's import workflow do not change its import revision.
+
+The report retains same-date results while refreshing, labels refresh progress, and clears unavailable financial results if the request fails. Summary cards disclose the spend covered by computable revenue/ROI. Gap tooltips reuse account/task indexes instead of scanning every reference for each table cell. Automated cache tests cover restart reuse, import invalidation, date separation, concurrent request coalescing and imports during calculation; production timing requires deployment verification.
+
 Entry: `/tools` -> 出价监测 (`/bid-monitor.html`). No extra Nginx route is required. The existing static file handler serves the page; Spring handles `/api/bid-monitor/**`. The snapshot endpoint automatically creates `bid_monitor_snapshots` on first use; the database user needs CREATE TABLE permission.
 
 ## Deploy

@@ -29,19 +29,28 @@ let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],gr
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
-  gapData=null;render();$('#gapStatus').title='';$('#gapStatus').textContent='正在关联统计结束日前第4天至第2天的大航海账户数据…';
+  if(gapData?.anchor!==anchor)gapData=null;
+  render();$('#gapReload').disabled=true;$('#gapReload').textContent='正在更新…';
+  $('#gapStatus').title='';$('#gapStatus').textContent=gapData?'正在更新任务、单价与 gap，当前显示上次关联结果…':'正在读取已保存的账户任务、单价与 gap…';
   try{
     const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
     gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 日报单价日期：${result.priceDate||'未返回'} · 点击计划查看依据`;
-    $('#gapStatus').title=result.basis||'';
+    $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
   }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
+  finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='刷新任务 / 单价 / gap';}}
 }
+let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
 function gapTitle(id,row){
   const canonical=value=>String(value??'').replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
-  const account=Object.entries(gapData?.accounts||{}).find(([key])=>canonical(key)===canonical(id))?.[1];
-  const task=Object.entries(gapData?.tasks||{}).find(([key])=>key.trim().toLowerCase()===String(row?.referenceTask||'').trim().toLowerCase())?.[1];
+  if(gapTitleSource!==gapData){
+    gapTitleSource=gapData;gapAccountIndex=new Map();gapTaskIndex=new Map();
+    for(const [key,value] of Object.entries(gapData?.accounts||{})){const id=canonical(key);if(!gapAccountIndex.has(id))gapAccountIndex.set(id,value);}
+    for(const [key,value] of Object.entries(gapData?.tasks||{})){const name=key.trim().toLowerCase();if(!gapTaskIndex.has(name))gapTaskIndex.set(name,value);}
+  }
+  const account=gapAccountIndex.get(canonical(id));
+  const task=gapTaskIndex.get(String(row?.referenceTask||'').trim().toLowerCase());
   const data=row?.gapSource==='task-reference'?task:account,source=row?.gapSource==='task-reference'?`同任务“${row.referenceTask}”参考 gap`:'账户 gap';
   const detail=data?.days?.map(d=>`${d.date}：结算${d.settlements??'--'} / 注册${d.registrations??'--'} = ${d.ratio??'--'}${d.reason?`（${d.reason}）`:''}`).join('；');
   return row?.gap===null?(row?.gapReason||'无可计算的 gap'):`${source}${data?`，${data.validDays}/3天有效${detail?'；'+detail:''}`:''}`;

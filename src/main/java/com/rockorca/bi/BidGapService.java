@@ -9,9 +9,40 @@ public class BidGapService {
   private static final int TASK_HISTORY_DAYS=30;
   private final ReportRepository repository;
   private final ReportService reports;
-  public BidGapService(ReportRepository repository, ReportService reports) { this.repository=repository; this.reports=reports; }
+  private final BidAccountReferenceStore references;
+  private final Map<String,Map<String,Object>> memory=new LinkedHashMap<>();
+  public BidGapService(ReportRepository repository, ReportService reports) { this(repository,reports,null); }
+  @org.springframework.beans.factory.annotation.Autowired
+  public BidGapService(ReportRepository repository, ReportService reports,BidAccountReferenceStore references) { this.repository=repository; this.reports=reports; this.references=references; }
 
-  public Map<String,Object> load(String endDate) {
+  public synchronized Map<String,Object> load(String endDate) {
+    LocalDate.parse(endDate);
+    if(references==null)return compute(endDate);
+    for(int attempt=0;attempt<3;attempt++){
+      String revision=references.revision(),key=endDate+":"+revision;
+      if(memory.containsKey(key))return memory.get(key);
+      Map<String,Object> data=references.read(endDate,revision);
+      if(data==null){
+        data=compute(endDate);
+        if(!revision.equals(references.revision()))continue;
+        data.put("preparedAt",java.time.Instant.now().toString());
+        data.put("sourceRevision",revision);
+        references.save(endDate,revision,data);
+      }
+      memory.put(key,data);
+      while(memory.size()>8)memory.remove(memory.keySet().iterator().next());
+      return data;
+    }
+    throw new IllegalStateException("日报正在更新，请稍后重试账户关联");
+  }
+
+  @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000,initialDelay=20000)
+  public void prepareToday(){
+    try{load(LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString());}
+    catch(Exception error){org.slf4j.LoggerFactory.getLogger(BidGapService.class).warn("账户任务单价预计算失败，下次自动重试",error);}
+  }
+
+  private Map<String,Object> compute(String endDate) {
     LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(TASK_HISTORY_DAYS), end=anchor.minusDays(1);
     List<Map<String,Object>> rows=reports.buildDhhAccountRows(repository.readDhhRows(start.toString(),end.toString(),""));
     return calculate(rows,anchor);

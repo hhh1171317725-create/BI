@@ -209,7 +209,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    {promotion_id:'no-grant',advertiser_id:'1870049327502852',promotion_name:'six conversions',media_account_name:'客户-B',stat_cost:600,convert_cnt:6,active_register:10,cpa_bid:10}
   ],'fixture',{start:'2026-08-01',end:'2026-08-01'}));
   assert.equal(await page.locator('#metrics strong').first().textContent(),'78.08%');
-  assert.equal(await page.locator('#metrics strong').nth(1).textContent(),'1.040');
+  assert.equal(await page.locator('#metrics strong').nth(1).textContent(),'1.760');
   await page.locator('#search').fill('grant plan');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'3.200');
   assert.equal(await page.locator('#rows tr td').nth(11).getAttribute('title'),'预估赔付金额：50.00');

@@ -145,7 +145,8 @@ class BidDingtalkServiceTest {
     var row=row("1","account-A",150);var metrics=BidTop5Formatter.metrics(row,new java.math.BigDecimal("10"));
     assertEquals("2.000",metrics.get("roi"));assertEquals("50.00",metrics.get("grant"));assertEquals("20.00",metrics.get("line"));assertEquals("50.00%",metrics.get("rate"));
     row.put("stat_cost",120);assertEquals("0.00",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("grant"));
-    row.put("stat_cost",150);row.put("convert_cnt",6);assertEquals("0.00",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("grant"));
+    row.put("stat_cost",150);row.put("convert_cnt",6);assertEquals("90.00",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("grant"));
+    row.put("convert_cnt",5);assertEquals("0.00",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("grant"));
     row.put("stat_cost",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("roi"));
     row.put("convert_cnt",0);assertEquals("--",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("line"));
     assertEquals("0.00%",BidTop5Formatter.metrics(row,java.math.BigDecimal.TEN).get("ratio"));

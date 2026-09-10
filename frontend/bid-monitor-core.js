@@ -111,7 +111,7 @@
       const threshold=1.2*bidCost;
       // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
       const tolerance=Number.EPSILON*Math.max(Math.abs(row.cost),Math.abs(threshold))*8;
-      const eligible=row.conversions>6&&row.cost-threshold>tolerance;
+      const eligible=row.conversions>=6&&row.cost-threshold>tolerance;
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
       estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;

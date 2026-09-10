@@ -38,8 +38,8 @@ test('aggregates every plan by optimizer with weighted metrics',()=>{
  ];
  const result=aggregateOptimizers(rows);
  assert.equal(result.length,2);assert.equal(result[0].optimizer,'张三');assert.equal(result[0].plans,2);assert.equal(result[0].accounts,2);
- assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,-400);
- assert.equal(result[0].estimatedRoi,(300+50)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
+ assert.equal(result[0].cost,750);assert.equal(result[0].conversions,16);assert.equal(result[0].registrations,30);assert.equal(result[0].profit,140);
+ assert.equal(result[0].estimatedRoi,(300+50+540)/750);assert.equal(result[1].optimizer,'未填写');assert.equal(result[1].priced,0);assert.equal(result[1].profit,null);
 });
 test('aggregate revenue metrics use priced rows while price-independent cash metrics cover every plan',()=>{
  const rules=[{name:'A',keyword:'account-a',price:10}];
@@ -260,7 +260,8 @@ test('cash ROI deducts grant only when both strict conditions hold',()=>{
   const r=cashMetrics({...base,cost},10);assert.equal(r.grant,0);assert.equal(r.cashCost,cost);assert.equal(r.roi,200/cost);
  }
  assert.ok(Math.abs(cashMetrics({...base,cost:120.01},10).grant-20.01)<1e-12);
- assert.equal(cashMetrics({...base,conversions:6},10).grant,0);
+ assert.equal(cashMetrics({...base,conversions:5},10).grant,0);
+ assert.equal(cashMetrics({...base,conversions:6},10).grant,90);
  assert.equal(cashMetrics({...base,conversions:7},10).grant,80);
  assert.equal(cashMetrics({...base,bid:.3,conversions:7,cost:2.52},10).grant,0);
 });
@@ -271,8 +272,8 @@ test('estimated ROI adds compensation when conversion cost exceeds 1.2 times bid
  const boundary=cashMetrics({...base,cost:120},10);
  assert.equal(boundary.estimatedCompensation,0);assert.equal(boundary.estimatedRoi,200/120);
  const sixConversions=cashMetrics({...base,cost:600,conversions:6,registrations:10},10);
- assert.equal(sixConversions.grant,0);assert.equal(sixConversions.estimatedCompensation,0);assert.equal(sixConversions.estimatedRoi,100/600);
- for(const conversions of [0,1,5,6])assert.equal(cashMetrics({...base,conversions},10).estimatedCompensation,0);
+ assert.equal(sixConversions.grant,540);assert.equal(sixConversions.estimatedCompensation,540);assert.equal(sixConversions.estimatedRoi,640/600);
+ for(const conversions of [0,1,5])assert.equal(cashMetrics({...base,conversions},10).estimatedCompensation,0);
  const sevenConversions=cashMetrics({...base,conversions:7},10);
  assert.equal(sevenConversions.estimatedCompensation,80);assert.equal(sevenConversions.estimatedRoi,280/150);
  assert.equal(cashMetrics({...base,cost:0},10).estimatedRoi,null);
@@ -293,8 +294,8 @@ test('cash ROI handles zero conversions, zero cash and missing inputs independen
 test('cash summary applies grant per plan and weights ROI and bid profit by their denominators',()=>{
  const rows=[cashMetrics({cost:150,conversions:10,registrations:20,bid:10},10),cashMetrics({cost:600,conversions:6,registrations:10,bid:10},10)];
  const total=summarizeCash(rows);
- assert.equal(total.roi,300/700);assert.equal(total.bidProfitRate,140/300);
- assert.equal(total.estimatedRoi,(300+50)/750);
+ assert.equal(total.roi,300/160);assert.equal(total.bidProfitRate,140/300);
+ assert.equal(total.estimatedRoi,(300+50+540)/750);
  assert.notEqual(total.roi,(rows[0].roi+rows[1].roi)/2);
  assert.equal(summarizeCash([]).roi,null);
  const partial=summarizeCash([...rows,{commission:null,cashCost:1,bidCost:1,bidProfitRate:null}]);assert.equal(partial.roi,null);assert.equal(partial.bidProfitRate,140/300);

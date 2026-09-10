@@ -25,7 +25,7 @@ final class BidTop5Formatter {
     var cost=number(row.get("stat_cost"));var conv=number(row.get("convert_cnt"));
     var reg=number(row.get("active_register"));var bid=number(row.get("cpa_bid"));
     var commission=reg.multiply(price);var bidCost=bid.multiply(conv);
-    boolean eligible=conv.compareTo(BigDecimal.valueOf(6))>0&&cost.compareTo(bidCost.multiply(new BigDecimal("1.2")))>0;
+    boolean eligible=conv.compareTo(BigDecimal.valueOf(6))>=0&&cost.compareTo(bidCost.multiply(new BigDecimal("1.2")))>0;
     var grant=eligible?cost.subtract(bidCost):BigDecimal.ZERO;
     var cash=cost.subtract(grant);
     String roi=cash.signum()>0?commission.divide(cash,3,RoundingMode.HALF_UP).toPlainString():"--";

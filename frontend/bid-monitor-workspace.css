@@ -17,7 +17,7 @@ body[data-page="bid-monitor"] #export{background:#1767ca;color:white;border-colo
 .filter-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 12px;min-height:34px}
 .filter-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
 .filter-placeholder{font-size:12px;color:#75869a}
-.multi-filter-body{min-height:260px}.multi-filter-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:420px;overflow:auto;margin-top:10px}.multi-filter-list .column-choice{margin:0}
+.bid-multi-dropdown{position:fixed;z-index:1200;padding:12px;background:#fff;border:1px solid #cfdceb;border-radius:8px;box-shadow:0 12px 32px #1c385329}.multi-filter-head,.multi-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.multi-filter-head{margin-bottom:10px}.multi-filter-head strong{font-size:13px;color:#29445f}.multi-filter-footer{justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid #edf1f5}.multi-filter-footer button{min-height:32px}.multi-filter-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:320px;overflow:auto;margin-top:10px}.multi-filter-list .column-choice{margin:0}
 body[data-page="bid-monitor"] .filter-chip{font-size:12px;min-height:28px;padding:4px 9px;color:#15579d;background:#edf5ff;border:1px solid #d2e4f8;border-radius:5px;white-space:normal;overflow-wrap:anywhere;text-align:left;max-width:100%}
 body[data-page="bid-monitor"] .filter-reset{flex:none;min-height:28px;padding:4px 8px;border:0;color:#1767ca;background:transparent;box-shadow:none}
 body[data-page="bid-monitor"] #columnSettings,body[data-page="bid-monitor"] #aggregateSettings{background:#f8fafc;border-radius:8px;margin:8px 0 14px}

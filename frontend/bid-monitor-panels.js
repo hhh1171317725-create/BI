@@ -29,20 +29,32 @@
   for(const id of filterIds)document.getElementById(id).value=document.getElementById('draft-'+id).value;
   document.getElementById(filterIds[0]).dispatchEvent(new Event('input',{bubbles:true}));filter.element.close();
  };
- const multi=dialog('bidMultiFilterDialog','多选筛选','勾选一个或多个值，确认后应用。未勾选表示全部。');
- multi.body.classList.add('multi-filter-body');multi.reset.textContent='清空选择';let multiTarget=null;
- function openMulti(id,title){
-  multiTarget=document.getElementById(id);multi.element.querySelector('h2').textContent=title+'筛选';multi.body.replaceChildren();
-  const search=make('input','column-search');search.type='search';search.placeholder='搜索'+title;search.setAttribute('aria-label','搜索'+title);
-  const list=make('div','multi-filter-list');
-  for(const option of multiTarget.options){const label=make('label','column-choice'),box=make('input');box.type='checkbox';box.value=option.value;box.checked=option.selected;label.append(box,document.createTextNode(option.textContent));label.dataset.search=option.textContent.toLowerCase();list.append(label);}
-  search.oninput=()=>{const term=search.value.trim().toLowerCase();for(const label of list.children)label.hidden=!!term&&!label.dataset.search.includes(term);};
-  multi.body.append(search,list);multi.element.showModal();search.focus();
+ const multi=make('div','bid-multi-dropdown');multi.id='bidMultiFilterDropdown';multi.hidden=true;multi.setAttribute('role','group');
+ const multiHead=make('div','multi-filter-head'),multiTitle=make('strong'),multiClose=make('button','dialog-close','×');multiClose.type='button';multiClose.setAttribute('aria-label','关闭筛选');multiHead.append(multiTitle,multiClose);
+ const multiSearch=make('input','column-search');multiSearch.type='search';
+ const multiList=make('div','multi-filter-list');multiList.setAttribute('role','listbox');multiList.setAttribute('aria-multiselectable','true');
+ const multiFoot=make('div','multi-filter-footer'),multiReset=make('button','dialog-reset','清空选择'),multiDone=make('button','primary multi-filter-done','完成');for(const button of [multiReset,multiDone])button.type='button';multiFoot.append(multiReset,multiDone);
+ multi.append(multiHead,multiSearch,multiList,multiFoot);document.body.append(multi);
+ let multiTarget=null,multiButton=null;
+ function closeMulti(focus=false){if(multi.hidden)return;multi.hidden=true;multiButton?.setAttribute('aria-expanded','false');if(focus)multiButton?.focus();multiTarget=null;multiButton=null;}
+ function positionMulti(){if(multi.hidden||!multiButton)return;const rect=multiButton.getBoundingClientRect(),width=Math.min(420,window.innerWidth-24);multi.style.width=width+'px';multi.style.left=Math.max(12,Math.min(rect.left,window.innerWidth-width-12))+'px';multi.style.top=Math.min(rect.bottom+6,window.innerHeight-multi.offsetHeight-12)+'px';}
+ function applyMulti(){const selected=new Set([...multiList.querySelectorAll('input:checked')].map(box=>box.value));for(const option of multiTarget.options)option.selected=selected.has(option.value);multiTarget.dispatchEvent(new Event('input',{bubbles:true}));}
+ function openMulti(id,title,button){
+  if(!multi.hidden&&multiTarget?.id===id){closeMulti();return;}
+  closeMulti();multiTarget=document.getElementById(id);multiButton=button;multiTitle.textContent=title+'（可多选）';multiList.replaceChildren();multiSearch.value='';multiSearch.placeholder='搜索'+title;multiSearch.setAttribute('aria-label','搜索'+title);
+  for(const option of multiTarget.options){const label=make('label','column-choice'),box=make('input');box.type='checkbox';box.value=option.value;box.checked=option.selected;box.setAttribute('role','option');box.setAttribute('aria-selected',String(box.checked));box.onchange=()=>{box.setAttribute('aria-selected',String(box.checked));applyMulti();};label.append(box,document.createTextNode(option.textContent));label.dataset.search=option.textContent.toLowerCase();multiList.append(label);}
+  multi.hidden=false;multiButton.setAttribute('aria-expanded','true');positionMulti();multiSearch.focus();
  }
- document.getElementById('taskFilterButton').onclick=()=>openMulti('taskFilter','任务');
- document.getElementById('optimizerFilterButton').onclick=()=>openMulti('optimizerFilter','优化师');
- multi.reset.onclick=()=>multi.body.querySelectorAll('input[type="checkbox"]').forEach(box=>box.checked=false);
- multi.apply.onclick=()=>{const selected=new Set([...multi.body.querySelectorAll('input[type="checkbox"]:checked')].map(box=>box.value));for(const option of multiTarget.options)option.selected=selected.has(option.value);multiTarget.dispatchEvent(new Event('input',{bubbles:true}));multi.element.close();};
+ const taskFilterButton=document.getElementById('taskFilterButton'),optimizerFilterButton=document.getElementById('optimizerFilterButton');
+ for(const button of [taskFilterButton,optimizerFilterButton]){button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');}
+ taskFilterButton.onclick=()=>openMulti('taskFilter','任务',taskFilterButton);
+ optimizerFilterButton.onclick=()=>openMulti('optimizerFilter','优化师',optimizerFilterButton);
+ multiSearch.oninput=()=>{const term=multiSearch.value.trim().toLowerCase();for(const label of multiList.children)label.hidden=!!term&&!label.dataset.search.includes(term);};
+ multiReset.onclick=()=>{multiList.querySelectorAll('input[type="checkbox"]').forEach(box=>{box.checked=false;box.setAttribute('aria-selected','false');});applyMulti();};
+ multiDone.onclick=()=>closeMulti(true);multiClose.onclick=()=>closeMulti(true);
+ document.addEventListener('pointerdown',event=>{if(!multi.hidden&&!multi.contains(event.target)&&!multiButton?.contains(event.target))closeMulti();});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!multi.hidden){event.preventDefault();closeMulti(true);}});
+ window.addEventListener('resize',positionMulti);window.addEventListener('scroll',positionMulti,true);
  const chooser=dialog('bidColumnsDialog','自定义列','按当前统计维度保存。左侧选择字段，右侧调整顺序；基础维度列固定保留。');
  chooser.body.classList.add('column-layout');
  const available=make('section','column-available'),chosen=make('section','column-chosen');

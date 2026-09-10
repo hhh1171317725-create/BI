@@ -16,7 +16,7 @@ public class BidAccountReferenceStore {
   public String revision(){
     try(var connection=repository.openConnection();var statement=connection.prepareStatement(
         "SELECT COUNT(*),COALESCE(MAX(id),0) FROM report_sync_runs WHERE status='success' AND report_type IN ('dhh','all')");var rows=statement.executeQuery()){
-      rows.next();return "v1:"+rows.getLong(1)+":"+rows.getLong(2);
+      rows.next();return "v2:"+rows.getLong(1)+":"+rows.getLong(2);
     }catch(Exception error){throw new IllegalStateException("读取日报版本失败",error);}
   }
   private synchronized void initialize() throws Exception {

@@ -36,7 +36,7 @@ async function loadGap(){
     const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
-    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 日报单价日期：${result.priceDate||'未返回'} · 点击计划查看依据`;
+    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
     $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
   }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
   finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='刷新任务 / 单价 / gap';}}
@@ -144,7 +144,7 @@ function render(){
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
   const manualCount=analyzed.filter(r=>r.priceSource==='manual').length,dailyCount=analyzed.filter(r=>r.priceSource==='daily-account'||r.priceSource==='daily-task').length,taskGapCount=analyzed.filter(r=>r.gapSource==='task-reference').length,estimateCount=analyzed.filter(r=>r.taskSource==='bid-return').length;
-  $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划可计算（手动单价 ${manualCount}，前天日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
+  $('#pricingCoverage').textContent=raw.length?`${raw.length-unpriced} / ${raw.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
   const groupKey=viewMode+':'+today();
   if(aggregateMode&&!groupCache.has(groupKey))groupCache.set(groupKey,B.aggregateGroups(filteredRows,dimensions,today()));
   aggregateRows=aggregateMode?sortRows([...groupCache.get(groupKey)]):[];if(!aggregateMode)sortRows(visible);

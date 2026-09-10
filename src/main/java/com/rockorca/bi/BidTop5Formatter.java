@@ -90,6 +90,7 @@ final class BidTop5Formatter {
           if(!usableDailyPrice(daily,priceDate)){daily=dailyPrice(taskEntry);priceSource="同任务前天日报价";}
           else priceSource="账户前天日报价";
           basePrice=usableDailyPrice(daily,priceDate)?optionalNumber(daily.get("price")):null;
+          if(basePrice!=null&&daily.containsKey("fallbackFrom"))priceSource="回溯日报价 "+daily.get("date");
         }
         BigDecimal gap=gapPayload==null?BigDecimal.ONE:optionalNumber(account.get("gap"));String gapSource="";
         if(gap==null){gap=optionalNumber(taskEntry.get("gap"));if(gap!=null)gapSource="｜同任务gap";}
@@ -128,6 +129,7 @@ final class BidTop5Formatter {
     return dailyPrice(account);
   }
   private static boolean usableDailyPrice(Map<?,?> daily,String expectedDate){
-    return !expectedDate.isBlank()&&expectedDate.equals(Objects.toString(daily.get("date"),""))&&optionalNumber(daily.get("price"))!=null;
+    String actual=Objects.toString(daily.get("date"),"");
+    return !expectedDate.isBlank()&&optionalNumber(daily.get("price"))!=null&&(expectedDate.equals(actual)||expectedDate.equals(Objects.toString(daily.get("fallbackFrom"),""))&&!actual.isBlank()&&actual.compareTo(expectedDate)<0);
   }
 }

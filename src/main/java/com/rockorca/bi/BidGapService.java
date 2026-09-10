@@ -76,9 +76,9 @@ public class BidGapService {
     Map<String,Object> accounts=new LinkedHashMap<>();
     history.forEach((id,historyDays)->{
       var summary=summarize(accountDays.getOrDefault(id,Map.of()),start,end);
-      summary.put("dailyPrice",dailyPrice(accountDays.getOrDefault(id,Map.of()).get(end.toString()),end));
+      summary.put("dailyPrice",resolvedPrice(accountDays.getOrDefault(id,Map.of()),end,historyStart));
       Map<String,Object> pricesByTask=new LinkedHashMap<>();
-      accountTaskDays.getOrDefault(id,Map.of()).forEach((task,days)->pricesByTask.put(task,dailyPrice(days.get(end.toString()),end)));
+      accountTaskDays.getOrDefault(id,Map.of()).forEach((task,days)->pricesByTask.put(task,resolvedPrice(days,end,historyStart)));
       summary.put("dailyPricesByTask",pricesByTask);
       String latest=historyDays.entrySet().stream().filter(entry->entry.getValue()[1]>0)
           .map(Map.Entry::getKey).max(String::compareTo).orElse(null);
@@ -94,13 +94,13 @@ public class BidGapService {
     Map<String,Object> tasks=new LinkedHashMap<>();
     taskDays.forEach((task,days)->{
       var summary=summarize(days,start,end);
-      summary.put("dailyPrice",dailyPrice(days.get(end.toString()),end));
+      summary.put("dailyPrice",resolvedPrice(days,end,historyStart));
       tasks.put(task,summary);
     });
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
         "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
         "priceDate",end.toString(),"tasks",tasks,
-        "basis","手动单价优先，未设置时使用统计结束日前第2天日报预估佣金合计÷结算数合计；账户无有效单价时可参考同任务该日单价。gap使用统计结束日前第4天至第2天有效日结算数÷注册数的均值，账户无有效gap时可参考同任务gap。任务识别使用此前30天内最近日报任务名，历史结算价只用于兼容旧任务识别，不作为自动单价。");
+        "basis","手动单价优先，未设置时使用统计结束日前第2天日报预估佣金合计÷结算数合计；目标日有注册但无结算时，逐日向前查找近30天内最近有效结算单价；账户与同任务参考均适用。账户无有效单价时可参考同任务单价。gap使用统计结束日前第4天至第2天有效日结算数÷注册数的均值，账户无有效gap时可参考同任务gap。任务识别使用此前30天内最近日报任务名，历史结算价只用于兼容旧任务识别，不作为自动单价。");
   }
 
   private static void addDaily(Map<String,Map<String,DailyTotals>> grouped,String key,String date,Map<String,Object> row){
@@ -119,6 +119,23 @@ public class BidGapService {
     }
     return ReportService.mapOf("gap",valid==0?null:sum/valid,"validDays",valid,"days",detail,
         "reason",valid==0?"gap区间没有注册数大于0且结算数有效的日报":null);
+  }
+
+  private static Map<String,Object> resolvedPrice(Map<String,DailyTotals> days,LocalDate requested,LocalDate earliest){
+    var current=days.get(requested.toString());
+    var result=dailyPrice(current,requested);
+    if(current!=null&&current.hasRegistrations&&current.registrations>0&&(!current.hasSettlements||current.settlements==0)){
+      for(LocalDate date=requested.minusDays(1);!date.isBefore(earliest);date=date.minusDays(1)){
+        var previous=days.get(date.toString());
+        if(previous!=null&&previous.priceReason()==null){
+          result=dailyPrice(previous,date);
+          result.put("fallbackFrom",requested.toString());
+          result.put("fallbackReason","目标日有注册但无结算，采用此前最近有效结算单价");
+          break;
+        }
+      }
+    }
+    return result;
   }
 
   private static Map<String,Object> dailyPrice(DailyTotals totals,LocalDate date){

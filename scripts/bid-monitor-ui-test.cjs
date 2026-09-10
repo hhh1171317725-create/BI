@@ -106,7 +106,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.waitForFunction(()=>[...document.querySelectorAll('#rows td')].some(td=>td.textContent.includes('账户日报')));
-  assert.match(await page.locator('#pricingCoverage').textContent(),/前天日报单价 52/);
+  assert.match(await page.locator('#pricingCoverage').textContent(),/日报单价 52/);
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
   await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),17);assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);

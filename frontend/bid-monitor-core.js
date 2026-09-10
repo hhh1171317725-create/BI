@@ -4,6 +4,7 @@
   function value(row,keys){for(const key of keys){if(row[key]!==undefined&&row[key]!==null&&row[key]!=='')return row[key]}return null}
   function number(v){if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(String(v).replaceAll(',','').trim());return Number.isFinite(n)&&n>=0?n:null}
   function normalize(row){const out={};for(const [key,keys] of Object.entries(aliases))out[key]=value(row,keys);for(const key of ['cost','conversions','registrations','bid','deepCpaBid'])out[key]=number(out[key]);for(const key of ['id','name','platform','account','accountId','internalAccountId','optimizer','createdAt','appType','deepBidType','deepExternalAction','externalAction','planStatus'])out[key]=String(out[key]??'');if(!out.account&&row.account_info&&typeof row.account_info==='object')out.account=String(row.account_info.media_account_name||row.account_info.account_name||'');return out}
+  function usableDailyPrice(value,date){return !!date&&number(value?.price)!==null&&(value?.date===date||value?.fallbackFrom===date&&typeof value?.date==='string'&&value.date<date);}
   function analyze(row,price,margin,minSample,current){
     const r={...row,ratio:null,cpa:null,breakEven:null,ceiling:null,revenue:null,profit:null,impliedCost:null,bidRoi:null,actualRoi:null,projectedCost:null,projectedProfit:null,status:'missing'};
     if(!(price>0)||!(margin>=0&&margin<100)||!(minSample>=1))throw Error('结算价必须大于 0，毛利率为 0–99%，最小样本至少为 1');
@@ -90,7 +91,7 @@
     for(const task of names){
       const rule=rules.find(item=>String(item.name||'').trim().toLowerCase()===task.trim().toLowerCase()),taskReference=exact(references?.tasks,task);
       const splits=account?.dailyPricesByTask||{},split=exact(splits,task),manual=number(rule?.price),accountDaily=split||(Object.keys(splits).length===0?account?.dailyPrice:null);
-      const daily=accountDaily?.date===references?.priceDate?accountDaily:taskReference?.dailyPrice?.date===references?.priceDate?taskReference.dailyPrice:null;
+      const daily=usableDailyPrice(accountDaily,references?.priceDate)?accountDaily:usableDailyPrice(taskReference?.dailyPrice,references?.priceDate)?taskReference.dailyPrice:null;
       const basePrice=manual>0?manual:number(daily?.price),gap=number(account?.gap)??number(taskReference?.gap);
       const actualPrice=basePrice!==null&&gap!==null?basePrice*gap:null;
       if(Number.isFinite(actualPrice)&&actualPrice>=0)candidates.push({task,rule,actualPrice,difference:Math.abs(actualPrice-estimated)});
@@ -146,7 +147,7 @@
     const taskResult=taskFor(row,rules,inferred),account=gapFor(row,gapIndex),taskName=String(taskResult.inference?.reportedTaskName||taskResult.task||'').trim();
     const findTask=object=>Object.entries(object||{}).find(([name])=>name.trim().toLowerCase()===taskName.toLowerCase())?.[1];
     const taskReference=taskName?findTask(references?.tasks):null;
-    const sameDay=value=>value?.date===references?.priceDate&&number(value?.price)!==null;
+    const sameDay=value=>usableDailyPrice(value,references?.priceDate);
     let basePrice=taskResult.price,priceSource=basePrice!==null?'manual':'',priceDate='',priceReason='';
     if(basePrice===null){
       const split=account?.dailyPricesByTask||{},splitNames=Object.keys(split);

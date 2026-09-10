@@ -134,7 +134,8 @@ final class BidTaskInference {
     return dailyPrice(account);
   }
   private static boolean usableDailyPrice(Map<?,?> daily,String expectedDate){
-    return !expectedDate.isBlank()&&expectedDate.equals(text(daily.get("date")))&&nonnegative(daily.get("price"))!=null;
+    String actual=text(daily.get("date"));
+    return !expectedDate.isBlank()&&nonnegative(daily.get("price"))!=null&&(expectedDate.equals(actual)||expectedDate.equals(text(daily.get("fallbackFrom")))&&!actual.isBlank()&&actual.compareTo(expectedDate)<0);
   }
   private record Candidate(Map<String,Object> rule,BigDecimal price){}
   private record Scored(Candidate candidate,BigDecimal difference){}

@@ -175,6 +175,8 @@ test('new account may use an exact task reference but never stale daily prices',
  assert.equal(result.task,'任务甲');assert.equal(result.basePrice,25);assert.equal(result.gap,.6);assert.equal(result.price,15);assert.equal(result.priceSource,'daily-task');assert.equal(result.gapSource,'task-reference');
  const stale={...reference,tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-06',price:99}}}};
  const missing=cached([row],[],false,stale.accounts,stale)[0];assert.equal(missing.basePrice,null);assert.match(missing.missingReason,/2026-09-07/);
+ const fallback={...reference,tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-06',price:25,fallbackFrom:'2026-09-07'}}}};
+ const recovered=cached([row],[],false,fallback.accounts,fallback)[0];assert.equal(recovered.basePrice,25);assert.equal(recovered.priceDate,'2026-09-06');assert.equal(recovered.priceSource,'daily-task');
 });
 test('mixed-task account never uses its blended account price',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();

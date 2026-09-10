@@ -328,7 +328,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   ],'完整度测试',{start:'2026-08-01',end:'2026-08-01'}),sample);
   const card=key=>page.locator(`#summaryCards [data-summary="${key}"]`);
   assert.match(await card('cost').textContent(),/总消耗225.00.*3 条计划/);
-  for(const key of ['commission','profit','roi'])assert.match(await card(key).textContent(),/条计划可计算/);
+  for(const key of ['commission','grant','roi'])assert.match(await card(key).textContent(),/条计划可计算/);
+  assert.match(await card('grant').textContent(),/预估赠款0.00.*3 \/ 3 条计划可计算/);
   await page.locator('#search').fill('estimated-task');assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('.plan-detail-link').click();
   assert.match(await page.locator('#bidPlanDetail').textContent(),/不是日报直接确认的归属/);

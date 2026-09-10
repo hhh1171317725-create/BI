@@ -5,16 +5,17 @@
     const rows=filteredRows,priced=rows.filter(row=>Number.isFinite(row.price)&&Number.isFinite(row.commission)&&Number.isFinite(row.cashCost));
     const cost=rows.reduce((sum,row)=>sum+(Number.isFinite(row.cost)?row.cost:0),0);
     const commission=priced.reduce((sum,row)=>sum+row.commission,0);
-    const cashProfit=priced.reduce((sum,row)=>sum+row.commission-row.cashCost,0);
+    const grantRows=rows.filter(row=>Number.isFinite(row.grant));
+    const grant=grantRows.reduce((sum,row)=>sum+row.grant,0);
     const roi=B.summarizeCash(priced).estimatedRoi,coverage=`${priced.length.toLocaleString('zh-CN')} / ${rows.length.toLocaleString('zh-CN')} 条计划可计算`;
     const coveredCost=priced.reduce((sum,row)=>sum+(Number.isFinite(row.cost)?row.cost:0),0);
     const items=[
       ['cost','总消耗',fmt(cost),`${rows.length.toLocaleString('zh-CN')} 条计划`],
       ['commission','预估佣金',priced.length?fmt(commission):'--',coverage],
-      ['profit','现金利润',priced.length?fmt(cashProfit):'--',coverage],
+      ['grant','预估赠款',grantRows.length||!rows.length?fmt(grant):'--',`${grantRows.length.toLocaleString('zh-CN')} / ${rows.length.toLocaleString('zh-CN')} 条计划可计算`],
       ['roi','预估 ROI',fmtRoi(roi),coverage]
     ];
-    cards.innerHTML=items.map(([key,label,value,note])=>`<div class="quality-card summary-card" data-summary="${key}" title="${key==='cost'?'当前筛选全部计划的消耗':`仅统计可计算计划，覆盖消耗 ${fmt(coveredCost)} 元；未匹配计划不计为零收益`}"><span>${label}</span><strong class="${key==='profit'&&priced.length?(cashProfit<0?'bad':'good'):''}">${value}</strong><small>${note}</small></div>`).join('');
+    cards.innerHTML=items.map(([key,label,value,note])=>`<div class="quality-card summary-card" data-summary="${key}" title="${key==='cost'?'当前筛选全部计划的消耗':key==='grant'?'逐计划计算：转化数大于6且转化成本大于出价的1.2倍时，赠款=消耗−出价×转化数；不依赖任务单价或gap':`仅统计可计算计划，覆盖消耗 ${fmt(coveredCost)} 元；未匹配计划不计为零收益`}"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join('');
     let note=$('#summaryCoverage');
     if(!note){note=document.createElement('p');note.id='summaryCoverage';note.className='muted';cards.after(note);}
     note.textContent=priced.length<rows.length?`收益覆盖消耗 ${fmt(coveredCost)} / ${fmt(cost)} 元；${rows.length-priced.length} 条计划收益待补齐。ROI 仅按可计算计划加权汇总，转化数不超过 6 不计赔付。`:'收益覆盖当前筛选全部计划；ROI 按消耗加权汇总，转化数不超过 6 不计赔付。';

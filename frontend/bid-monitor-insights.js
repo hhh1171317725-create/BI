@@ -1,13 +1,20 @@
 // Read-only report insights. Uses the same filtered rows and formulas as the table/export.
 (() => {
-  const cards=$('#dataQualityCards'),filter=$('#dataQualityFilter');
-  const categories=[['all','全部计划','当前筛选范围内的计划'],['linked','常规关联','日报 / 名称关联，单价和 gap 可用'],['estimated','估算关联','按价格推测任务，需结合业务核对'],['incomplete','待补齐','任务未识别，或缺少单价 / gap']];
+  const cards=$('#summaryCards');
   function drawCards(){
-    const stats=Object.fromEntries(categories.map(([key])=>[key,{count:0,cost:0}]));
-    for(const row of qualityScope){for(const key of ['all',dataQuality(row)]){stats[key].count++;stats[key].cost+=Number.isFinite(row.cost)?row.cost:0;}}
-    cards.innerHTML=categories.map(([key,label,note])=>`<button type="button" class="quality-card quality-${key}" data-quality="${key}" aria-pressed="${filter.value===key}" title="${note}"><span>${label}</span><strong>${stats[key].count.toLocaleString('zh-CN')}<small>条</small></strong><small>消耗 ${fmt(stats[key].cost)}</small></button>`).join('');
+    const rows=filteredRows,priced=rows.filter(row=>Number.isFinite(row.price)&&Number.isFinite(row.commission)&&Number.isFinite(row.cashCost));
+    const cost=rows.reduce((sum,row)=>sum+(Number.isFinite(row.cost)?row.cost:0),0);
+    const commission=priced.reduce((sum,row)=>sum+row.commission,0);
+    const cashProfit=priced.reduce((sum,row)=>sum+row.commission-row.cashCost,0);
+    const roi=B.summarizeCash(priced).estimatedRoi,coverage=`${priced.length.toLocaleString('zh-CN')} / ${rows.length.toLocaleString('zh-CN')} 条计划可计算`;
+    const items=[
+      ['cost','总消耗',fmt(cost),`${rows.length.toLocaleString('zh-CN')} 条计划`],
+      ['commission','预估佣金',priced.length?fmt(commission):'--',coverage],
+      ['profit','现金利润',priced.length?fmt(cashProfit):'--',coverage],
+      ['roi','预估 ROI',fmtRoi(roi),coverage]
+    ];
+    cards.innerHTML=items.map(([key,label,value,note])=>`<div class="quality-card summary-card" data-summary="${key}"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join('');
   }
-  cards.onclick=event=>{const button=event.target.closest('[data-quality]');if(!button)return;const key=button.dataset.quality;filter.value=filter.value===key?'all':key;filter.dispatchEvent(new Event('input',{bubbles:true}));cards.querySelector(`[data-quality="${key}"]`)?.focus({preventScroll:true});};
   document.addEventListener('bid:rendered',drawCards);drawCards();
 
   const dialog=document.createElement('dialog');dialog.id='bidPlanDetail';dialog.className='bid-dialog bid-plan-detail';dialog.setAttribute('aria-labelledby','bidPlanDetailTitle');

@@ -25,11 +25,7 @@ function aggregateCell(row,key){
   return `<td${title} class="${tone}">${value}</td>`;
 }
 const cachedAnalysis=B.createAnalysisCache();
-let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],qualityScope=[],groupCache=new Map();
-function dataQuality(row){
-  if(!row.task||!Number.isFinite(row.price))return 'incomplete';
-  return ['bid-return','inferred'].includes(row.taskSource)?'estimated':'linked';
-}
+let valueFilterRows=null,filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
 async function loadGap(){
   if(!range)return;
   const generation=++gapGeneration,anchor=range.end;
@@ -123,16 +119,14 @@ function render(){
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...displayedMetrics]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
   const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase();
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
-  const quality=$('#dataQualityFilter').value;
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,quality,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTask=selected.startsWith('task:')?taskRules[Number(selected.slice(5))]?.name:selected.startsWith('auto:')?decodeURIComponent(selected.slice(5)):'';
-  qualityScope=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===selectedTask))&&
+  filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===selectedTask))&&
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
     optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
-    filteredRows=quality==='all'?qualityScope:qualityScope.filter(row=>dataQuality(row)===quality);
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
   }
   visible=[...filteredRows];
@@ -199,7 +193,7 @@ $('#fetch').onclick=async()=>{
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
-for(const id of ['search','viewMode','taskFilter','dataQualityFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
+for(const id of ['search','viewMode','taskFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
   checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);

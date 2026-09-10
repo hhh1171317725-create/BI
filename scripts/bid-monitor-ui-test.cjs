@@ -320,16 +320,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.evaluate(()=>receive([{promotion_id:'estimated-task',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',user_name:'甲',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5}],'估算任务测试',{start:'2026-08-01',end:'2026-08-01'}));
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(4)')?.textContent.includes('出价回传估算'));
   assert.match(await page.locator('#rows tr td').nth(3).getAttribute('title'),/当前出价 × 回传比例估算结算金额/);
-  // Quality cards use the same filtered data as table, aggregates and exports.
+  // Summary cards use the same filtered data and calculations as the table and exports.
   await page.evaluate(rows=>receive([
     rows[0],
     {promotion_id:'estimated-task',promotion_name:'估算示例',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5},
     {promotion_id:'missing-task',promotion_name:'缺失示例 <script>bad()</script>',source_platform:'gdt',platform_text:'广点通',advertiser_id:'missing',media_account_name:'未知账户',stat_cost:25,convert_cnt:2,active_register:0,cpa_bid:12}
   ],'完整度测试',{start:'2026-08-01',end:'2026-08-01'}),sample);
-  const card=key=>page.locator(`#dataQualityCards [data-quality="${key}"]`);
-  assert.match(await card('all').textContent(),/3条.*225.00/);
-  for(const key of ['linked','estimated','incomplete'])assert.match(await card(key).textContent(),/1条/);
-  await card('estimated').click();assert.equal(await page.locator('#count').textContent(),'1 条');
+  const card=key=>page.locator(`#summaryCards [data-summary="${key}"]`);
+  assert.match(await card('cost').textContent(),/总消耗225.00.*3 条计划/);
+  for(const key of ['commission','profit','roi'])assert.match(await card(key).textContent(),/条计划可计算/);
+  await page.locator('#search').fill('estimated-task');assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('.plan-detail-link').click();
   assert.match(await page.locator('#bidPlanDetail').textContent(),/不是日报直接确认的归属/);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/每注册估算结算金额 21.50/);
@@ -341,7 +341,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(qualityCsv,/estimated-task/);assert.doesNotMatch(qualityCsv,/missing-task/);
   await page.locator('#viewMode').selectOption('optimizers');assert.match(await page.locator('#count').textContent(),/1 条计划/);
   await page.locator('#viewMode').selectOption('plans');
-  await card('incomplete').click();await page.locator('.plan-detail-link').click();
+  await page.locator('#search').fill('missing-task');await page.locator('.plan-detail-link').click();
   assert.match(await page.locator('#bidPlanDetail').textContent(),/数据待核对/);
   assert.equal(await page.locator('#bidPlanDetail script').count(),0);
   await page.setViewportSize({width:390,height:844});
@@ -349,14 +349,13 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-plan-detail-mobile.png')});
   await page.keyboard.press('Escape');
   await page.locator('#clearReportFilters').click();
-  assert.equal(await page.locator('#dataQualityFilter').inputValue(),'all');
   await setFilters({platformFilter:'广点通'});
-  assert.match(await card('all').textContent(),/1条/);
+  assert.match(await card('cost').textContent(),/25.00.*1 条计划/);
   assert.equal(await page.getByRole('button',{name:'清除平台筛选',exact:true}).count(),1);
   await page.locator('#clearReportFilters').click();
   assert.equal(await page.locator('#platformFilter').inputValue(),'');
   assert.equal(await page.locator('#count').textContent(),'3 条');
-  await page.locator('#search').fill('无匹配词');assert.match(await card('all').textContent(),/0条/);
+  await page.locator('#search').fill('无匹配词');assert.match(await card('cost').textContent(),/0.00.*0 条计划/);
   await page.locator('#clearReportFilters').click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);console.log('UI PASS: report views, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');

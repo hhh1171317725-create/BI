@@ -32,11 +32,9 @@ body[data-page="bid-monitor"] .credential-details:not([open])>summary{margin:0}
 .data-quality-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 body[data-page="bid-monitor"] .quality-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:12px 16px;min-width:0;border:1px solid #e7edf4;border-radius:8px;background:#f9fbfd;color:#53677f;box-shadow:none}
 .quality-card strong{font-size:24px;line-height:1.15;font-weight:650;color:#253d59;font-variant-numeric:tabular-nums}.quality-card strong small{font-size:11px;font-weight:400;margin-left:6px}.quality-card>small{font-size:11px;color:#6e8198}
-body[data-page="bid-monitor"] .quality-card:hover{background:#f0f6ff;border-color:#bcd4f5}
-body[data-page="bid-monitor"] .quality-card[aria-pressed="true"]{border-color:#4e87de;background:#edf4ff;box-shadow:inset 0 2px #4e87de}
-.quality-estimated>span{color:#98711f}.quality-incomplete>span{color:#af5d39}
+.summary-card[data-summary="commission"]>span,.summary-card[data-summary="roi"]>span{color:#35705b}.summary-card[data-summary="profit"]>span{color:#805f24}
 body[data-page="bid-monitor"] .plan-detail-link{display:block;text-align:left;white-space:normal;overflow-wrap:anywhere;font:inherit;line-height:inherit;color:#245d9f;background:none;border:0;padding:0;min-height:0;box-shadow:none}
-.plan-detail-link:hover{text-decoration:underline}.plan-detail-link:focus-visible,.quality-card:focus-visible{outline:2px solid #1767ca;outline-offset:3px}
+.plan-detail-link:hover{text-decoration:underline}.plan-detail-link:focus-visible{outline:2px solid #1767ca;outline-offset:3px}
 .bid-plan-detail .bid-dialog-body{font-size:13px}.bid-plan-detail h3{font-size:13px;margin:20px 0 10px;color:#34516d}
 .plan-detail-identity{overflow-wrap:anywhere}.plan-detail-identity h3{margin:0;font-size:15px}.plan-detail-identity p{margin:6px 0;color:#76869a;font-size:12px}
 .detail-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0}.detail-kpis>div{background:#f2f6fc;border-radius:7px;padding:12px;min-width:0}.detail-kpis span{display:block;font-size:11px;color:#6d7f96}.detail-kpis strong{display:block;font-size:20px;margin-top:6px;overflow-wrap:anywhere}

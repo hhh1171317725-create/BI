@@ -14,7 +14,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   browser=await chromium.launch({headless:true,channel:'chrome'});const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   page.on('dialog',dialog=>dialog.accept());
   await page.emulateMedia({reducedMotion:'reduce'});
-  const setFilters=async values=>{await page.locator('#openBidFilters').click();for(const [id,value] of Object.entries(values)){const field=page.locator('#draft-'+id);if(await field.evaluate(el=>el.tagName==='SELECT'))await field.selectOption(value);else await field.fill(value);}await page.locator('#bidFilterDialog .primary').click();};
+  const setFilters=async values=>{const entries=Object.entries(values),direct=entries.filter(([id])=>id==='platformFilter'),dialog=entries.filter(([id])=>id!=='platformFilter');for(const [id,value] of direct){const field=page.locator('#'+id);await field.selectOption(value);}if(!dialog.length)return;await page.locator('#openBidFilters').click();for(const [id,value] of dialog){const field=page.locator('#draft-'+id);if(await field.evaluate(el=>el.tagName==='SELECT'))await field.selectOption(value);else await field.fill(value);}await page.locator('#bidFilterDialog .primary').click();};
   const columns=async changes=>{await page.locator('#openBidColumns').click();for(const [key,checked] of Object.entries(changes))await page.locator(`#bidColumnsDialog [data-column-key="${key}"]`).setChecked(checked);await page.locator('#bidColumnsDialog .primary').click();};
   const resetColumns=async()=>{await page.locator('#openBidColumns').click();await page.locator('#bidColumnsDialog .dialog-reset').click();await page.locator('#bidColumnsDialog .primary').click();};
   let snapshot={date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)},snapshotQueries=0;
@@ -223,8 +223,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(12).textContent(),'--');
   assert.equal(await page.locator('#rows tr td').nth(13).textContent(),'--');
   assert.equal(await page.locator('#metrics strong').first().textContent(),'--');
-  await page.locator('#filter').selectOption('available');assert.equal(await page.locator('#count').textContent(),'0 条');
-  await page.locator('#filter').selectOption('unavailable');assert.equal(await page.locator('#count').textContent(),'1 条');
+  assert.equal(await page.locator('#filter').count(),0);
+  assert.equal(await page.locator('.report-toolbar #platformFilter').count(),1);
   await page.locator('.section-nav a[href="#report"]').click();
   await page.waitForFunction(()=>document.querySelector('#sync-settings').hidden);
   assert.equal(await page.locator('#report').isVisible(),true);
@@ -260,11 +260,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.getByRole('button',{name:'清除关键词筛选',exact:true}).click();
   assert.equal(await page.locator('#count').textContent(),'450 条');
   await page.locator('#viewMode').selectOption('accounts');
-  await page.locator('#search').fill('不存在');await page.locator('#filter').selectOption('unavailable');
+  await page.locator('#search').fill('不存在');
   await page.locator('#clearReportFilters').click();
   assert.equal(await page.locator('#viewMode').inputValue(),'accounts');
   assert.match(await page.locator('#count').textContent(),/450 条计划/);
-  assert.equal(await page.locator('#filter').inputValue(),'all');
+  assert.equal(await page.locator('#platformFilter').inputValue(),'');
   await page.locator('.account-drill-link').first().click();
   await page.locator('#search').fill('不存在');await page.locator('#clearReportFilters').click();
   assert.equal(await page.locator('#accountDrill').isVisible(),true);

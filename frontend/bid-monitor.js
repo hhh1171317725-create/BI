@@ -100,7 +100,7 @@ function drawValueFilters(){
   valueFilterRows=analyzed;
   for(const [key,id] of [['platform','platformFilter'],['appType','appTypeFilter'],['deepBidType','deepBidTypeFilter'],['deepExternalAction','deepExternalActionFilter'],['externalAction','externalActionFilter'],['planStatus','statusFilter']]){
     const select=$('#'+id),chosen=select.value,values=[...new Set(analyzed.map(row=>row[key]).filter(value=>value!==''))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
-    select.innerHTML='<option value="">全部</option>'+values.map(optionValue).join('');
+    select.innerHTML=`<option value="">${key==='platform'?'全部平台':'全部'}</option>`+values.map(optionValue).join('');
     if([...select.options].some(option=>option.value===chosen))select.value=chosen;
   }
 }
@@ -121,15 +121,14 @@ function render(){
   const displayedMetrics=currentAggregateColumns(viewMode);
   $('#accountDrill').hidden=!selectedAccount;$('#accountDrillLabel').textContent=selectedAccount?'当前账户：'+selectedAccount.label:'';
   const availableKeys=new Set((aggregateMode?[...dimensions.map(d=>[d,d]),...displayedMetrics]:activePlanColumns()).map(column=>column[1]));if(!availableKeys.has(sortKey)){sortKey='cost';sortDirection='desc';}
-  const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase(),filter=$('#filter').value;
+  const selected=$('#taskFilter').value,q=$('#search').value.trim().toLowerCase();
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
   const quality=$('#dataQualityFilter').value;
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,filter,quality,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,q,quality,...optionalTextKeys.map(key=>$('#'+filterId(key)).value),$('#deepCpaBidMin').value,$('#deepCpaBidMax').value]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTask=selected.startsWith('task:')?taskRules[Number(selected.slice(5))]?.name:selected.startsWith('auto:')?decodeURIComponent(selected.slice(5)):'';
   qualityScope=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected||(selected==='__unmatched'?!r.task:r.task===selectedTask))&&
     (!q||[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q))&&
-    (filter==='all'||(filter==='available'?r.bidProfitRate!==null:r.bidProfitRate===null))&&
     optionalTextKeys.every(key=>{const id=filterId(key);return !$('#'+id).value||r[key]===$('#'+id).value;})&&
     (!$('#deepCpaBidMin').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=Number($('#deepCpaBidMin').value))&&
     (!$('#deepCpaBidMax').value||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=Number($('#deepCpaBidMax').value)));
@@ -200,7 +199,7 @@ $('#fetch').onclick=async()=>{
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
-for(const id of ['search','viewMode','taskFilter','filter','dataQualityFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
+for(const id of ['search','viewMode','taskFilter','dataQualityFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{if(id==='viewMode')selectedAccount=null;page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
   checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);
@@ -238,7 +237,7 @@ window.getPetReportContext=()=>{
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};
-  const filters=Object.fromEntries(['search','taskFilter','filter','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).value]));
+  const filters=Object.fromEntries(['search','taskFilter','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).value]));
   return {mode:'bid',reportType:'出价监测',range:range?[range.start,range.end]:[],loaded:!!range,source,
     filters:JSON.stringify({...filters,account:selectedAccount?.label||''}),view:$('#viewMode').value,
     summary:pick(totals),plans:ranked.slice(0,30).map(pick),

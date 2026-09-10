@@ -5,12 +5,14 @@ function bidSharedAccess(data){
   if(bidSharedUser&&bidSharedUser!==data.userId){location.replace('/login');throw Error('登录账户已变化，请重新登录');}
   bidSharedUser=data.userId;bidCanManage=data.canManage;
   document.body.dataset.bidReadonly=String(!bidCanManage);
-  if(!bidCanManage&&location.hash!=='#report')location.hash='#report';
+  if(!bidCanManage&&!['#report','#strategy-lab'].includes(location.hash))location.hash='#report';
   const label=document.getElementById('sharedReportNotice');
   label.textContent=`共享报表 · 由 ${data.sharedOwnerName||'管理员'} 维护。${bidCanManage?'你可以管理同步、任务价格和推送。':'你可以查看、筛选和导出，无需配置。'}`;
 }
 async function bidApplyShared(data){
   bidSharedAccess(data);
+  window.bidStrategyBundle={userId:data.userId,canManage:data.canManage,strategies:Array.isArray(data.strategies)?data.strategies:[],revision:data.strategyRevision||''};
+  document.dispatchEvent(new CustomEvent('bid:strategies-shared',{detail:window.bidStrategyBundle}));
   if(bidCanManage)return;
   if(bidSharedPricing!==data.pricingRevision)for(const option of document.getElementById('taskFilter').options)option.selected=false;
   bidSharedPricing=data.pricingRevision||'';

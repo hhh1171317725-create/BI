@@ -61,6 +61,15 @@ class BidServerSyncServiceTest {
     assertThrows(IllegalArgumentException.class,()->service.start(8,blank));
     blank.put("mainUserId","999");assertThrows(IllegalArgumentException.class,()->service.start(7,blank));
   }
+  @Test void strategyConfigurationsPersistWithAccountsAndRejectStaleWrites()throws Exception{
+    var account=Map.of("key","[\"广点通\",\"id\",\"123\"]","label","账户A","accountId","123","platform","广点通");
+    var strategy=Map.of("id","strategy-1","name","低价放量","note","观察三天","accounts",List.of(account));
+    var saved=service.saveStrategies(7,Map.of("revision","","strategies",List.of(strategy)));
+    assertEquals("低价放量",((Map<?,?>)((List<?>)saved.get("strategies")).getFirst()).get("name"));
+    assertNotEquals("",saved.get("revision"));
+    assertThrows(ResponseStatusException.class,()->service.saveStrategies(7,Map.of("revision","","strategies",List.of(strategy))));
+    assertThrows(IllegalArgumentException.class,()->service.saveStrategies(8,Map.of("revision","","strategies",List.of(Map.of("name","","accounts",List.of())))));
+  }
   @Test void keySurvivesRestartAndRejectsTamperingAndDifferentOwner()throws Exception{
     String first=cipher.encrypt(7,"secret"),second=cipher.encrypt(7,"secret");assertNotEquals(first,second);
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);

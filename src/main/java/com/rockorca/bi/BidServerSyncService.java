@@ -34,6 +34,8 @@ public class BidServerSyncService {
 
   Map<String,Object> pricing(long owner)throws Exception{return pricingView(owner,store.get(owner));}
 
+  Map<String,Object> strategies(long owner)throws Exception{return strategyView(owner,store.get(owner));}
+
   private static Map<String,Object> pricingView(long owner,Map<String,Object> state){
     return Map.of("userId",Long.toString(owner),"rules",state.getOrDefault("taskRules",List.of()),
         "revision",state.getOrDefault("pricingRevision",""));
@@ -46,6 +48,43 @@ public class BidServerSyncService {
         throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"任务价格已在其他页面修改，请重新读取");
       state.put("taskRules",rules);state.put("pricingRevision",UUID.randomUUID().toString());
     }));
+  }
+
+  private static Map<String,Object> strategyView(long owner,Map<String,Object> state){
+    return Map.of("userId",Long.toString(owner),"strategies",state.getOrDefault("strategies",List.of()),
+        "revision",state.getOrDefault("strategyRevision",""));
+  }
+
+  Map<String,Object> saveStrategies(long owner,Map<String,Object> input)throws Exception{
+    var strategies=validateStrategies(input.get("strategies"));
+    return strategyView(owner,store.update(owner,(connection,state)->{
+      if(!text(input,"revision").equals(text(state,"strategyRevision")))
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"测试策略已在其他页面修改，请重新读取");
+      state.put("strategies",strategies);state.put("strategyRevision",UUID.randomUUID().toString());
+    }));
+  }
+
+  static List<Map<String,Object>> validateStrategies(Object input){
+    if(!(input instanceof List<?> list)||list.size()>30)throw new IllegalArgumentException("最多配置 30 个测试策略");
+    var result=new ArrayList<Map<String,Object>>();var names=new HashSet<String>();var ids=new HashSet<String>();
+    for(Object item:list){
+      if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("测试策略格式无效");
+      String id=Objects.toString(raw.get("id"),"").trim(),name=Objects.toString(raw.get("name"),"").trim(),note=Objects.toString(raw.get("note"),"").trim();
+      if(id.isBlank())id=UUID.randomUUID().toString();
+      if(!id.matches("[A-Za-z0-9_-]{1,80}")||!ids.add(id)||name.isBlank()||name.length()>60||note.length()>500||!names.add(name.toLowerCase(Locale.ROOT)))
+        throw new IllegalArgumentException("策略名称须为 1 至 60 字且不能重复，说明不能超过 500 字");
+      if(!(raw.get("accounts") instanceof List<?> accounts)||accounts.size()>200)throw new IllegalArgumentException("每个策略最多关联 200 个账户");
+      var savedAccounts=new ArrayList<Map<String,Object>>();var keys=new HashSet<String>();
+      for(Object account:accounts){
+        if(!(account instanceof Map<?,?> value))throw new IllegalArgumentException("策略账户格式无效");
+        String key=Objects.toString(value.get("key"),"").trim(),label=Objects.toString(value.get("label"),"").trim(),accountId=Objects.toString(value.get("accountId"),"").trim(),platform=Objects.toString(value.get("platform"),"").trim();
+        if(key.isBlank()||key.length()>300||label.isBlank()||label.length()>160||accountId.length()>80||platform.length()>40||!keys.add(key))
+          throw new IllegalArgumentException("策略账户信息无效或重复");
+        savedAccounts.add(Map.of("key",key,"label",label,"accountId",accountId,"platform",platform));
+      }
+      var saved=new LinkedHashMap<String,Object>();saved.put("id",id);saved.put("name",name);saved.put("note",note);saved.put("accounts",savedAccounts);result.add(saved);
+    }
+    return result;
   }
 
   static List<Map<String,Object>> validateRules(Object input){

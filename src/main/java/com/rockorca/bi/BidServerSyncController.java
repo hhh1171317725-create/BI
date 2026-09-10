@@ -26,6 +26,10 @@ public class BidServerSyncController {
   @PostMapping("/pricing") public Map<String,Object> savePricing(@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
     return service.savePricing(owner(request,input),input);
   }
+  @GetMapping("/strategies") public Map<String,Object> strategies(HttpServletRequest request)throws Exception{return service.strategies(owner(request,null));}
+  @PostMapping("/strategies") public Map<String,Object> saveStrategies(@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
+    return service.saveStrategies(owner(request,input),input);
+  }
   @PostMapping("/start") public Map<String,Object> start(@RequestBody Map<String,Object> input,HttpServletRequest request)throws Exception{
     return service.start(owner(request,input),input);
   }

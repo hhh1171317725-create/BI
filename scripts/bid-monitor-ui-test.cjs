@@ -18,7 +18,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   const columns=async changes=>{await page.locator('#openBidColumns').click();for(const [key,checked] of Object.entries(changes))await page.locator(`#bidColumnsDialog [data-column-key="${key}"]`).setChecked(checked);await page.locator('#bidColumnsDialog .primary').click();};
   const resetColumns=async()=>{await page.locator('#openBidColumns').click();await page.locator('#bidColumnsDialog .dialog-reset').click();await page.locator('#bidColumnsDialog .primary').click();};
   let snapshot={date:'2026-09-03',updatedAt:'2026-09-03T04:00:00Z',rows:sample.slice(0,2)},snapshotQueries=0;
-  const syncCommands=[],queriedPages=[],preparedQueries=[];let gdtQueries=0,savedRules=[],pricingRevision='';
+  const syncCommands=[],queriedPages=[],preparedQueries=[];let gdtQueries=0,savedRules=[],pricingRevision='',savedStrategies=[],strategyRevision='';
   let syncStatus={userId:'1',configured:false,enabled:false,state:'stopped',minutes:10,createdDays:4};
   let ding={userId:'1',configured:false,enabled:false,time:'18:00',tasks:[],keyword:'',revision:'',state:'',lastResult:'尚未发送'},dingSent=0;
   await page.route('**/api/bid-monitor/dingtalk**',async route=>{
@@ -35,6 +35,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   });
   await page.route('**/api/bid-monitor/server-sync**',async route=>{
    const request=route.request(),action=new URL(request.url()).pathname.split('/').pop();
+   if(action==='strategies'){
+    if(request.method()==='POST'){const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');assert.equal(input.revision,strategyRevision);savedStrategies=input.strategies;strategyRevision='strategy-saved';}
+    await route.fulfill({json:{userId:'1',revision:strategyRevision,strategies:savedStrategies}});return;
+   }
    if(action==='pricing'){
     if(request.method()==='POST'){const input=request.postDataJSON();assert.equal(input.expectedUserId,'1');assert.equal(input.revision,pricingRevision);savedRules=input.rules;pricingRevision='saved';}
     await route.fulfill({json:{userId:'1',revision:pricingRevision,rules:savedRules}});return;
@@ -66,7 +70,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    await route.fulfill({json:syncStatus});
   });
   await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
-  await page.route('**/api/bid-monitor/shared-report',route=>route.fulfill({json:{userId:'1',canManage:true,sharedOwnerId:'1',sharedOwnerName:'管理员'}}));
+  await page.route('**/api/bid-monitor/shared-report',route=>route.fulfill({json:{userId:'1',canManage:true,sharedOwnerId:'1',sharedOwnerName:'管理员',strategies:savedStrategies,strategyRevision}}));
   let gapFactor=1;
   await page.route('**/api/bid-monitor/gap?**',route=>{const anchor=new URL(route.request().url()).searchParams.get('endDate'),date=new Date(anchor+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-2);const priceDate=date.toISOString().slice(0,10),accounts={'1866402186668232':{gap:gapFactor,validDays:gapFactor===null?0:3,days:[],dailyPricesByTask:{'任务A':{date:priceDate,price:21.5}}},'1870049327502852':{gap:gapFactor,validDays:gapFactor===null?0:3,days:[],dailyPricesByTask:{'任务B':{date:priceDate,price:30}}}},tasks={'任务A':{gap:gapFactor,dailyPrice:{date:priceDate,price:21.5}},'任务B':{gap:gapFactor,dailyPrice:{date:priceDate,price:30}}};return route.fulfill({json:{anchor,start:'2026-07-29',end:'2026-07-31',priceDate,basis:'test',accounts,tasks}})});
   await page.goto(`http://127.0.0.1:${server.address().port}/bid-monitor.html#all`);await page.locator('body.ready').waitFor();
@@ -107,6 +111,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.waitForFunction(()=>[...document.querySelectorAll('#rows td')].some(td=>td.textContent.includes('账户日报')));
   assert.match(await page.locator('#pricingCoverage').textContent(),/日报单价 52/);
+  await page.locator('.section-nav a[href="#strategy-lab"]').click();await page.locator('#strategyAdd').click();
+  await page.locator('#strategyName').fill('低价放量测试');await page.locator('#strategyNote').fill('观察账户数据变化');
+  await page.locator('#strategyAccountList .strategy-account-choice').filter({hasText:'1866402186668232'}).locator('input').check();await page.locator('#strategySave').click();
+  await page.waitForFunction(()=>document.querySelector('#strategyStatus').textContent.includes('策略已保存'));
+  assert.equal(savedStrategies.length,1);assert.match(await page.locator('#strategyDetail').textContent(),/低价放量测试/);assert.match(await page.locator('#strategyDetail').textContent(),/8,056\.00/);
+  await page.locator('.section-nav a[href="#all"]').click();
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
   await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),17);assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
@@ -289,7 +299,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#bidFilterDialog').getByRole('button',{name:'取消',exact:true}).click();
   assert.equal(await page.locator('#statusFilter').inputValue(),'');
   await page.locator('#openBidFilters').click();await page.locator('#draft-deepCpaBidMin').fill('500');await page.locator('#draft-deepCpaBidMax').fill('1');await page.locator('#bidFilterDialog .primary').click();
-  assert.match(await page.locator('.bid-dialog-error').textContent(),/最低出价不能大于最高出价/);
+  assert.match(await page.locator('#bidFilterDialog .bid-dialog-error').textContent(),/最低出价不能大于最高出价/);
   assert.equal(await page.locator('#count').textContent(),'105 条');await page.keyboard.press('Escape');
   await page.locator('#openBidFilters').click();
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-more-filters-desktop.png')});await page.keyboard.press('Escape');

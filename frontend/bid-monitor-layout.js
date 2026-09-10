@@ -1,6 +1,6 @@
 (() => {
   const nav = document.querySelector('.section-nav');
-  const sections = ['report', 'sync-settings', 'pricing-settings', 'dingtalk-settings'];
+  const sections = ['report', 'strategy-lab', 'sync-settings', 'pricing-settings', 'dingtalk-settings'];
   const panels = sections.map(id => document.getElementById(id));
   const formula = document.querySelector('main > .band:last-child');
   const all = document.createElement('a');

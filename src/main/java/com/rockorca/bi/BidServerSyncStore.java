@@ -16,7 +16,8 @@ public class BidServerSyncStore {
   private synchronized void initialize() throws Exception {
     if (initialized) return;
     try (var connection=reports.openConnection(); var statement=connection.createStatement()) {
-      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_server_sync (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload TEXT NOT NULL, due_at BIGINT NOT NULL DEFAULT 0, INDEX bid_sync_due(due_at)) ENGINE=InnoDB");
+      statement.execute("CREATE TABLE IF NOT EXISTS bid_monitor_server_sync (user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, payload MEDIUMTEXT NOT NULL, due_at BIGINT NOT NULL DEFAULT 0, INDEX bid_sync_due(due_at)) ENGINE=InnoDB");
+      statement.execute("ALTER TABLE bid_monitor_server_sync MODIFY payload MEDIUMTEXT NOT NULL");
     }
     initialized=true;
   }
@@ -49,8 +50,8 @@ public class BidServerSyncStore {
         var state=read(connection,owner,true);
         action.apply(connection,state);
         String payload=mapper.writeValueAsString(state);
-        if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>60000)
-          throw new IllegalArgumentException("配置内容过大，请缩短任务名称或账户关键词");
+        if(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>4000000)
+          throw new IllegalArgumentException("配置内容过大，请减少测试策略关联账户或缩短名称");
         try (var statement=connection.prepareStatement("UPDATE bid_monitor_server_sync SET payload=?,due_at=? WHERE user_id=?")) {
           statement.setString(1,payload);
           statement.setLong(2,((Number)state.getOrDefault("dueAt",0L)).longValue());

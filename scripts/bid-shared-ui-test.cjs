@@ -20,7 +20,8 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
    else if(url.pathname==='/api/pet/config')data={configured:false,canManage:false};
    else if(url.pathname==='/api/pet/chat'){petRequests.push(route.request().postDataJSON());data={mode:'local',reply:'已读取出价监测，消耗100元',scope:'出价监测 · 当前筛选结果'};}
    else if(url.pathname==='/api/bid-monitor/shared-report')data={userId:'2',canManage:false,sharedOwnerId:'1',sharedOwnerName:'管理员',version:'1:'+stamp,
-    snapshot:url.searchParams.get('after')==='1:'+stamp?null:{date:'2026-09-08',updatedAt:stamp,rows},status:{enabled:true},rules:[{name:'共享任务',keyword:'客户',price}],pricingRevision:revision};
+    snapshot:url.searchParams.get('after')==='1:'+stamp?null:{date:'2026-09-08',updatedAt:stamp,rows},status:{enabled:true},rules:[{name:'共享任务',keyword:'客户',price}],pricingRevision:revision,
+    strategies:[{id:'s1',name:'共享策略',note:'成员可查看',accounts:[{key:'["","id","111"]',label:'客户A',accountId:'111',platform:''}]}],strategyRevision:'s1'};
    else if(url.pathname==='/api/bid-monitor/gap')data={anchor:'2026-09-08',start:'2026-09-05',end:'2026-09-07',basis:'测试口径',accounts:{111:{gap:.8,validDays:3,days:[]}}};
    else{forbidden.push(url.pathname);return route.fulfill({status:403,json:{error:'member read-only'}});}
    return route.fulfill({json:data});
@@ -33,6 +34,9 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#dingtalk-settings').isVisible(),false);
   assert.equal(await page.locator('#fetch').isVisible(),false);
   assert.match(await page.locator('#sharedReportNotice').textContent(),/查看、筛选和导出/);
+  await page.locator('.section-nav a[href="#strategy-lab"]').click();assert.equal(new URL(page.url()).hash,'#strategy-lab');
+  assert.match(await page.locator('#strategyDetail').textContent(),/共享策略/);assert.match(await page.locator('#strategyDetail').textContent(),/100\.00/);assert.equal(await page.locator('#strategyAdd').isVisible(),false);
+  await page.locator('.section-nav a[href="#report"]').click();
   await page.locator('.data-pet-toggle').focus();await page.keyboard.press('Enter');
   await page.locator('.data-pet-input').fill('读取页面内容');await page.locator('.data-pet-send').click();
   await page.waitForFunction(()=>!document.querySelector('.data-pet-send').disabled);

@@ -51,6 +51,7 @@ public class BidSharedReportController {
     return ReportService.mapOf("userId",Long.toString(viewer.id()),"sharedOwnerId",Long.toString(owner.id()),
         "sharedOwnerName",owner.username(),"canManage",canManage,"version",version,
         "snapshot",version.equals(after)?null:snapshot,"status",status,
-        "rules",state.getOrDefault("taskRules",List.of()),"pricingRevision",state.getOrDefault("pricingRevision",""));
+        "rules",state.getOrDefault("taskRules",List.of()),"pricingRevision",state.getOrDefault("pricingRevision",""),
+        "strategies",state.getOrDefault("strategies",List.of()),"strategyRevision",state.getOrDefault("strategyRevision",""));
   }
 }

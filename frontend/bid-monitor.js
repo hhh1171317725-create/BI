@@ -6,6 +6,7 @@ const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creati
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,abort,sortKey='cost',sortDirection='desc';
 let gapData=null,gapGeneration=0,selectedAccount=null;
+window.getBidStrategyData=()=>({rows:analyzed,range,source});
 const aggregateColumnStorage='bid-monitor-aggregate-columns-v1';
 let aggregateSettings={};
 try{const saved=JSON.parse(localStorage.getItem(aggregateColumnStorage)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))aggregateSettings=saved;}catch{}

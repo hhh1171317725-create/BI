@@ -100,7 +100,7 @@ public class BidGapService {
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
         "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
         "priceDate",end.toString(),"tasks",tasks,
-        "basis","手动单价优先，未设置时使用统计结束日前第2天日报预估佣金合计÷结算数合计；目标日有注册但无结算时，逐日向前查找近30天内最近有效结算单价；账户与同任务参考均适用。账户无有效单价时可参考同任务单价。gap使用统计结束日前第4天至第2天有效日结算数÷注册数的均值，账户无有效gap时可参考同任务gap。任务识别使用此前30天内最近日报任务名，历史结算价只用于兼容旧任务识别，不作为自动单价。");
+"basis","手动单价优先，未设置时使用统计结束日前第2天日报预估佣金合计÷结算数合计；目标日有注册但无结算时，逐日向前查找近30天内最近有效结算单价；账户与同任务参考均适用。账户无有效单价时可参考同任务单价。gap使用统计结束日前第4天至第2天注册数和结算数均大于0的日期计算结算数÷注册数均值，结算数为0的日期不参与，账户无有效gap时可参考同任务gap。任务识别使用此前30天内最近日报任务名，历史结算价只用于兼容旧任务识别，不作为自动单价。");
   }
 
   private static void addDaily(Map<String,Map<String,DailyTotals>> grouped,String key,String date,Map<String,Object> row){
@@ -118,7 +118,7 @@ public class BidGapService {
           "registrations",totals==null||!totals.hasRegistrations?null:totals.registrations,"ratio",ratio,"reason",reason));
     }
     return ReportService.mapOf("gap",valid==0?null:sum/valid,"validDays",valid,"days",detail,
-        "reason",valid==0?"gap区间没有注册数大于0且结算数有效的日报":null);
+        "reason",valid==0?"gap区间没有注册数和结算数都大于0的日报":null);
   }
 
   private static Map<String,Object> resolvedPrice(Map<String,DailyTotals> days,LocalDate requested,LocalDate earliest){
@@ -160,7 +160,8 @@ public class BidGapService {
     private String gapReason(){
       if(!hasRegistrations)return "注册数缺失或无效";
       if(registrations<=0)return "注册数不大于0";
-      if(!hasSettlements||settlements<0)return "结算数缺失或无效";
+      if(!hasSettlements)return "结算数缺失或无效";
+      if(settlements<=0)return "有注册但结算数不大于0，不参与gap平均";
       return null;
     }
 

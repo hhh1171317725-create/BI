@@ -42,11 +42,12 @@ class BidGapServiceTest {
     assertEquals(3,account.get("validDays"));
     assertEquals("2026-09-05",result.get("start"));assertEquals("2026-09-07",result.get("end"));
   }
-  @Test void missingAndZeroRegistrationDaysAreExcludedButZeroSettlementIsValid(){
-    var result=BidGapService.calculate(List.of(row("2026-09-05",0,100),row("2026-09-06",10,0)),LocalDate.of(2026,9,9));
+  @Test void zeroSettlementAndZeroRegistrationDaysAreExcludedFromGap(){
+    var result=BidGapService.calculate(List.of(row("2026-09-05",0,100),row("2026-09-06",20,100),row("2026-09-07",10,0)),LocalDate.of(2026,9,9));
     var account=(Map<?,?>)((Map<?,?>)result.get("accounts")).get("123");
-    assertEquals(0.0,account.get("gap"));assertEquals(1,account.get("validDays"));
-    var empty=BidGapService.calculate(List.of(row("2026-09-05",10,0)),LocalDate.of(2026,9,9));
+    assertEquals(.2,account.get("gap"));assertEquals(1,account.get("validDays"));
+    var days=(List<?>)account.get("days");assertTrue(((Map<?,?>)days.getFirst()).get("reason").toString().contains("不参与gap平均"));
+    var empty=BidGapService.calculate(List.of(row("2026-09-05",0,100),row("2026-09-06",10,0)),LocalDate.of(2026,9,9));
     assertNull(((Map<?,?>)((Map<?,?>)empty.get("accounts")).get("123")).get("gap"));
   }
   @Test void dingtalkUsesAdjustedPriceAndMarksUnmatchedAccounts(){

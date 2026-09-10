@@ -113,8 +113,7 @@
       const eligible=row.conversions>6&&row.cost-threshold>tolerance;
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
-      const compensationEligible=row.conversions>0&&row.cost-threshold>tolerance;
-      estimatedCompensation=compensationEligible?Math.max(0,row.cost-bidCost):0;
+      estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;
       estimatedRoi=commission!==null&&row.cost>0
         ?finite((commission+estimatedCompensation)/row.cost):null;
     }

@@ -39,13 +39,33 @@
     const normalize = () => { selected = [...catalog.filter(c => fixed.has(c.key) && c.key !== 'actions').map(c => c.key), ...selected.filter(k => !fixed.has(k)), ...catalog.filter(c => fixed.has(c.key) && c.key === 'actions').map(c => c.key)]; };
     normalize();
     const draw = () => {
+      const active = document.activeElement;
+      const focusKey = active?.dataset.key || active?.closest('.uc-selected-item')?.dataset.key;
+      const focusAction = active?.hasAttribute('data-remove') ? 'remove' : active?.dataset.move;
       const query = dialog.querySelector('.uc-search').value.trim().toLowerCase();
       const choices = catalog.filter(c => c.label.toLowerCase().includes(query));
       dialog.querySelector('.uc-choices').innerHTML = choices.map(c => `<label><input type="checkbox" data-key="${esc(c.key)}" ${selected.includes(c.key)?'checked':''} ${fixed.has(c.key)?'disabled':''}><span>${esc(c.label)}</span>${fixed.has(c.key)?'<small>固定</small>':''}</label>`).join('') || '<p class="uc-empty">没有匹配的字段</p>';
       dialog.querySelector('.uc-count').textContent = `已选 ${selected.length} / ${catalog.length}`;
+      dialog.querySelector('.uc-select-visible').disabled = choices.every(c => selected.includes(c.key));
+      dialog.querySelector('.uc-clear-optional').disabled = selected.every(key => fixed.has(key));
       dialog.querySelector('.uc-selected').innerHTML = selected.map(key => {const c = catalog.find(c => c.key === key), movable = !fixed.has(key), i = selected.indexOf(key);return `<div class="uc-selected-item" data-key="${esc(key)}"><span>${esc(c.label)}</span><div>${movable?`<button type="button" data-move="-1" aria-label="上移${esc(c.label)}" ${i===0||fixed.has(selected[i-1])?'disabled':''}>↑</button><button type="button" data-move="1" aria-label="下移${esc(c.label)}" ${i===selected.length-1||fixed.has(selected[i+1])?'disabled':''}>↓</button><button type="button" data-remove aria-label="移除${esc(c.label)}">×</button>`:'<small>固定列</small>'}</div></div>`;}).join('');
+      if (focusKey) {
+        const item = [...dialog.querySelectorAll('.uc-selected-item')].find(el => el.dataset.key === focusKey);
+        const target = focusAction ? item?.querySelector(focusAction === 'remove' ? '[data-remove]' : `[data-move="${focusAction}"]`) : [...dialog.querySelectorAll('.uc-choices input')].find(el => el.dataset.key === focusKey);
+        (target && !target.disabled ? target : item?.querySelector('button:not(:disabled)') || dialog.querySelector('.uc-search')).focus({preventScroll:true});
+      }
     };
-    open('自定义列', '<div class="uc-columns"><section><input class="uc-search" type="search" placeholder="搜索字段名称" aria-label="搜索字段名称"><h3>可选字段</h3><div class="uc-choices"></div></section><section><h3 class="uc-count"></h3><p class="uc-help">按上下箭头调整表格顺序</p><div class="uc-selected"></div></section></div>', () => config.apply(selected), () => { selected = [...new Set([...fixed, ...(config.defaults || catalog.map(c => c.key))])]; normalize(); draw(); });
+    open('自定义列', '<div class="uc-columns"><section><input class="uc-search" type="search" placeholder="搜索字段名称" aria-label="搜索字段名称"><div class="uc-choice-heading"><h3>可选字段</h3><button type="button" class="uc-select-visible">全选搜索结果</button></div><div class="uc-choices"></div></section><section><div class="uc-choice-heading"><h3 class="uc-count" aria-live="polite"></h3><button type="button" class="uc-clear-optional">清空可选列</button></div><p class="uc-help">按上下箭头调整表格顺序，固定列始终保留</p><div class="uc-selected"></div></section></div>', () => {
+      if (!selected.length) { dialog.querySelector('.uc-error').textContent='请至少选择一列'; return false; }
+      return config.apply(selected);
+    }, () => { selected = [...new Set([...fixed, ...(config.defaults || catalog.map(c => c.key))])]; normalize(); draw(); });
+    dialog.querySelector('.uc-select-visible').onclick = () => {
+      const query = dialog.querySelector('.uc-search').value.trim().toLowerCase();
+      selected = [...new Set([...selected, ...catalog.filter(c => c.label.toLowerCase().includes(query)).map(c => c.key)])];
+      normalize(); draw();
+    };
+    dialog.querySelector('.uc-clear-optional').onclick = () => { selected = [...fixed]; normalize(); draw(); };
+    dialog.querySelector('.uc-columns').addEventListener('input', () => { dialog.querySelector('.uc-error').textContent=''; });
     dialog.querySelector('.uc-search').oninput = draw;
     dialog.querySelector('.uc-choices').onchange = event => { const key = event.target.dataset.key; if (!key || fixed.has(key)) return; selected = event.target.checked ? [...selected,key] : selected.filter(k => k !== key); normalize(); draw(); };
     dialog.querySelector('.uc-selected').onclick = event => { const button = event.target.closest('button'); if (!button || button.disabled) return; const key = button.closest('[data-key]').dataset.key, i = selected.indexOf(key); if (button.hasAttribute('data-remove')) selected.splice(i,1); else {const j = i + Number(button.dataset.move); if (j>=0 && j<selected.length && !fixed.has(selected[j])) [selected[i],selected[j]] = [selected[j],selected[i]];} draw(); };

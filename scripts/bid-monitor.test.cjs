@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
-const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks}=require('../frontend/bid-monitor-core.js');
+const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
  const rules=[{name:'甲',keyword:'account',price:2}];
@@ -292,6 +292,16 @@ test('cash ROI deducts grant only when both strict conditions hold',()=>{
  assert.equal(cashMetrics({...base,conversions:6},10).grant,90);
  assert.equal(cashMetrics({...base,conversions:7},10).grant,80);
  assert.equal(cashMetrics({...base,bid:.3,conversions:7,cost:2.52},10).grant,0);
+});
+test('compensation uses each plan total conversions across dates and includes today',()=>{
+ const base={promotion_id:'plan-1',source_platform:'byte',platform_text:'字节',advertiser_id:'a',media_account_name:'账户A',stat_cost:50,convert_cnt:3,active_register:3,cpa_bid:10};
+ const rows=[normalize({...base,report_date:'2026-09-08'}),normalize({...base,report_date:'2026-09-09'}),normalize({...base,promotion_id:'plan-2',report_date:'2026-09-09'})];
+ const result=createAnalysisCache()(rows,[],false,null,null);
+ assert.equal(result[0].overallConversions,6);assert.equal(result[1].overallConversions,6);assert.equal(result[0].estimatedCompensation,20);assert.equal(result[1].estimatedCompensation,20);
+ assert.equal(result[2].overallConversions,3);assert.equal(result[2].estimatedCompensation,0);
+ const todayRow=normalize({...base,report_date:'2026-09-10'}),priorRow=normalize({...base,report_date:'2026-09-09'});
+ const todayResult=createAnalysisCache()([todayRow],[],true,null,null,[priorRow]);
+ assert.equal(todayResult[0].overallConversions,6);assert.equal(todayResult[0].estimatedCompensation,20);
 });
 test('estimated ROI adds compensation when conversion cost exceeds 1.2 times bid',()=>{
  const base={cost:150,conversions:10,registrations:20,bid:10};

@@ -18,10 +18,10 @@
       ['grant','预估赠款',grantRows.length||!rows.length?fmt(grant):'--',`${grantRows.length.toLocaleString('zh-CN')} / ${rows.length.toLocaleString('zh-CN')} 条计划可计算`],
       ['roi','预估 ROI',fmtRoi(roi),coverage]
     ];
-    cards.innerHTML=items.map(([key,label,value,note])=>`<div class="quality-card summary-card" data-summary="${key}" title="${key==='cost'?'当前筛选全部计划的消耗':key==='grant'?'逐计划计算：转化数大于或等于6且转化成本大于出价的1.2倍时，赠款=消耗−出价×转化数；不依赖任务单价或gap':`仅统计可计算计划，覆盖消耗 ${fmt(coveredCost)} 元；未匹配计划不计为零收益`}"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join('');
+    cards.innerHTML=items.map(([key,label,value,note])=>`<div class="quality-card summary-card" data-summary="${key}" title="${key==='cost'?'当前筛选全部计划的消耗':key==='grant'?'逐计划计算：同一计划在当前查询范围内累计转化数大于或等于6，且该行转化成本大于出价的1.2倍时，赠款=消耗−出价×转化数；当天数据同样参与':`仅统计可计算计划，覆盖消耗 ${fmt(coveredCost)} 元；未匹配计划不计为零收益`}"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join('');
     let note=$('#summaryCoverage');
     if(!note){note=document.createElement('p');note.id='summaryCoverage';note.className='muted';cards.after(note);}
-    note.textContent=priced.length<rows.length?`收益覆盖消耗 ${fmt(coveredCost)} / ${fmt(cost)} 元；${rows.length-priced.length} 条计划收益待补齐。ROI 仅按可计算计划加权汇总，转化数少于 6 不计赔付。`:'收益覆盖当前筛选全部计划；ROI 按消耗加权汇总，转化数少于 6 不计赔付。';
+    note.textContent=priced.length<rows.length?`收益覆盖消耗 ${fmt(coveredCost)} / ${fmt(cost)} 元；${rows.length-priced.length} 条计划收益待补齐。ROI 仅按可计算计划加权汇总，同计划在查询范围累计转化数少于 6 不计赔付。`:'收益覆盖当前筛选全部计划；ROI 按消耗加权汇总，同计划在查询范围累计转化数少于 6 不计赔付。';
   }
   document.addEventListener('bid:rendered',drawCards);drawCards();
 
@@ -53,7 +53,7 @@
       ${field('实际单价 = 结算单价 × gap',fmt(row.price))}${field('日报任务日期',detail.taskDate||'--')}</dl>
       ${row.taskSource==='bid-return'?`<div class="detail-callout"><strong>估算匹配过程</strong><p>当前出价 ${fmt(row.bid)} × 回传比例 ${fmtPercent(row.ratio)} = 每注册估算结算金额 ${fmt(detail.estimatedSettlementPrice)}</p><p>最近且唯一的任务实际单价 ${fmt(detail.matchedActualPrice)}；绝对差值 ${fmtRoi(detail.difference)}。金额接近不代表任务一定正确。</p></div>`:''}
       <h3>投放与收益计算</h3><dl class="detail-fields">
-      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
+      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('本行转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('同计划查询范围累计转化数',fmt(row.overallConversions))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
       ${field('当前出价',fmt(row.bid))}${field('预估赔付',fmt(row.estimatedCompensation))}
       ${field('赠款',fmt(row.grant))}${field('现金利润 = 佣金 − 现金消耗',fmt(cashProfit))}
       ${field('盈亏线出价 = 实际单价 ÷ 回传比例',fmt(row.breakEvenBid))}${field('出价利润率',fmtPercent(row.bidProfitRate))}</dl>

@@ -23,6 +23,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
     snapshot:url.searchParams.get('after')==='1:'+stamp?null:{date:'2026-09-08',updatedAt:stamp,rows},status:{enabled:true},rules:[{name:'共享任务',keyword:'客户',price}],pricingRevision:revision,
     strategies:[{id:'s1',name:'共享策略',note:'成员可查看',accounts:[{key:'["","id","111"]',label:'客户A',accountId:'111',platform:''}]}],strategyRevision:'s1'};
    else if(url.pathname==='/api/bid-monitor/gap')data={anchor:'2026-09-08',start:'2026-09-05',end:'2026-09-07',basis:'测试口径',accounts:{111:{gap:.8,validDays:3,days:[]}}};
+   else if(url.pathname==='/api/bid-monitor/history')data={startDate:url.searchParams.get('startDate'),endDate:url.searchParams.get('endDate'),count:0,rows:[]};
    else{forbidden.push(url.pathname);return route.fulfill({status:403,json:{error:'member read-only'}});}
    return route.fulfill({json:data});
   });

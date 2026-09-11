@@ -111,7 +111,8 @@
       const threshold=1.2*bidCost;
       // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
       const tolerance=Number.EPSILON*Math.max(Math.abs(row.cost),Math.abs(threshold))*8;
-      const eligible=row.conversions>=6&&row.cost-threshold>tolerance;
+      const overallConversions=valid(row.overallConversions)?row.overallConversions:row.conversions;
+      const eligible=overallConversions>=6&&row.cost-threshold>tolerance;
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
       estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;
@@ -121,6 +122,13 @@
     return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,
       roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
       bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
+  }
+  const planIdentity=row=>JSON.stringify([String(row.platform||'').trim().toLowerCase(),canonicalId(row.accountId||row.internalAccountId),String(row.id||row.name||'').trim()]);
+  const NO_PRIOR_ROWS=[];
+  function withOverallConversions(rows,priorRows=[]){
+    const totals=new Map();
+    for(const row of [...priorRows,...rows])if(Number.isFinite(row.conversions))totals.set(planIdentity(row),(totals.get(planIdentity(row))||0)+row.conversions);
+    return rows.map(row=>({...row,overallConversions:totals.get(planIdentity(row))??row.conversions}));
   }
   function summarizeCash(rows){
     const total=key=>rows.length&&rows.every(r=>Number.isFinite(r[key]))?rows.reduce((sum,r)=>sum+r[key],0):null;
@@ -164,13 +172,15 @@
   }
   function createAnalysisCache(){
     let previousRows,previousRules,previousCurrent,previousGaps,previousReferences,result;
-    return (rows,rules,current,gaps,references)=>{
+    let previousPrior;
+    return (rows,rules,current,gaps,references,priorRows=NO_PRIOR_ROWS)=>{
       // Pricing edits mutate rules in place; compare their small serialized value.
       const ruleKey=JSON.stringify(rules);
-      if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps||references!==previousReferences){
-        const inferred=inferAccountTasks(rows,rules,gaps,references),gapIndex=buildGapIndex(gaps);
-        result=rows.map(row=>{const account=gapFor(row,gapIndex),match=inferred.get(inferenceIdentity(row))||inferTaskFromBidReturn(row,rules,account,references),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+      if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps||references!==previousReferences||priorRows!==previousPrior){
+        const prepared=withOverallConversions(rows,priorRows),inferred=inferAccountTasks(prepared,rules,gaps,references),gapIndex=buildGapIndex(gaps);
+        result=prepared.map(row=>{const account=gapFor(row,gapIndex),match=inferred.get(inferenceIdentity(row))||inferTaskFromBidReturn(row,rules,account,references),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
         previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;previousReferences=references;
+        previousPrior=priorRows;
       }
       return result;
     };
@@ -210,5 +220,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

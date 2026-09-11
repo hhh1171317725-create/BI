@@ -5,13 +5,13 @@ const today=()=>reportDateFormatter.format(new Date());
 $('#startDate').value=$('#endDate').value=$('#createdEnd').value=today();
 const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creationDate.getUTCDate()-3);
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
-let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc';
-let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null;
+let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
+let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,priorConversionGeneration=0;
 window.getBidStrategyData=()=>({rows:analyzed,range,source});
 const strategyAnalysisCache=B.createAnalysisCache();
 window.analyzeBidStrategyRows=(rows,references=null)=>{
   if(!references)return strategyAnalysisCache(rows,taskRules,false,null,null);
-  const accounts=references.accounts||{},inferred=B.inferAccountTasks(rows,taskRules,accounts,references),canonical=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
+  rows=B.withOverallConversions(rows);const accounts=references.accounts||{},inferred=B.inferAccountTasks(rows,taskRules,accounts,references),canonical=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   const accountFor=row=>{for(const id of [row.accountId,row.internalAccountId]){const exact=accounts[String(id)];if(exact)return exact;const key=Object.keys(accounts).find(candidate=>canonical(candidate)===canonical(id));if(key)return accounts[key];}return null;};
   return rows.map(row=>{const match=inferred.get(B.inferenceIdentity(row))||B.inferTaskFromBidReturn(row,taskRules,accountFor(row),references);return B.analyzeTask(row,taskRules,0,20,false,null,match);});
 };
@@ -113,13 +113,23 @@ window.loadBidStrategyReferences=end=>{
   if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).catch(error=>{historyReferencePromises.delete(end);throw error;}));
   return historyReferencePromises.get(end);
 };
+async function loadPriorPlanConversions(anchor,expectedRows,generation){
+  const endDate=new Date(anchor+'T00:00:00Z');endDate.setUTCDate(endDate.getUTCDate()-1);const startDate=new Date(anchor+'T00:00:00Z');startDate.setUTCDate(startDate.getUTCDate()-4);
+  try{
+    const data=await api('/api/bid-monitor/history?startDate='+startDate.toISOString().slice(0,10)+'&endDate='+endDate.toISOString().slice(0,10),{signal:AbortSignal.timeout(30000)});
+    if(generation!==priorConversionGeneration||historyMode||range?.end!==anchor)return;
+    const currentPlans=new Set(expectedRows.map(B.planIdentity));priorConversionRows=(Array.isArray(data.rows)?data.rows:[]).map(B.normalize).filter(row=>currentPlans.has(B.planIdentity(row)));
+    render();if(!$('#historyStart').value&&!$('#historyEnd').value)$('#historyStatus').textContent=`未选择日期，显示当日最新实时数据；赔付门槛已合并 ${data.startDate} 至 ${data.endDate} 同计划转化。`;
+  }catch{}
+}
 function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}
 function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!start||!end||start>end)throw Error('请选择有效的统计日期范围');return{start,end};}
 function receive(rows,label,datesValue,live=false,historical=false){
   if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);for(const row of next)if(!row.statDate)row.statDate=datesValue?.end||'';
   if(!next.some(r=>r.cost!==null&&r.registrations!==null&&r.conversions!==null&&r.bid!==null))throw Error('未识别到消耗、转化数、注册数和出价四个字段，请核对报表');
-  raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;page=1;
+  raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;priorConversionRows=[];page=1;const conversionGeneration=++priorConversionGeneration;
   if(historical){++gapGeneration;gapData=null;render();message(`已读取 ${raw.length} 条计划日数据`);return Promise.resolve();}
+  if(live&&datesValue?.end===today())void loadPriorPlanConversions(datesValue.end,next,conversionGeneration);
   const loading=loadGap();message(`已读取 ${raw.length} 条计划`);return loading;
 }
 function optionValue(value){return `<option value="${esc(value)}">${esc(value||'未填写')}</option>`;}
@@ -140,7 +150,7 @@ function render(){
   $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${raw.length} 条计划（元）`:'尚未查询或导入数据';
   for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
   const current=range?range.end>=today():true;$('#lag').hidden=!current;
-  analyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData);
+  analyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData,priorConversionRows);
   drawValueFilters();
   const analyzedTaskNames=[...new Set(analyzed.map(row=>row.task).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
   const taskSignature=JSON.stringify([taskRules.map(rule=>rule.name),analyzedTaskNames]);
@@ -306,8 +316,8 @@ $('#export').onclick=()=>{
   const exportLabel={todayPlans:'今日新上计划数',spendingPlans:'有消耗计划数',priced:'已匹配价格计划数',estimatedCompensation:'预估赔付金额',estimatedRoi:'预估ROI'};
   const priceSourceLabel=r=>({manual:'手动设置','daily-account':`${r.priceDate} 账户日报`,'daily-task':`${r.priceDate} 同任务日报参考`}[r.priceSource]||'');
   let rows=aggregateMode?[[...dimensions.map(d=>dimensionLabels[d]),'统计开始','统计结束',...exportMetrics.map(([label,key])=>exportLabel[key]||label)],
-    ...aggregateRows.map(r=>[...dimensions.map(d=>r[d]),range.start,range.end,...exportMetrics.map(([,key])=>key==='estimatedRoi'?fmtRoi(r[key]):key==='bidProfitRate'?fmtPercent(r[key]):r[key])])]:[['计划ID','计划名称','平台','账户ID','账户名称','优化师','任务','任务来源','结算单价','单价来源','统计开始','统计结束','总消耗','转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率','gap','实际单价'],
-    ...visible.map(r=>[r.id,r.name,r.platform,r.accountId,r.account,r.optimizer,r.task,r.taskSource==='daily-report'?'大航海日报任务名':r.taskSource==='plan-name'?'计划/账户名称识别':r.taskSource==='bid-return'?'出价×回传比例估算':r.taskSource==='inferred'?'历史结算单价反推':r.task?'账户名匹配':'',r.basePrice,priceSourceLabel(r),range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
+    ...aggregateRows.map(r=>[...dimensions.map(d=>r[d]),range.start,range.end,...exportMetrics.map(([,key])=>key==='estimatedRoi'?fmtRoi(r[key]):key==='bidProfitRate'?fmtPercent(r[key]):r[key])])]:[['计划ID','计划名称','平台','账户ID','账户名称','优化师','任务','任务来源','结算单价','单价来源','统计开始','统计结束','总消耗','本行转化数','计划累计转化数','注册数','回传比例','当前出价','佣金','预估赔付金额','预估ROI','规则赠款','现金消耗','盈亏线出价','出价利润率','gap','实际单价'],
+    ...visible.map(r=>[r.id,r.name,r.platform,r.accountId,r.account,r.optimizer,r.task,r.taskSource==='daily-report'?'大航海日报任务名':r.taskSource==='plan-name'?'计划/账户名称识别':r.taskSource==='bid-return'?'出价×回传比例估算':r.taskSource==='inferred'?'历史结算单价反推':r.task?'账户名匹配':'',r.basePrice,priceSourceLabel(r),range.start,range.end,r.cost,r.conversions,r.overallConversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
   if(!aggregateMode)rows[0].push(...visibleOptional.map(column=>column[0]));
   if(!aggregateMode&&planDisplayKeys){const columns=activePlanColumns();rows=[['计划ID','账户ID','统计开始','统计结束',...columns.map(column=>column[0])],...visible.map(r=>[r.id,r.accountId,range.start,range.end,...columns.map(([,key])=>['ratio','bidProfitRate'].includes(key)?fmtPercent(r[key]):['estimatedRoi','gap'].includes(key)?fmtRoi(r[key]):r[key])])];}
   const labels={plans:'计划明细',dates:'日期汇总',datePlatforms:'日期平台汇总',dateAccounts:'日期账户汇总',dateOptimizers:'日期优化师汇总',dateTasks:'日期任务汇总',dateConversionTargets:'日期转化目标汇总',platforms:'平台汇总',accounts:'账户汇总',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总',conversionTargets:'转化目标组合汇总'};
@@ -319,7 +329,7 @@ $('#gapReload').onclick=()=>void loadGap();
 
 // Only report fields are exposed to the assistant; configuration credentials stay out.
 window.getPetReportContext=()=>{
-  const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
+  const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};

@@ -292,7 +292,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
   await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
-  assert.match(await page.locator('#report [role="status"]:not(#gapStatus):not(#message)').textContent(),/已读取/);
+  assert.match(await page.locator('#syncStatus').textContent(),/已读取/);
   gapFactor=.5;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)').textContent==='0.500');
   assert.equal(await page.locator('#rows tr td').nth(15).textContent(),'10.75');
@@ -405,6 +405,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#platformFilter').inputValue(),'');
   assert.equal(await page.locator('#count').textContent(),'3 条');
   await page.locator('#viewMode').selectOption('dates');
+  assert.match(await page.locator('#count').textContent(),/^1 天（3 条计划）$/);
+  assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');
+  await page.locator('#historyStart').fill('2026-09-01');await page.locator('#historyEnd').fill('2026-09-02');await page.locator('#historyLoad').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('已读取'));
   assert.equal(await page.locator('#historyToolbar').isVisible(),true);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'数据日期');
@@ -428,6 +431,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#strategyDimension').selectOption('dateOptimizers');
   assert.deepEqual(await page.locator('#strategyDetail thead th').evaluateAll(headers=>headers.slice(0,2).map(header=>header.textContent)),['数据日期','优化师']);
   await page.locator('.section-nav a[href="#report"]').click();
+  await page.locator('#historyToday').click();
+  await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('未选择日期'));
+  assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');
+  assert.equal(await page.locator('#gapReload').isVisible(),true);
   await page.locator('#search').fill('无匹配词');assert.match(await card('cost').textContent(),/0.00.*0 条计划/);
   await page.getByRole('button',{name:'清除筛选，查看结果',exact:true}).click();
   assert.equal(await page.locator('#search').inputValue(),'');

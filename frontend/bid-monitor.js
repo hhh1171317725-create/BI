@@ -2,11 +2,9 @@
 const $=s=>document.querySelector(s),B=window.BidMonitor;
 const reportDateFormatter=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'});
 const today=()=>reportDateFormatter.format(new Date());
-const offsetDate=days=>{const date=new Date(today()+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
 $('#startDate').value=$('#endDate').value=$('#createdEnd').value=today();
 const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creationDate.getUTCDate()-3);
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
-$('#historyStart').value=offsetDate(-7);$('#historyEnd').value=offsetDate(-1);
 let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc';
 let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null;
 window.getBidStrategyData=()=>({rows:analyzed,range,source});
@@ -118,7 +116,7 @@ window.loadBidStrategyReferences=end=>{
 function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}
 function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!start||!end||start>end)throw Error('请选择有效的统计日期范围');return{start,end};}
 function receive(rows,label,datesValue,live=false,historical=false){
-  if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);
+  if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);for(const row of next)if(!row.statDate)row.statDate=datesValue?.end||'';
   if(!next.some(r=>r.cost!==null&&r.registrations!==null&&r.conversions!==null&&r.bid!==null))throw Error('未识别到消耗、转化数、注册数和出价四个字段，请核对报表');
   raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;page=1;
   if(historical){++gapGeneration;gapData=null;render();message(`已读取 ${raw.length} 条计划日数据`);return Promise.resolve();}
@@ -155,7 +153,7 @@ function render(){
   for(const option of $('#taskFilter').options)option.selected=chosen.has(option.value);
   }
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
-  $('#historyToolbar').hidden=!historyMode&&!isTimeView(viewMode);
+  $('#historyToday').hidden=!historyMode&&!$('#historyStart').value&&!$('#historyEnd').value;
   $('#gapStatus').hidden=$('#gapReload').hidden=historyMode;
   drawAggregateColumns(viewMode);
   const displayedMetrics=currentAggregateColumns(viewMode);
@@ -253,7 +251,9 @@ $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').clic
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
 async function loadHistory(){
   if(busy)return;const start=$('#historyStart').value,end=$('#historyEnd').value,button=$('#historyLoad');
-  if(!start||!end||start>end||end>=today()){message('请选择昨天以前的有效历史日期范围',true);return;}
+  if(!start&&!end){await loadRealtime();return;}
+  if(!start||!end){message('开始日期和结束日期需要同时选择；都留空则显示当日实时数据',true);return;}
+  if(start>end||end>=today()){message('请选择昨天以前的有效历史日期范围',true);return;}
   busy=true;button.disabled=true;$('#historyStatus').textContent='正在读取已归档数据…';
   try{
     const data=await api('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)});
@@ -266,8 +266,15 @@ async function loadHistory(){
   }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);}
   finally{busy=false;button.disabled=false;}
 }
+async function loadRealtime(){
+  if(busy)return;const button=$('#historyLoad');button.disabled=true;$('#historyStatus').textContent='正在读取当日最新实时数据…';
+  try{const loaded=await window.loadBidRealtime?.();if(loaded===false)throw Error('当前账户还没有当日同步快照');$('#historyStatus').textContent='未选择日期，显示当日最新实时数据；选择完整日期范围后可查询每日归档。';message('已切换到当日最新实时数据');}
+  catch(error){$('#historyStatus').textContent='当日实时数据读取失败';message(error.message,true);}finally{button.disabled=false;}
+}
 $('#historyLoad').onclick=()=>void loadHistory();
-$('#viewMode').addEventListener('input',()=>{selectedAccount=null;page=1;const view=$('#viewMode').value;if(isTimeView(view)){sortKey='statDate';sortDirection='desc';render();if(!historyMode)void loadHistory();}else render();});
+$('#historyToday').onclick=()=>{$('#historyStart').value='';$('#historyEnd').value='';void loadRealtime();};
+for(const id of ['historyStart','historyEnd'])$('#'+id).addEventListener('input',()=>{const start=$('#historyStart').value,end=$('#historyEnd').value;$('#historyToday').hidden=!historyMode&&!start&&!end;$('#historyStatus').textContent=start&&end?'点击查询，按所选日期范围统计当前维度。':'日期都留空时显示当日最新实时数据。';if(!start&&!end&&historyMode)void loadRealtime();});
+$('#viewMode').addEventListener('input',()=>{selectedAccount=null;page=1;const view=$('#viewMode').value;if(isTimeView(view)){sortKey='statDate';sortDirection='desc';}render();});
 for(const id of ['search','taskFilter','optimizerFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;

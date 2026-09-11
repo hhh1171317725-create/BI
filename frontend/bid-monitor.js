@@ -5,9 +5,9 @@ const today=()=>reportDateFormatter.format(new Date());
 $('#startDate').value=$('#endDate').value=$('#createdEnd').value=today();
 const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creationDate.getUTCDate()-3);
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
-let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
+let raw=[],dailyAnalyzed=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
 let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,historyFinancialReady=false,priorConversionGeneration=0;
-window.getBidStrategyData=()=>({rows:analyzed,range,source});
+window.getBidStrategyData=()=>({rows:dailyAnalyzed,range,source});
 const strategyAnalysisCache=B.createAnalysisCache();
 let historicalAnalysisRows=null,historicalAnalysisReferences=null,historicalAnalysisRules='',historicalAnalysisResult=[];
 window.analyzeBidStrategyRows=(rows,references=null)=>{
@@ -43,6 +43,7 @@ function aggregateCell(row,key){
   return `<td${title} class="${tone}">${value}</td>`;
 }
 const cachedAnalysis=B.createAnalysisCache();
+let mergedAnalysisSource=null,mergedAnalysis=[];
 let valueFilterRows=null,taskFilterRules='',filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
 async function loadGap(){
   if(!range||historyMode)return;
@@ -62,6 +63,7 @@ async function loadGap(){
 let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
 function gapTitle(id,row){
   if(historyMode){
+    if(row?.gapSource==='range-total')return `${row.rangeStart} 至 ${row.rangeEnd} 按每日任务、单价与 gap 计算后合并`;
     if(row?.gap===null)return row?.gapReason||'该数据日期无可计算的 gap';
     const source=row?.gapSource==='task-reference'?`同任务“${row.referenceTask}”参考 gap`:'账户 gap';
     return `${row?.statDate||'该数据日期'} 对应的${source}`;
@@ -100,9 +102,9 @@ function planCell(r,key,index){
   if(key==='name')return `<td><button type="button" class="plan-detail-link" data-plan-detail="${index}" title="查看计划数据与计算依据">${esc(r.name||'未命名计划')}</button><small>${esc(r.id)}</small></td>`;
   if(key==='account')return `<td>${esc(r.account||'账户名称缺失')}<small>${esc(r.accountId)}</small></td>`;
   if(key==='task'){const linked=['inferred','daily-report','plan-name','bid-return'].includes(r.taskSource),detail=r.inference||{};const title=r.taskSource==='daily-report'?`查询 ${detail.taskDate||'历史'} 大航海日报：账户任务名 ${detail.reportedTaskName||'--'}`:r.taskSource==='plan-name'?'账户日报未提供任务，按计划/账户名称精确识别日报任务':r.taskSource==='bid-return'?`当前出价 × 回传比例估算结算金额 ${fmt(detail.estimatedSettlementPrice)}，最接近该任务实际单价 ${fmt(detail.matchedActualPrice)}`:r.taskSource==='inferred'?`旧数据兼容：按 ${detail.settlementPriceDate||'历史'} 日报结算单价识别任务`:r.missingReason||'';const suffix=r.taskSource==='daily-report'?'（日报）':r.taskSource==='plan-name'?'（名称识别）':r.taskSource==='bid-return'?'（出价回传估算）':r.taskSource==='inferred'?'（历史识别）':'';return `<td${title?` title="${esc(title)}"`:''}>${esc((r.task||names[r.pricingStatus]||'未匹配')+(linked?suffix:''))}</td>`;}
-  const priceSource={manual:'手动设置','daily-account':`${r.priceDate} 账户日报`,'daily-task':`${r.priceDate} 同任务日报参考`}[r.priceSource];
+  const priceSource={manual:'手动设置','daily-account':`${r.priceDate} 账户日报`,'daily-task':`${r.priceDate} 同任务日报参考`,'range-total':`${r.rangeStart} 至 ${r.rangeEnd} 区间加权`}[r.priceSource];
   if(key==='priceSource')return `<td title="${esc(r.missingReason||priceSource||'暂无可用来源')}">${esc(priceSource||'--')}</td>`;
-  const title=key==='gap'?gapTitle(r.accountId,r):key==='basePrice'?(priceSource||r.priceReason||r.missingReason):key==='price'?(priceSource?`${priceSource}单价 × ${r.gapSource==='task-reference'?'同任务参考 gap':'账户 gap'}`:r.missingReason):key==='ecpm'?(r.ecpm===null?'曝光数、转化数或当前出价缺失，无法估算':r.impressionsEstimated?'旧快照未保存曝光数；已按总消耗和媒体 CPM 反算曝光数后估算':'当前出价 × 转化数 ÷ 曝光数 × 1000'):key==='estimatedRoi'?(r[key]===null?r.missingReason:`预估赔付金额：${fmt(r.estimatedCompensation)}`):key==='bidProfitRate'?(r[key]===null?r.missingReason:`盈亏线出价：${fmt(r.breakEvenBid)}`):r[key]===null?r.missingReason:'';
+  const title=key==='gap'?gapTitle(r.accountId,r):key==='basePrice'?(priceSource||r.priceReason||r.missingReason):key==='price'?(r.priceSource==='range-total'?'区间每日佣金合计 ÷ 区间注册数合计':priceSource?`${priceSource}单价 × ${r.gapSource==='task-reference'?'同任务参考 gap':'账户 gap'}`:r.missingReason):key==='ecpm'?(r.ecpm===null?'曝光数、转化数或当前出价缺失，无法估算':r.impressionsEstimated?'旧快照未保存曝光数；已按总消耗和媒体 CPM 反算曝光数后估算':'当前出价 × 转化数 ÷ 曝光数 × 1000'):key==='estimatedRoi'?(r[key]===null?r.missingReason:`预估赔付金额：${fmt(r.estimatedCompensation)}`):key==='bidProfitRate'?(r[key]===null?r.missingReason:`盈亏线出价：${fmt(r.breakEvenBid)}`):r[key]===null?r.missingReason:'';
   const value=['ratio','bidProfitRate'].includes(key)?fmtPercent(r[key]):['estimatedRoi','gap'].includes(key)?fmtRoi(r[key]):textSortKeys.has(key)?esc(r[key]||'--'):fmt(r[key]);
   const tone=key==='bidProfitRate'&&r[key]!==null?(r[key]<0?'bad':'good'):'';
   return `<td title="${esc(title)}" class="${tone}">${value}</td>`;
@@ -165,10 +167,13 @@ function drawValueFilters(){
 }
 function optionalCell(row,key){return key==='deepCpaBid'?fmt(row[key]):esc(row[key]||'--');}
 function render(){
-  $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${raw.length} 条计划（元）`:'尚未查询或导入数据';
   for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
-  const current=range?range.end>=today():true;$('#lag').hidden=!current;
-  analyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData,priorConversionRows);
+  const current=range?range.end>=today():true,viewMode=$('#viewMode').value;$('#lag').hidden=!current;
+  dailyAnalyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData,priorConversionRows);
+  if(mergedAnalysisSource!==dailyAnalyzed){mergedAnalysisSource=dailyAnalyzed;mergedAnalysis=B.mergePlanRows(dailyAnalyzed);}
+  analyzed=isTimeView(viewMode)?dailyAnalyzed:mergedAnalysis;
+  const sourceCount=historyMode?(isTimeView(viewMode)?`${raw.length} 条计划日数据`:`${analyzed.length} 个计划（由 ${raw.length} 条计划日数据合并）`):`${raw.length} 条计划`;
+  $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${sourceCount}（元）`:'尚未查询或导入数据';
   drawValueFilters();
   const analyzedTaskNames=[...new Set(analyzed.map(row=>row.task).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
   const taskSignature=JSON.stringify([taskRules.map(rule=>rule.name),analyzedTaskNames]);
@@ -180,7 +185,7 @@ function render(){
   $('#taskFilter').innerHTML='<option value="__unmatched">未匹配 / 冲突</option>'+[...configuredTasks,...automaticTasks].map(item=>`<option value="${esc(item.value)}">${esc(item.name)}</option>`).join('');
   for(const option of $('#taskFilter').options)option.selected=chosen.has(option.value);
   }
-  const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
+  const aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
   $('#historyToday').hidden=!historyMode&&!$('#historyStart').value&&!$('#historyEnd').value;
   $('#gapStatus').hidden=$('#gapReload').hidden=historyMode;
   drawAggregateColumns(viewMode);
@@ -213,7 +218,7 @@ function render(){
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
   const manualCount=analyzed.filter(r=>r.priceSource==='manual').length,dailyCount=analyzed.filter(r=>r.priceSource==='daily-account'||r.priceSource==='daily-task').length,taskGapCount=analyzed.filter(r=>r.gapSource==='task-reference').length,estimateCount=analyzed.filter(r=>r.taskSource==='bid-return').length;
-  $('#pricingCoverage').textContent=historyMode?(historyFinancialReady?`历史汇总已按每个数据日期分别关联任务、单价与 gap；${raw.length-unpriced} / ${raw.length} 条计划日数据可计算收益。`:'历史投放指标已显示，正在按每个数据日期关联任务、单价与 gap…'):raw.length?`${raw.length-unpriced} / ${raw.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
+  $('#pricingCoverage').textContent=historyMode?(historyFinancialReady?`历史汇总已按每日任务、单价与 gap 计算；${analyzed.length-unpriced} / ${analyzed.length} ${isTimeView(viewMode)?'条计划日数据':'个计划'}可计算收益。`:'历史投放指标已显示，正在按每个数据日期关联任务、单价与 gap…'):raw.length?`${analyzed.length-unpriced} / ${analyzed.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
   const groupKey=viewMode+':'+today();
   if(aggregateMode&&!groupCache.has(groupKey))groupCache.set(groupKey,B.aggregateGroups(filteredRows,dimensions,today()));
   aggregateRows=aggregateMode?sortRows([...groupCache.get(groupKey)]):[];if(!aggregateMode)sortRows(visible);

@@ -429,10 +429,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#historyRangeButton').isVisible(),true);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'平台');
   assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
-  includeSharedSnapshot=true;snapshot={date:todayChina,updatedAt:new Date().toISOString(),rows:[{...sample[4],promotion_id:'today-live'}]};
+  includeSharedSnapshot=true;snapshot={date:todayChina,updatedAt:new Date().toISOString(),rows:[{...sample[0],promotion_id:'history-1',stat_cost:25}]};
   await page.locator('#historyRangeButton').click();await page.locator('.ocean-calendar-day[data-date="2026-09-09"]').first().click();await page.locator('.ocean-calendar-day[data-date="2026-09-11"]').first().click();await page.locator('#historyRangeApply').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.includes('含今日实时'));
-  assert.equal(await page.locator('#historyStart').inputValue(),'2026-09-09');assert.equal(await page.locator('#historyEnd').inputValue(),todayChina);assert.match(await page.locator('#source').textContent(),/历史归档 \+ 今日实时.*今日 1 条/);assert.match(await page.locator('#count').textContent(),/^2 个平台（5 条计划）$/);
+  assert.equal(await page.locator('#historyStart').inputValue(),'2026-09-09');assert.equal(await page.locator('#historyEnd').inputValue(),todayChina);assert.match(await page.locator('#source').textContent(),/历史归档 \+ 今日实时.*今日 1 条/);assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
+  await page.locator('#viewMode').selectOption('plans');await page.locator('#search').fill('history-1');assert.equal(await page.locator('#rows tr').count(),1);assert.equal(await page.locator('#rows tr td').nth(6).textContent(),'125.00');await page.locator('#search').fill('');
   await page.locator('.section-nav a[href="#strategy-lab"]').click();
   await page.locator('#strategyDataSource').selectOption('history');
   await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('2 / 2 个日期已关联收益口径'));

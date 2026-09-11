@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
-const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache}=require('../frontend/bid-monitor-core.js');
+const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache,mergePlanRows}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
  const rules=[{name:'甲',keyword:'account',price:2}];
@@ -43,6 +43,16 @@ test('normalizes report date and aggregates saved daily rows by time',()=>{
  const result=require('../frontend/bid-monitor-core.js').aggregateGroups(rows,['statDate'],'2026-09-10');
  assert.deepEqual(result.map(row=>row.statDate),['2026-09-09','2026-09-08']);
  assert.equal(result[0].plans,1);assert.equal(result[0].cost,20);assert.equal(result[0].accounts,1);
+});
+test('merges the same plan across archived and live dates into one recalculated row',()=>{
+ const common={platform:'字节',accountId:'a',id:'p1',name:'计划一',account:'账户一',optimizer:'张三',task:'任务一',basePrice:2,gap:1,price:2};
+ const merged=mergePlanRows([
+  {...common,statDate:'2026-09-10',cost:100,conversions:4,registrations:10,impressions:1000,bid:5,commission:20,cashCost:80,estimatedCompensation:20,bidCost:20,grant:20},
+  {...common,statDate:'2026-09-11',cost:50,conversions:3,registrations:10,impressions:1000,bid:6,commission:20,cashCost:18,estimatedCompensation:32,bidCost:18,grant:32}
+ ]).at(0);
+ assert.equal(merged.cost,150);assert.equal(merged.conversions,7);assert.equal(merged.registrations,20);assert.equal(merged.ratio,.35);
+ assert.equal(merged.commission,40);assert.equal(merged.estimatedCompensation,52);assert.equal(merged.estimatedRoi,92/150);assert.equal(merged.cashCost,98);
+ assert.equal(merged.price,2);assert.equal(merged.gap,1);assert.equal(merged.bid,6);assert.equal(merged.ecpm,21);assert.equal(merged.rangeDays,2);
 });
 
 test('combines saved dates with business dimensions',()=>{

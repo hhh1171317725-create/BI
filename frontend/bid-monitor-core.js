@@ -130,6 +130,28 @@
     for(const row of [...priorRows,...rows])if(Number.isFinite(row.conversions))totals.set(planIdentity(row),(totals.get(planIdentity(row))||0)+row.conversions);
     return rows.map(row=>({...row,overallConversions:totals.get(planIdentity(row))??row.conversions}));
   }
+  function mergePlanRows(rows){
+    const groups=new Map();for(const row of rows){const key=planIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
+    const sum=(items,key)=>{const values=items.map(row=>row[key]).filter(Number.isFinite);return values.length?values.reduce((total,value)=>total+value,0):null};
+    const strictSum=(items,key)=>items.length&&items.every(row=>Number.isFinite(row[key]))?items.reduce((total,row)=>total+row[key],0):null;
+    return [...groups.values()].map(items=>{
+      if(items.length===1)return items[0];
+      items=[...items].sort((a,b)=>String(a.statDate||'').localeCompare(String(b.statDate||'')));const latest=items.at(-1),cost=sum(items,'cost'),conversions=sum(items,'conversions'),registrations=sum(items,'registrations'),impressions=sum(items,'impressions');
+      const commission=strictSum(items,'commission'),cashCost=strictSum(items,'cashCost'),estimatedCompensation=strictSum(items,'estimatedCompensation'),bidCost=strictSum(items,'bidCost'),grant=strictSum(items,'grant');
+      const basePrice=registrations>0&&items.every(row=>Number.isFinite(row.basePrice)&&Number.isFinite(row.registrations))?items.reduce((total,row)=>total+row.basePrice*row.registrations,0)/registrations:null;
+      const price=commission!==null&&registrations>0?commission/registrations:null,gap=price!==null&&basePrice>0?price/basePrice:null;
+      const ratio=registrations>0&&conversions!==null?conversions/registrations:null,breakEvenBid=commission>0&&conversions>0?commission/conversions:null;
+      const rangeStart=items[0].statDate||'',rangeEnd=latest.statDate||'',allEstimated=items.some(row=>row.impressionsEstimated);
+      return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions:conversions,ratio,cpa:registrations>0&&cost!==null?cost/registrations:null,
+        mediaCpm:cost!==null&&impressions>0?cost/impressions*1000:null,ecpm:Number.isFinite(latest.bid)&&conversions!==null&&impressions>0?latest.bid*conversions/impressions*1000:null,
+        commission,revenue:commission,basePrice,price,gap,priceSource:'range-total',priceDate:`${rangeStart} ~ ${rangeEnd}`,gapSource:'range-total',
+        breakEven:breakEvenBid,breakEvenBid,actualRoi:commission!==null&&cost>0?commission/cost:null,roi:commission!==null&&cashCost>0?commission/cashCost:null,
+        profit:commission!==null&&cashCost!==null?commission-cashCost:null,bidCost,grant,cashCost,estimatedCompensation,
+        estimatedRoi:commission!==null&&estimatedCompensation!==null&&cost>0?(commission+estimatedCompensation)/cost:null,
+        bidProfitRate:commission>0&&bidCost!==null?(commission-bidCost)/commission:null,projectedCost:bidCost,projectedProfit:commission!==null&&bidCost!==null?commission-bidCost:null,
+        pricingStatus:price===null?'price-missing':'priced',missingReason:price===null?'区间内部分日期缺少任务、单价或 gap，无法完整合并收益':'',rangeStart,rangeEnd,rangeDays:new Set(items.map(row=>row.statDate).filter(Boolean)).size};
+    });
+  }
   function summarizeCash(rows){
     const total=key=>rows.length&&rows.every(r=>Number.isFinite(r[key]))?rows.reduce((sum,r)=>sum+r[key],0):null;
     const commission=total('commission'),cashCost=total('cashCost');
@@ -220,5 +242,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

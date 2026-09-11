@@ -134,6 +134,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#strategyStatus').textContent.includes('策略已保存'));
   assert.equal(savedStrategies.length,1);assert.match(await page.locator('#strategyDetail').textContent(),/低价放量测试/);assert.match(await page.locator('#strategyDetail').textContent(),/8,056\.00/);
   await page.locator('.section-nav a[href="#all"]').click();
+  assert.equal(await page.locator('.ocean-level-tab').count(),5);assert.equal(await page.locator('.ocean-level-tab.is-active').textContent(),'计划');
+  await page.locator('.ocean-level-tab[data-view="accounts"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'accounts');assert.equal(await page.locator('#tableHead th').first().textContent(),'账户名称');
+  await page.locator('.ocean-level-tab[data-view="plans"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'plans');assert.equal(await page.locator('.ocean-date-preset.is-active').textContent(),'实时');
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
   await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),18);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'预估 eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);

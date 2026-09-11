@@ -49,7 +49,8 @@ body[data-bid-readonly="true"] :is(#sync-settings,#pricing-settings,#dingtalk-se
 </style>
 <link rel="stylesheet" href="/app-ui.css?v=4"><script src="/app-ui.js?v=4" defer></script>
 <link rel="stylesheet" href="/bid-monitor-workspace.css?v=20260911-range-filter">
-<script src="/bid-monitor-workspace.js?v=20260911-filter-speed" defer></script>
+<link rel="stylesheet" href="/bid-monitor-ocean.css?v=20260911-ocean-console">
+<script src="/bid-monitor-workspace.js?v=20260911-ocean-console" defer></script>
 <link rel="stylesheet" href="/bid-monitor-panels.css?v=1">
 <link rel="stylesheet" href="/bid-monitor-strategies.css?v=20260911-history-dimensions">
 <script src="/bid-monitor-layout.js?v=2" defer></script>
@@ -62,13 +63,13 @@ body[data-bid-readonly="true"] :is(#sync-settings,#pricing-settings,#dingtalk-se
   <script src="/pet-loader.js?v=20260911-idle" defer></script>
 </head>
 <body data-page="bid-monitor" data-bid-readonly="true">
-<header><h1>出价监测</h1><nav aria-label="页面导航"><a href="#report">查看报表</a><a href="/tools">工具中心</a><a href="/account">设置</a><a href="/">大航海日报</a></nav></header>
+<header><div class="product-brand"><span class="product-mark" aria-hidden="true">竞</span><div><h1>出价监测</h1><small>投放数据工作台</small></div></div><nav aria-label="页面导航"><a href="#report">投放报表</a><a href="/tools">工具中心</a><a href="/account">设置</a><a href="/">大航海日报</a></nav></header>
 <main>
 <p id="sharedReportNotice" class="muted" role="status">正在读取共享报表权限…</p>
 <nav class="section-nav" aria-label="出价监测功能"><a href="#report">报表</a><a href="#strategy-lab">策略测试</a><a href="#sync-settings">同步配置</a><a href="#pricing-settings">任务价格</a><a href="#dingtalk-settings">钉钉推送</a></nav>
 <section class="report-surface" id="report" tabindex="-1">
 <div id="message" role="status" aria-live="polite"></div>
-<div class="report-heading"><div><h2>计划表现</h2><p class="muted" id="source">尚未查询或导入数据</p></div><div class="metrics" id="metrics"></div></div>
+<div class="report-heading"><div><span class="page-eyebrow">投放管理 / 数据报表</span><h2>计划表现</h2><p class="muted" id="source">尚未查询或导入数据</p></div><div class="metrics" id="metrics"></div></div>
 <div class="notice" id="lag">包含当天的数据尚可能回补。早上点击、下午注册会改变比例与成本，勿据此频繁调整出价。</div>
 <div class="quality-heading"><span>数据汇总</span><small>随搜索、任务、平台及更多筛选条件实时更新</small></div>
 <div id="summaryCards" class="data-quality-cards" role="group" aria-label="当前筛选数据汇总"></div>

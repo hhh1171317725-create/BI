@@ -16,6 +16,17 @@
   const chips=make('div','filter-chips');
   const reset=make('button','filter-reset','清除全部筛选');reset.type='button';reset.id='clearReportFilters';
   summary.append(chips,reset);toolbar.after(summary);
+  const controlDeck=make('section','ocean-control-deck');controlDeck.setAttribute('aria-label','报表视图与筛选');
+  const levelBar=make('div','ocean-level-bar'),levelTitle=make('span','ocean-level-title','数据层级'),levelTabs=make('div','ocean-level-tabs');levelTabs.setAttribute('role','tablist');levelTabs.setAttribute('aria-label','常用统计维度');
+  const levelOptions=[['plans','计划'],['accounts','账户'],['optimizers','优化师'],['tasks','任务'],['dates','日期']];
+  for(const [value,label] of levelOptions){const button=make('button','ocean-level-tab',label);button.type='button';button.dataset.view=value;button.setAttribute('role','tab');button.onclick=()=>{const select=document.getElementById('viewMode');if(select.value===value)return;select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));};levelTabs.append(button);}
+  const levelHint=make('span','ocean-level-hint','常用维度一键切换，其他组合在“统计维度”中选择');levelBar.append(levelTitle,levelTabs,levelHint);
+  toolbar.before(controlDeck);controlDeck.append(levelBar,toolbar,summary,document.getElementById('historyStatus'));
+  const historyToolbar=document.getElementById('historyToolbar'),datePresets=make('span','ocean-date-presets');datePresets.setAttribute('role','group');datePresets.setAttribute('aria-label','快捷日期');
+  const chinaDate=offset=>{const date=new Date(new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+offset);return date.toISOString().slice(0,10);};
+  const setHistory=(start,end)=>{document.getElementById('historyStart').value=start;document.getElementById('historyEnd').value=end;if(start&&end)document.getElementById('historyLoad').click();else document.getElementById('historyToday').click();};
+  for(const [label,range] of [['实时',null],['昨天',[-1,-1]],['近 7 天',[-7,-1]]]){const button=make('button','ocean-date-preset',label);button.type='button';button.dataset.range=label;button.onclick=()=>range?setHistory(chinaDate(range[0]),chinaDate(range[1])):setHistory('','');datePresets.append(button);}
+  historyToolbar.before(datePresets);
   function refresh(){
     chips.replaceChildren();let count=0;
     for(const [id,label,empty] of filters){
@@ -36,6 +47,10 @@
     const sort=report.querySelector('th[aria-sort="ascending"],th[aria-sort="descending"]');
     const guidance=report.querySelector('.table-guidance');
     if(guidance)guidance.textContent=sort?`当前按${sort.textContent.trim()}${sort.getAttribute('aria-sort')==='ascending'?'升序':'降序'} · 点击表头切换排序`:'点击表头排序 · 横向滚动查看更多指标';
+    const view=document.getElementById('viewMode').value;
+    for(const button of levelTabs.children){const active=button.dataset.view===view;button.classList.toggle('is-active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
+    const start=document.getElementById('historyStart').value,end=document.getElementById('historyEnd').value,yesterday=chinaDate(-1),weekStart=chinaDate(-7);
+    for(const button of datePresets.children){const active=button.dataset.range==='实时'?!start&&!end:button.dataset.range==='昨天'?start===yesterday&&end===yesterday:start===weekStart&&end===yesterday;button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));}
   }
   reset.onclick=()=>{
     filters.forEach(([id,,empty])=>{const input=document.getElementById(id);if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;});

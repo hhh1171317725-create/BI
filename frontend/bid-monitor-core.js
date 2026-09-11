@@ -4,6 +4,18 @@
   function value(row,keys){for(const key of keys){if(row[key]!==undefined&&row[key]!==null&&row[key]!=='')return row[key]}return null}
   function number(v){if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(String(v).replaceAll(',','').trim());return Number.isFinite(n)&&n>=0?n:null}
   function normalize(row){const out={};for(const [key,keys] of Object.entries(aliases))out[key]=value(row,keys);for(const key of ['cost','impressions','mediaCpm','conversions','registrations','bid','deepCpaBid'])out[key]=number(out[key]);out.impressionsEstimated=false;if(!(out.impressions>0)&&out.cost>0&&out.mediaCpm>0){out.impressions=out.cost/out.mediaCpm*1000;out.impressionsEstimated=true}out.ecpm=out.bid!==null&&out.conversions!==null&&out.impressions>0?out.bid*out.conversions/out.impressions*1000:null;for(const key of ['id','name','platform','account','accountId','internalAccountId','optimizer','statDate','createdAt','appType','deepBidType','deepExternalAction','externalAction','planStatus'])out[key]=String(out[key]??'');if(!out.account&&row.account_info&&typeof row.account_info==='object')out.account=String(row.account_info.media_account_name||row.account_info.account_name||'');return out}
+  function normalizeGapPayload(payload){
+    const recalculate=summary=>{
+      if(!summary||!Array.isArray(summary.days)||!summary.days.length)return;
+      let settlements=0,registrations=0,validDays=0;
+      for(const day of summary.days){const currentSettlements=number(day?.settlements),currentRegistrations=number(day?.registrations);if(day?.reason||!(currentSettlements>0)||!(currentRegistrations>0))continue;settlements+=currentSettlements;registrations+=currentRegistrations;validDays++;}
+      summary.gap=validDays?settlements/registrations:null;summary.validDays=validDays;summary.gapSettlements=validDays?settlements:null;summary.gapRegistrations=validDays?registrations:null;
+    };
+    if(!payload||typeof payload!=='object')return payload;
+    for(const summary of Object.values(payload.accounts||{}))recalculate(summary);
+    for(const summary of Object.values(payload.tasks||{}))recalculate(summary);
+    payload.gapFormula='settlement-registration-sum-v2';return payload;
+  }
   function usableDailyPrice(value,date){return !!date&&number(value?.price)!==null&&(value?.date===date||value?.fallbackFrom===date&&typeof value?.date==='string'&&value.date<date);}
   function analyze(row,price,margin,minSample,current){
     const r={...row,ratio:null,cpa:null,breakEven:null,ceiling:null,revenue:null,profit:null,impliedCost:null,bidRoi:null,actualRoi:null,projectedCost:null,projectedProfit:null,status:'missing'};
@@ -242,5 +254,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,normalizeGapPayload,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

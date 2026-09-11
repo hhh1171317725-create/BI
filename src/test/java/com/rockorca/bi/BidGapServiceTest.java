@@ -41,6 +41,7 @@ class BidGapServiceTest {
     assertEquals(.5,(double)account.get("gap"),1e-12);
     assertEquals(200d,account.get("gapSettlements"));assertEquals(400d,account.get("gapRegistrations"));
     assertEquals(3,account.get("validDays"));
+    assertEquals("settlement-registration-sum-v2",result.get("gapFormula"));
     assertEquals("2026-09-05",result.get("start"));assertEquals("2026-09-07",result.get("end"));
   }
   @Test void zeroSettlementAndZeroRegistrationDaysAreExcludedFromGap(){

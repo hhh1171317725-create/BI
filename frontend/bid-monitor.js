@@ -52,7 +52,7 @@ async function loadGap(){
   render();$('#gapReload').disabled=true;$('#gapReload').textContent='正在更新…';
   $('#gapStatus').title='';$('#gapStatus').textContent=gapData?'正在更新任务、单价与 gap，当前显示上次关联结果…':'正在读取已保存的账户任务、单价与 gap…';
   try{
-    const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
+    const result=B.normalizeGapPayload(await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)}));
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
     gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 有效日结算数合计 ÷ 注册数合计 · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
@@ -125,7 +125,7 @@ async function api(path,options={}){
 }
 const historyReferencePromises=new Map();
 window.loadBidStrategyReferences=end=>{
-  if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).catch(error=>{historyReferencePromises.delete(end);throw error;}));
+  if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).then(B.normalizeGapPayload).catch(error=>{historyReferencePromises.delete(end);throw error;}));
   return historyReferencePromises.get(end);
 };
 window.loadBidHistoricalReferences=async rows=>{

@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {analyze,normalize,analyzeTask}=require('../frontend/bid-monitor-core.js');
+const {analyze,normalize,normalizeGapPayload,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache,mergePlanRows}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
@@ -43,6 +43,16 @@ test('normalizes report date and aggregates saved daily rows by time',()=>{
  const result=require('../frontend/bid-monitor-core.js').aggregateGroups(rows,['statDate'],'2026-09-10');
  assert.deepEqual(result.map(row=>row.statDate),['2026-09-09','2026-09-08']);
  assert.equal(result[0].plans,1);assert.equal(result[0].cost,20);assert.equal(result[0].accounts,1);
+});
+test('legacy daily-ratio gap payload is corrected to settlement total divided by registration total',()=>{
+ const summary={gap:(60/79+315/371+6/3)/3,validDays:3,days:[
+  {date:'2026-09-07',settlements:60,registrations:79,ratio:60/79},
+  {date:'2026-09-08',settlements:315,registrations:371,ratio:315/371},
+  {date:'2026-09-09',settlements:6,registrations:3,ratio:2}
+ ]};
+ const payload=normalizeGapPayload({accounts:{a:summary},tasks:{},gapFormula:'legacy'});
+ assert.equal(summary.gap,381/453);assert.equal(summary.gapSettlements,381);assert.equal(summary.gapRegistrations,453);assert.equal(payload.gapFormula,'settlement-registration-sum-v2');
+ const withoutDailyDetail={gap:.5,days:[]};normalizeGapPayload({accounts:{a:withoutDailyDetail}});assert.equal(withoutDailyDetail.gap,.5);
 });
 test('merges the same plan across archived and live dates into one recalculated row',()=>{
  const common={platform:'字节',accountId:'a',id:'p1',name:'计划一',account:'账户一',optimizer:'张三',task:'任务一',basePrice:2,gap:1,price:2};

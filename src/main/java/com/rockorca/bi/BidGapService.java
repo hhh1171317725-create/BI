@@ -99,7 +99,7 @@ public class BidGapService {
     });
     return ReportService.mapOf("anchor",anchor.toString(),"start",start.toString(),"end",end.toString(),
         "historyStart",historyStart.toString(),"historyEnd",historyEnd.toString(),"accounts",accounts,
-        "priceDate",end.toString(),"tasks",tasks,
+        "priceDate",end.toString(),"tasks",tasks,"gapFormula","settlement-registration-sum-v2",
 "basis","手动单价优先，未设置时使用统计结束日前第2天日报预估佣金合计÷结算数合计；目标日有注册但无结算时，逐日向前查找近30天内最近有效结算单价；账户与同任务参考均适用。账户无有效单价时可参考同任务单价。gap使用统计结束日前第4天至第2天的有效日期结算数合计÷注册数合计，结算数为0的日期不参与，账户无有效gap时可参考同任务gap。任务识别使用此前30天内最近日报任务名，历史结算价只用于兼容旧任务识别，不作为自动单价。");
   }
 

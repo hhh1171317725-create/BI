@@ -8,12 +8,21 @@ const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creati
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 $('#historyStart').value=offsetDate(-7);$('#historyEnd').value=offsetDate(-1);
 let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc';
-let gapData=null,gapGeneration=0,selectedAccount=null;
+let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null;
 window.getBidStrategyData=()=>({rows:analyzed,range,source});
+const strategyAnalysisCache=B.createAnalysisCache();
+window.analyzeBidStrategyRows=(rows,references=null)=>{
+  if(!references)return strategyAnalysisCache(rows,taskRules,false,null,null);
+  const accounts=references.accounts||{},inferred=B.inferAccountTasks(rows,taskRules,accounts,references),canonical=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
+  const accountFor=row=>{for(const id of [row.accountId,row.internalAccountId]){const exact=accounts[String(id)];if(exact)return exact;const key=Object.keys(accounts).find(candidate=>canonical(candidate)===canonical(id));if(key)return accounts[key];}return null;};
+  return rows.map(row=>{const match=inferred.get(B.inferenceIdentity(row))||B.inferTaskFromBidReturn(row,taskRules,accountFor(row),references);return B.analyzeTask(row,taskRules,0,20,false,null,match);});
+};
 const aggregateColumnStorage='bid-monitor-aggregate-columns-v1';
 let aggregateSettings={};
 try{const saved=JSON.parse(localStorage.getItem(aggregateColumnStorage)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))aggregateSettings=saved;}catch{}
-function currentAggregateColumns(view){const selected=aggregateSettings[view],defaults=view==='dates'?aggregateColumns.filter(([,key])=>!['priced','commission','profit','estimatedRoi','bidProfitRate'].includes(key)):aggregateColumns,columns=Array.isArray(selected)?selected.map(key=>aggregateColumns.find(column=>column[1]===key)).filter(Boolean):defaults;return columns.map(([label,key])=>[view==='dates'&&key==='todayPlans'?'当日新上':label,key]);}
+const timeViews=new Set(['dates','datePlatforms','dateAccounts','dateOptimizers','dateTasks','dateConversionTargets']);
+const isTimeView=view=>timeViews.has(view);
+function currentAggregateColumns(view){const unavailable=new Set((historyMode||isTimeView(view))?['priced','commission','profit','estimatedRoi','bidProfitRate']:[]);if(historyMode&&!isTimeView(view))unavailable.add('todayPlans');const selected=aggregateSettings[view],defaults=aggregateColumns.filter(([,key])=>!unavailable.has(key)),columns=Array.isArray(selected)?selected.map(key=>aggregateColumns.find(column=>column[1]===key)).filter(column=>column&&!unavailable.has(column[1])):defaults;return columns.map(([label,key])=>[isTimeView(view)&&key==='todayPlans'?'当日新上':label,key]);}
 function saveAggregateSettings(){try{localStorage.setItem(aggregateColumnStorage,JSON.stringify(aggregateSettings));}catch{message('浏览器未允许保存展示列，本次选择仍然有效。');}}
 function drawAggregateColumns(view){
   $('#aggregateSettings').hidden=view==='plans';if(view==='plans')return;
@@ -89,7 +98,10 @@ function planCell(r,key,index){
 }
 const aggregateColumns=[['计划数','plans'],['今日新上','todayPlans'],['有消耗计划','spendingPlans'],['账户数','accounts'],['价格匹配','priced'],['总消耗','cost'],['转化数','conversions'],['注册数','registrations'],['回传比例','ratio'],['佣金','commission'],['预估赔付','estimatedCompensation'],['现金消耗','cashCost'],['现金利润','profit'],['预估 ROI','estimatedRoi'],['出价利润率','bidProfitRate']];
 const dimensionLabels={statDate:'数据日期',platform:'平台',account:'账户名称',accountId:'账户ID',optimizer:'优化师',task:'任务',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型'};
-const viewDimensions=view=>view==='dates'?['statDate']:view==='conversionTargets'?['externalAction','deepExternalAction','appType']:view==='optimizerTasks'?['optimizer','task']:view==='tasks'?['task']:view==='accounts'?['account','accountId']:['optimizer'];
+const viewDimensions=view=>({
+  dates:['statDate'],datePlatforms:['statDate','platform'],dateAccounts:['statDate','account','accountId'],dateOptimizers:['statDate','optimizer'],dateTasks:['statDate','task'],dateConversionTargets:['statDate','externalAction','deepExternalAction','appType'],
+  platforms:['platform'],accounts:['account','accountId'],optimizers:['optimizer'],tasks:['task'],optimizerTasks:['optimizer','task'],conversionTargets:['externalAction','deepExternalAction','appType']
+}[view]||['optimizer']);
 function sortHeader(label,key){const state=key===sortKey?sortDirection:'none',aria=state==='asc'?'ascending':state==='desc'?'descending':'none',description=state==='asc'?'当前升序':state==='desc'?'当前降序':'点击排序';return `<th aria-sort="${aria}"><button class="sort-header" type="button" data-sort-key="${key}" data-sort-state="${state}" aria-label="按${label}排序，${description}">${label}</button></th>`;}
 function sortRows(rows){return rows.sort((a,b)=>{const left=a[sortKey],right=b[sortKey],leftMissing=left===null||left===undefined||Number.isNaN(left),rightMissing=right===null||right===undefined||Number.isNaN(right);if(leftMissing||rightMissing)return leftMissing===rightMissing?0:leftMissing?1:-1;const result=typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right),'zh-CN',{numeric:true});return sortDirection==='asc'?result:-result;});}
 function message(text,bad=false){$('#message').textContent=text;$('#message').className=bad?'error':'';}
@@ -98,6 +110,11 @@ async function api(path,options={}){
   const text=await response.text();let data;try{data=JSON.parse(text);}catch{throw Error(`接口 HTTP ${response.status}，未返回 JSON，请确认后端已经部署`);}
   if(!response.ok)throw Error(data.error||data.message||`HTTP ${response.status}`);return data;
 }
+const historyReferencePromises=new Map();
+window.loadBidStrategyReferences=end=>{
+  if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).catch(error=>{historyReferencePromises.delete(end);throw error;}));
+  return historyReferencePromises.get(end);
+};
 function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}
 function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!start||!end||start>end)throw Error('请选择有效的统计日期范围');return{start,end};}
 function receive(rows,label,datesValue,live=false,historical=false){
@@ -125,7 +142,7 @@ function render(){
   $('#source').textContent=range?`${source} · 统计区间 ${range.start} 至 ${range.end} · ${raw.length} 条计划（元）`:'尚未查询或导入数据';
   for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
   const current=range?range.end>=today():true;$('#lag').hidden=!current;
-  analyzed=cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData);
+  analyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData);
   drawValueFilters();
   const analyzedTaskNames=[...new Set(analyzed.map(row=>row.task).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
   const taskSignature=JSON.stringify([taskRules.map(rule=>rule.name),analyzedTaskNames]);
@@ -138,7 +155,7 @@ function render(){
   for(const option of $('#taskFilter').options)option.selected=chosen.has(option.value);
   }
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
-  $('#historyToolbar').hidden=viewMode!=='dates';
+  $('#historyToolbar').hidden=!historyMode&&!isTimeView(viewMode);
   $('#gapStatus').hidden=$('#gapReload').hidden=historyMode;
   drawAggregateColumns(viewMode);
   const displayedMetrics=currentAggregateColumns(viewMode);
@@ -183,7 +200,8 @@ function render(){
     $('#tableHead').innerHTML='<tr>'+activePlanColumns().map(column=>sortHeader(...column)).join('')+'</tr>';
     $('#rows').innerHTML=displayRows.slice((page-1)*size,page*size).map((r,index)=>`<tr>${activePlanColumns().map(([,key])=>planCell(r,key,(page-1)*size+index)).join('')}</tr>`).join('')||`<tr><td colspan="${activePlanColumns().length}" class="empty">没有符合条件的计划</td></tr>`;
   }
-  const unit=viewMode==='dates'?'天':viewMode==='accounts'?'个账户':viewMode==='optimizers'?'名优化师':viewMode==='tasks'?'个任务':viewMode==='optimizerTasks'?'个优化师 × 任务组合':viewMode==='conversionTargets'?'个目标组合':'条';
+  const units={dates:'天',datePlatforms:'个日期 × 平台组合',dateAccounts:'个日期 × 账户组合',dateOptimizers:'个日期 × 优化师组合',dateTasks:'个日期 × 任务组合',dateConversionTargets:'个日期 × 目标组合',platforms:'个平台',accounts:'个账户',optimizers:'名优化师',tasks:'个任务',optimizerTasks:'个优化师 × 任务组合',conversionTargets:'个目标组合'};
+  const unit=units[viewMode]||'条';
   $('#count').textContent=aggregateMode?`${displayRows.length} ${unit}（${visible.length} 条计划）`:`${displayRows.length} 条`;$('#pageLabel').textContent=`第 ${page} / ${pages} 页`;$('#prev').disabled=page<=1;$('#next').disabled=page>=pages;$('#export').disabled=!displayRows.length;
   $('#firstPage').disabled=page<=1;$('#lastPage').disabled=page>=pages;
   $('#pageJump').setCustomValidity('');$('#pageJump').max=String(pages);$('#pageJump').value=String(page);$('#pageJump').disabled=!displayRows.length;
@@ -240,14 +258,16 @@ async function loadHistory(){
   try{
     const data=await api('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)});
     if(!Array.isArray(data.rows))throw Error('历史归档接口返回格式异常');
-    if(!data.rows.length){++gapGeneration;gapData=null;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
+    if(!data.rows.length){++gapGeneration;gapData=null;historyTaskReferences=null;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
+    historyTaskReferences=null;
     await receive(data.rows,`每日 00:30 历史归档 · ${data.count} 条计划日数据`,{start:data.startDate,end:data.endDate},false,true);
     $('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据`;
+    void window.loadBidStrategyReferences(data.endDate).then(references=>{if(historyMode&&range?.end===data.endDate){historyTaskReferences=references;render();$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据 · 任务关联已完成`;}}).catch(()=>{});
   }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);}
   finally{busy=false;button.disabled=false;}
 }
 $('#historyLoad').onclick=()=>void loadHistory();
-$('#viewMode').addEventListener('input',()=>{selectedAccount=null;page=1;if($('#viewMode').value==='dates'){sortKey='statDate';sortDirection='desc';render();void loadHistory();}else render();});
+$('#viewMode').addEventListener('input',()=>{selectedAccount=null;page=1;const view=$('#viewMode').value;if(isTimeView(view)){sortKey='statDate';sortDirection='desc';render();if(!historyMode)void loadHistory();}else render();});
 for(const id of ['search','taskFilter','optimizerFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',()=>{page=1;render();});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
@@ -283,7 +303,7 @@ $('#export').onclick=()=>{
     ...visible.map(r=>[r.id,r.name,r.platform,r.accountId,r.account,r.optimizer,r.task,r.taskSource==='daily-report'?'大航海日报任务名':r.taskSource==='plan-name'?'计划/账户名称识别':r.taskSource==='bid-return'?'出价×回传比例估算':r.taskSource==='inferred'?'历史结算单价反推':r.task?'账户名匹配':'',r.basePrice,priceSourceLabel(r),range.start,range.end,r.cost,r.conversions,r.registrations,r.ratio,r.bid,r.commission,r.estimatedCompensation,fmtRoi(r.estimatedRoi),r.grant,r.cashCost,r.breakEvenBid,fmtPercent(r.bidProfitRate),r.gap,r.price,...visibleOptional.map(column=>r[column[1]])])];
   if(!aggregateMode)rows[0].push(...visibleOptional.map(column=>column[0]));
   if(!aggregateMode&&planDisplayKeys){const columns=activePlanColumns();rows=[['计划ID','账户ID','统计开始','统计结束',...columns.map(column=>column[0])],...visible.map(r=>[r.id,r.accountId,range.start,range.end,...columns.map(([,key])=>['ratio','bidProfitRate'].includes(key)?fmtPercent(r[key]):['estimatedRoi','gap'].includes(key)?fmtRoi(r[key]):r[key])])];}
-  const labels={plans:'计划明细',dates:'时间汇总',accounts:'账户汇总',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总',conversionTargets:'转化目标组合汇总'};
+  const labels={plans:'计划明细',dates:'日期汇总',datePlatforms:'日期平台汇总',dateAccounts:'日期账户汇总',dateOptimizers:'日期优化师汇总',dateTasks:'日期任务汇总',dateConversionTargets:'日期转化目标汇总',platforms:'平台汇总',accounts:'账户汇总',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总',conversionTargets:'转化目标组合汇总'};
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`出价监测_${labels[viewMode]}_${range.start}_${range.end}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 (async()=>{try{const session=await api('/api/session');if(!session.authenticated){location.replace('/login');return;}const permissions=await api('/api/tool-visibility');if(permissions.bidMonitor!==true){location.replace('/tools');return;}const shared=await api('/api/bid-monitor/shared-report',{signal:AbortSignal.timeout(20000)});bidSharedAccess(shared);document.body.classList.add('ready');render();await bidApplyShared(shared);}catch(error){document.body.classList.add('ready');message(error.message,true);}})();

@@ -44,6 +44,19 @@ test('normalizes report date and aggregates saved daily rows by time',()=>{
  assert.deepEqual(result.map(row=>row.statDate),['2026-09-09','2026-09-08']);
  assert.equal(result[0].plans,1);assert.equal(result[0].cost,20);assert.equal(result[0].accounts,1);
 });
+
+test('combines saved dates with business dimensions',()=>{
+ const core=require('../frontend/bid-monitor-core.js');
+ const rows=[
+  core.normalize({report_date:'2026-09-08',platform_text:'字节',media_account_name:'账户A',advertiser_id:'1',stat_cost:10,convert_cnt:2,reg_pv:4,cpa_bid:1}),
+  core.normalize({report_date:'2026-09-08',platform_text:'广点通',media_account_name:'账户B',advertiser_id:'2',stat_cost:20,convert_cnt:3,reg_pv:5,cpa_bid:1}),
+  core.normalize({report_date:'2026-09-09',platform_text:'字节',media_account_name:'账户A',advertiser_id:'1',stat_cost:30,convert_cnt:4,reg_pv:6,cpa_bid:1})
+ ];
+ const groups=core.aggregateGroups(rows,['statDate','platform'],'2026-09-10');
+ assert.equal(groups.length,3);assert.equal(groups.find(row=>row.statDate==='2026-09-09').cost,30);
+ const accounts=core.aggregateGroups(rows,['statDate','account','accountId'],'2026-09-10');
+ assert.equal(accounts.length,3);assert.deepEqual(new Set(accounts.map(row=>row.accountId)),new Set(['1','2']));
+});
 test('aggregates every plan by optimizer with weighted metrics',()=>{
  const rules=[{name:'A',keyword:'account',price:10}];
  const rows=[

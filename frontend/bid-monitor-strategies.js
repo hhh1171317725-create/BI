@@ -37,7 +37,7 @@
   function setDataStatus(text,bad=false){const target=byId('strategyDataStatus');target.textContent=text;target.className=bad?'error':'muted';}
   function refreshDataStatus(){
     const data=selectedData();
-    if(data.historical){const coverage=historyReferences instanceof Map?` · ${historyReferences.size} / ${historyReferences.totalDates} 个日期已关联收益口径`:'';setDataStatus(historyLoading?'正在读取历史归档与逐日收益口径…':historyRange?`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据${coverage}`:'请选择日期读取历史归档');return;}
+    if(data.historical){const coverage=historyReferences instanceof Map?` · ${historyReferences.size} / ${historyReferences.totalDates} 个日期已关联收益口径`:'';setDataStatus(historyLoading?'正在读取历史归档与逐日收益口径…':historyRange?`${historyRange.end===today()?'历史 + 今日实时':'历史'} ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据${coverage}`:'请选择日期读取历史归档');return;}
     setDataStatus(data.range?`当前报表 ${data.range.start} 至 ${data.range.end} · ${(data.rows||[]).length} 条计划`:'当前报表尚无数据');
   }
   function applyBundle(bundle){
@@ -68,10 +68,10 @@
 
   async function loadHistory(){
     if(historyLoading)return;const start=byId('strategyHistoryStart').value,end=byId('strategyHistoryEnd').value,button=byId('strategyHistoryLoad');
-    if(!start||!end||start>end||end>=today()){setDataStatus('请选择昨天以前的有效历史日期范围',true);return;}
+    if(!start||!end||start>end||end>today()){setDataStatus('请选择不晚于今天的有效日期范围',true);return;}
     historyLoading=true;button.disabled=true;refreshDataStatus();let failure='',warning='';
     try{
-      const response=await fetch('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}),text=await response.text();let data;try{data=JSON.parse(text);}catch{throw Error(`接口 HTTP ${response.status}，未返回 JSON`);}if(response.status===401){location.replace('/login');return;}if(!response.ok)throw Error(data.error||data.message||`HTTP ${response.status}`);if(!Array.isArray(data.rows))throw Error('历史归档接口返回格式异常');
+      const data=await window.loadBidHistoryRange(start,end);if(!Array.isArray(data.rows))throw Error('日期范围接口返回格式异常');
       historyRaw=data.rows.map(B.normalize);historyRange={start:data.startDate||start,end:data.endDate||end};historyReferences=null;draw();
       try{historyReferences=await window.loadBidHistoricalReferences?.(historyRaw);draw();if(!historyReferences?.complete)warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · ${historyReferences?.size||0} / ${historyReferences?.totalDates||0} 个日期已关联收益口径`;}catch{warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · 逐日任务、单价与 gap 关联暂不可用`;}
     }catch(error){failure='历史数据读取失败：'+error.message;setDataStatus(failure,true);}

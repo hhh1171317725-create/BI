@@ -39,12 +39,12 @@
   let draftStart='',draftEnd='',draftLive=true,calendarMonth=chinaToday().slice(0,7)+'-01';
   const presetRanges=()=>{
     const today=chinaToday(),yesterday=addDays(today,-1),weekday=new Date(today+'T00:00:00Z').getUTCDay()||7;
-    return [['今天',null],['昨天',[yesterday,yesterday]],['最近3天',[addDays(today,-3),yesterday]],['最近7天',[addDays(today,-7),yesterday]],['最近15天',[addDays(today,-15),yesterday]],['最近30天',[addDays(today,-30),yesterday]],['上周',[addDays(today,-weekday-6),addDays(today,-weekday)]],['本月',[today.slice(0,7)+'-01',yesterday]]];
+    return [['今天',null],['昨天',[yesterday,yesterday]],['最近3天',[addDays(today,-2),today]],['最近7天',[addDays(today,-6),today]],['最近15天',[addDays(today,-14),today]],['最近30天',[addDays(today,-29),today]],['上周',[addDays(today,-weekday-6),addDays(today,-weekday)]],['本月',[today.slice(0,7)+'-01',today]]];
   };
   const sameRange=range=>range?draftStart===range[0]&&draftEnd===range[1]:draftLive;
   function chooseDate(date){
     const today=chinaToday();if(date>today)return;
-    if(date===today){draftLive=true;draftStart='';draftEnd='';renderCalendar();return;}
+    if(date===today){if(!draftLive&&draftStart&&!draftEnd)draftEnd=today;else{draftLive=true;draftStart='';draftEnd='';}renderCalendar();return;}
     draftLive=false;
     if(!draftStart||draftEnd){draftStart=date;draftEnd='';}
     else if(date<draftStart){draftEnd=draftStart;draftStart=date;}else draftEnd=date;

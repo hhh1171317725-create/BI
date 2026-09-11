@@ -12,6 +12,7 @@
   const searchHint=make('small','batch-search-hint','批量查找：多个计划 / 账户 ID 用空格或逗号分隔');searchHint.id='batchSearchHint';
   document.getElementById('search').after(searchHint);
   document.getElementById('search').setAttribute('aria-describedby','batchSearchHint');
+  const watch=make('button','ocean-watch','盯盘助手');watch.type='button';watch.id='oceanWatch';watch.onclick=()=>{const trigger=document.querySelector('.data-pet-toggle');if(trigger)trigger.click();else document.getElementById('message').textContent='数据助手正在加载，请稍后重试。';};toolbar.prepend(watch);
   const summary=make('div','filter-summary');summary.id='filterSummary';
   const chips=make('div','filter-chips');
   const reset=make('button','filter-reset','清除全部筛选');reset.type='button';reset.id='clearReportFilters';
@@ -51,6 +52,7 @@
     for(const button of levelTabs.children){const active=button.dataset.view===view;button.classList.toggle('is-active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     const start=document.getElementById('historyStart').value,end=document.getElementById('historyEnd').value,yesterday=chinaDate(-1),weekStart=chinaDate(-7);
     for(const button of datePresets.children){const active=button.dataset.range==='实时'?!start&&!end:button.dataset.range==='昨天'?start===yesterday&&end===yesterday:start===weekStart&&end===yesterday;button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));}
+    enhanceSelection();drawTableSummary();
   }
   reset.onclick=()=>{
     filters.forEach(([id,,empty])=>{const input=document.getElementById(id);if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;});
@@ -64,6 +66,23 @@
   gapStrip.append(gapStatus,document.getElementById('gapReload'));
   const tools=make('div','table-tools');
   tools.append(make('span','table-guidance','点击表头排序 · 横向滚动查看更多指标'));
+  const tableSummary=make('div','ocean-table-summary');tableSummary.setAttribute('aria-live','polite');
+  const batchBar=make('div','ocean-batch-bar');batchBar.hidden=true;
+  const batchCount=make('strong','','已选择 0 条'),batchExport=make('button','','导出已选'),batchClear=make('button','','清空选择');for(const button of [batchExport,batchClear])button.type='button';batchBar.append(batchCount,batchExport,batchClear);
+  const batchToggle=make('button','','批量选择');batchToggle.type='button';batchToggle.id='batchSelect';batchToggle.setAttribute('aria-pressed','false');
+  let selectionMode=false;const selectedRows=new Map();
+  function selectedSnapshot(row){return [...row.cells].slice(1).map(cell=>cell.innerText.trim().replace(/\n+/g,' / '));}
+  function updateBatch(){batchBar.hidden=!selectionMode;batchCount.textContent=`已选择 ${selectedRows.size} 条`;batchExport.disabled=!selectedRows.size;batchClear.disabled=!selectedRows.size;batchToggle.textContent=selectionMode?'退出批量选择':'批量选择';batchToggle.setAttribute('aria-pressed',String(selectionMode));}
+  function enhanceSelection(){
+    const planView=document.getElementById('viewMode').value==='plans';batchToggle.hidden=!planView;if(!planView&&selectionMode){selectionMode=false;selectedRows.clear();}
+    const head=document.querySelector('#tableHead tr'),bodyRows=[...document.querySelectorAll('#rows tr')];if(!selectionMode||!planView){updateBatch();return;}
+    if(head&&!head.querySelector('.ocean-select-cell')){const th=make('th','ocean-select-cell'),all=make('input');all.type='checkbox';all.setAttribute('aria-label','选择当前页全部计划');th.append(all);head.prepend(th);all.onchange=()=>{for(const box of document.querySelectorAll('#rows .ocean-row-select')){box.checked=all.checked;box.dispatchEvent(new Event('change'));}};}
+    for(const row of bodyRows){const link=row.querySelector('.plan-detail-link');if(!link||row.querySelector('.ocean-select-cell'))continue;const id=link.parentElement.querySelector('small')?.textContent.trim()||link.textContent.trim(),td=make('td','ocean-select-cell'),box=make('input');box.type='checkbox';box.className='ocean-row-select';box.checked=selectedRows.has(id);box.setAttribute('aria-label',`选择计划 ${link.textContent.trim()}`);td.append(box);row.prepend(td);box.onchange=()=>{if(box.checked)selectedRows.set(id,selectedSnapshot(row));else selectedRows.delete(id);updateBatch();};if(box.checked)selectedRows.set(id,selectedSnapshot(row));}
+    const boxes=[...document.querySelectorAll('#rows .ocean-row-select')],all=document.querySelector('#tableHead .ocean-select-cell input');if(all){all.checked=boxes.length>0&&boxes.every(box=>box.checked);all.indeterminate=boxes.some(box=>box.checked)&&!all.checked;}updateBatch();
+  }
+  function drawTableSummary(){const summary=window.getPetReportContext?.().summary||{},value=(key,digits=2)=>Number.isFinite(summary[key])?Number(summary[key]).toLocaleString('zh-CN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'--';tableSummary.innerHTML=`<span>当前结果</span><strong>${value('计划数',0)} 条计划</strong><span>消耗 <b>${value('消耗')}</b></span><span>转化 <b>${value('转化数')}</b></span><span>注册 <b>${value('注册数')}</b></span><span>预估 ROI <b>${value('预估ROI',3)}</b></span>`;}
+  batchToggle.onclick=()=>{selectionMode=!selectionMode;if(!selectionMode)selectedRows.clear();enhanceSelection();};batchClear.onclick=()=>{selectedRows.clear();document.querySelectorAll('.ocean-row-select').forEach(box=>box.checked=false);enhanceSelection();};
+  batchExport.onclick=()=>{if(!selectedRows.size)return;const headers=[...document.querySelectorAll('#tableHead th')].slice(1).map(th=>th.textContent.trim().replace(/[⇅↑↓]/g,'')),cell=value=>'"'+String(value??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"',csv=[headers,...selectedRows.values()].map(row=>row.map(cell).join(',')).join('\r\n'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=`出价监测_已选${selectedRows.size}条.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   const density=make('button','','紧凑行距');density.type='button';density.id='tableDensity';
   let compact=false;try{compact=localStorage.getItem('bid.table.compact')==='true';}catch{}
   function setDensity(){report.classList.toggle('compact-table',compact);density.setAttribute('aria-pressed',String(compact));density.textContent=compact?'标准行距':'紧凑行距';}
@@ -75,9 +94,10 @@
   focus.onclick=()=>setFocus(!focused);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(false);}});
   window.addEventListener('hashchange',()=>setFocus(false));
-  tools.append(density,focus);report.querySelector('.table-wrap').before(tools);
-  report.querySelector('.table-wrap').setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');
+  tools.append(batchToggle,density,focus);const reportTable=report.querySelector('.table-wrap');reportTable.before(tableSummary,tools,batchBar);
+  reportTable.setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');
   const legend=make('p','table-value-legend','数值 0 表示已取得零值；-- 表示缺失或不适用。点击计划名称可查看数据来源与计算依据。');
-  report.querySelector('.table-wrap').after(legend);
+  reportTable.after(legend);
+  const listCard=make('div','ocean-list-card');controlDeck.before(listCard);for(const element of [controlDeck,document.getElementById('columnSettings'),document.getElementById('accountDrill'),document.getElementById('aggregateSettings'),gapStrip,tableSummary,tools,batchBar,reportTable,legend,report.querySelector('.pager')])listCard.append(element);
   refresh();
 })();

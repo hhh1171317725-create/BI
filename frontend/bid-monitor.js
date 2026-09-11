@@ -54,7 +54,7 @@ async function loadGap(){
     const result=await api('/api/bid-monitor/gap?endDate='+encodeURIComponent(anchor),{signal:AbortSignal.timeout(30000)});
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
-    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
+    gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 有效日结算数合计 ÷ 注册数合计 · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
     $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
   }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
   finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='刷新任务 / 单价 / gap';}}
@@ -76,7 +76,8 @@ function gapTitle(id,row){
   const task=gapTaskIndex.get(String(row?.referenceTask||'').trim().toLowerCase());
   const data=row?.gapSource==='task-reference'?task:account,source=row?.gapSource==='task-reference'?`同任务“${row.referenceTask}”参考 gap`:'账户 gap';
   const detail=data?.days?.map(d=>`${d.date}：结算${d.settlements??'--'} / 注册${d.registrations??'--'} = ${d.ratio??'--'}${d.reason?`（${d.reason}）`:''}`).join('；');
-  return row?.gap===null?(row?.gapReason||'无可计算的 gap'):`${source}${data?`，${data.validDays}/3天有效${detail?'；'+detail:''}`:''}`;
+  const total=data?.gapSettlements!=null&&data?.gapRegistrations!=null?`；有效日合计：结算${data.gapSettlements} / 注册${data.gapRegistrations} = ${Number(data.gap).toFixed(3)}`:'';
+  return row?.gap===null?(row?.gapReason||'无可计算的 gap'):`${source}${data?`，${data.validDays}/3天有效${total}${detail?'；逐日：'+detail:''}`:''}`;
 }
 const names={'task-missing':'未匹配任务','task-conflict':'多个任务匹配，请调整关键词','price-missing':'未配置有效结算价','missing':'字段缺失/非数值','no-register':'无注册，暂不判断','no-return':'无回传，暂不判断','abnormal':'回传超过 100%，核对口径','sample':'样本不足','pending':'当日待回补，暂不调价','loss-bid':'出价超过保本线','margin-bid':'未达目标毛利','within':'出价在理论上限内'};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

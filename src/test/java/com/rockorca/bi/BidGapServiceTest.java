@@ -35,10 +35,11 @@ class BidGapServiceTest {
   private Map<String,Object> pricedRow(String date,double commission,double settled,double registered){return Map.of("账户ID","123","日期",date,"预估佣金",commission,"结算数",settled,"注册数",registered);}
   private Map<String,Object> taskRow(String date,String task,double spend){return Map.of("账户ID","123","日期",date,"任务名",task,"消耗",spend,"预估佣金",0,"结算数",0,"注册数",0);}
   @SuppressWarnings("unchecked")
-  @Test void averagesDailyRatiosAfterCombiningSameDayRows(){
+  @Test void dividesThreeDaySettlementTotalByRegistrationTotalAfterCombiningSameDayRows(){
     var result=BidGapService.calculate(List.of(row("2026-09-05",40,100),row("2026-09-05",10,100),row("2026-09-06",90,100),row("2026-09-07",60,100),row("2026-09-08",900,100),row("2026-09-09",900,100),row("2026-09-04",900,100)),LocalDate.of(2026,9,9));
     var account=(Map<String,Object>)((Map<?,?>)result.get("accounts")).get("123");
-    assertEquals((.25+.9+.6)/3,(double)account.get("gap"),1e-12);
+    assertEquals(.5,(double)account.get("gap"),1e-12);
+    assertEquals(200d,account.get("gapSettlements"));assertEquals(400d,account.get("gapRegistrations"));
     assertEquals(3,account.get("validDays"));
     assertEquals("2026-09-05",result.get("start"));assertEquals("2026-09-07",result.get("end"));
   }
@@ -46,7 +47,7 @@ class BidGapServiceTest {
     var result=BidGapService.calculate(List.of(row("2026-09-05",0,100),row("2026-09-06",20,100),row("2026-09-07",10,0)),LocalDate.of(2026,9,9));
     var account=(Map<?,?>)((Map<?,?>)result.get("accounts")).get("123");
     assertEquals(.2,account.get("gap"));assertEquals(1,account.get("validDays"));
-    var days=(List<?>)account.get("days");assertTrue(((Map<?,?>)days.getFirst()).get("reason").toString().contains("不参与gap平均"));
+    var days=(List<?>)account.get("days");assertTrue(((Map<?,?>)days.getFirst()).get("reason").toString().contains("不参与gap计算"));
     var empty=BidGapService.calculate(List.of(row("2026-09-05",0,100),row("2026-09-06",10,0)),LocalDate.of(2026,9,9));
     assertNull(((Map<?,?>)((Map<?,?>)empty.get("accounts")).get("123")).get("gap"));
   }

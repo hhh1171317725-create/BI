@@ -73,6 +73,23 @@ public class BidServerSyncStore {
     }
   }
 
+  List<Long> historyDue(String reportDate,long now) throws Exception {
+    initialize();
+    try(var connection=reports.openConnection();var statement=connection.prepareStatement(
+        "SELECT user_id,payload FROM bid_monitor_server_sync WHERE JSON_EXTRACT(payload,'$.credential') IS NOT NULL")){
+      try(var result=statement.executeQuery()){
+        var ids=new ArrayList<Long>();
+        while(result.next()){
+          var state=mapper.readValue(result.getString("payload"),new TypeReference<Map<String,Object>>(){});
+          long retryAt=((Number)state.getOrDefault("historyRetryAt",0L)).longValue();
+          if(Boolean.TRUE.equals(state.get("enabled"))&&!reportDate.equals(state.get("historyLastDate"))&&retryAt<=now)
+            ids.add(result.getLong("user_id"));
+        }
+        return ids;
+      }
+    }
+  }
+
   List<Long> dingtalkDue(long now) throws Exception {
     initialize();
     try(var connection=reports.openConnection();var statement=connection.prepareStatement(

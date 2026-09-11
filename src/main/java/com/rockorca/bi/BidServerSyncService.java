@@ -116,7 +116,8 @@ public class BidServerSyncService {
     output.put("userId",Long.toString(owner));
     output.put("configured",state.containsKey("credential"));
     output.put("enabled",Boolean.TRUE.equals(state.get("enabled")));
-    for (String key:List.of("clientUser","mainUserId","state","error","lastSuccess","dueAt","progress"))
+    for (String key:List.of("clientUser","mainUserId","state","error","lastSuccess","dueAt","progress",
+        "historyState","historyError","historyLastDate","historyLastSuccess","historyRetryAt"))
       if (state.containsKey(key)) output.put(key,state.get(key));
     output.put("minutes",10);
     output.put("createdDays",4);
@@ -342,10 +343,20 @@ public class BidServerSyncService {
 
   Map<String,Object> collect(Map<String,Object> state,String cookie,Progress progress) throws Exception {
     LocalDate today=LocalDate.now(ReportService.BEIJING);
-    String start=creationStart(today).toString();
+    return collectWindow(state,cookie,today,creationStart(today),today,progress,false);
+  }
+
+  Map<String,Object> collectHistory(Map<String,Object> state,String cookie,LocalDate runDate)throws Exception{
+    LocalDate reportDate=runDate.minusDays(1);
+    return collectWindow(state,cookie,reportDate,runDate.minusDays(4),reportDate,(done,total)->{},true);
+  }
+
+  private Map<String,Object> collectWindow(Map<String,Object> state,String cookie,LocalDate reportDate,
+      LocalDate createdStart,LocalDate createdEnd,Progress progress,boolean allowEmpty)throws Exception{
+    String start=createdStart.toString();
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
-        "mainUserId",state.get("mainUserId"),"startDate",today.toString(),"endDate",today.toString(),
-        "createdStart",start,"createdEnd",today.toString()));
+        "mainUserId",state.get("mainUserId"),"startDate",reportDate.toString(),"endDate",reportDate.toString(),
+        "createdStart",start,"createdEnd",createdEnd.toString()));
     var rows=new ArrayList<Map<String,Object>>();long sourceTotal=0,duplicates=0;var ids=new HashSet<String>();
     progress.update(0,-1);
     for(String platform:List.of("byte","gdt")){
@@ -354,10 +365,10 @@ public class BidServerSyncService {
       if(rows.size()>BidMonitorApiController.MAX_PLAN_ROWS)
         throw new IllegalArgumentException("字节与广点通计划合计超过 100000 条，请缩小计划创建日期范围");
     }
-    if(rows.isEmpty())throw new IllegalArgumentException("查询范围内没有字节或广点通计划，保留原有结果");
-    return new LinkedHashMap<>(Map.of("date",today.toString(),"rows",rows,"selection","created_window_all",
+    if(rows.isEmpty()&&!allowEmpty)throw new IllegalArgumentException("查询范围内没有字节或广点通计划，保留原有结果");
+    return new LinkedHashMap<>(Map.of("date",reportDate.toString(),"rows",rows,"selection","created_window_all",
         "upstreamTotal",(long)rows.size(),"sourceTotal",sourceTotal,"duplicateRows",duplicates,
-        "createdStart",start,"createdEnd",today.toString()));
+        "createdStart",start,"createdEnd",createdEnd.toString()));
   }
 
   private SourceRows collectSource(Map<String,Object> input,String platform,Set<String> ids,int completed,long completedTotal,Progress progress)throws Exception{
@@ -426,7 +437,7 @@ public class BidServerSyncService {
   }
 
   @SuppressWarnings("unchecked")
-  private static List<Map<String,Object>> rawRows(Map<String,Object> snapshot){
+  static List<Map<String,Object>> rawRows(Map<String,Object> snapshot){
     return (List<Map<String,Object>>)snapshot.get("rows");
   }
 

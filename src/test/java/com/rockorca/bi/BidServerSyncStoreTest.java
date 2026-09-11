@@ -8,6 +8,20 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class BidServerSyncStoreTest {
+  @Test void historyDueOnlyReturnsEnabledOwnersMissingTheReportDate()throws Exception{
+    var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
+    when(reports.openConnection()).thenReturn(connection);when(connection.createStatement()).thenReturn(mock(Statement.class));
+    var statement=mock(PreparedStatement.class);when(connection.prepareStatement(contains("$.credential"))).thenReturn(statement);
+    var result=mock(ResultSet.class);when(statement.executeQuery()).thenReturn(result);
+    when(result.next()).thenReturn(true,true,true,false);
+    when(result.getString("payload")).thenReturn(
+        "{\"credential\":\"x\",\"enabled\":true}",
+        "{\"credential\":\"x\",\"enabled\":true,\"historyLastDate\":\"2026-09-10\"}",
+        "{\"credential\":\"x\",\"enabled\":true,\"historyRetryAt\":2000}");
+    when(result.getLong("user_id")).thenReturn(7L,8L,9L);
+    var store=new BidServerSyncStore(reports,new ObjectMapper());
+    assertEquals(java.util.List.of(7L),store.historyDue("2026-09-10",1000L));
+  }
   @Test void dingtalkScheduleQueryIsSeparateFromDataSyncDueTime()throws Exception{
     var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
     when(reports.openConnection()).thenReturn(connection);when(connection.createStatement()).thenReturn(mock(Statement.class));

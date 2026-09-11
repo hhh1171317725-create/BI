@@ -35,6 +35,15 @@ test('estimates eCPM for an old snapshot by deriving impressions from spend and 
  const missing=normalize({stat_cost:'200',convert_cnt:'15',cpa_bid:'25'});
  assert.equal(missing.impressions,null);assert.equal(missing.ecpm,null);
 });
+test('normalizes report date and aggregates saved daily rows by time',()=>{
+ const rows=[
+  {...normalize({report_date:'2026-09-08',promotion_id:'1',advertiser_id:'a',stat_cost:10,convert_cnt:2,active_register:4,cpa_bid:5}),price:null,cashCost:10,estimatedCompensation:0},
+  {...normalize({report_date:'2026-09-09',promotion_id:'1',advertiser_id:'a',stat_cost:20,convert_cnt:3,active_register:5,cpa_bid:5}),price:null,cashCost:20,estimatedCompensation:0}
+ ];
+ const result=require('../frontend/bid-monitor-core.js').aggregateGroups(rows,['statDate'],'2026-09-10');
+ assert.deepEqual(result.map(row=>row.statDate),['2026-09-09','2026-09-08']);
+ assert.equal(result[0].plans,1);assert.equal(result[0].cost,20);assert.equal(result[0].accounts,1);
+});
 test('aggregates every plan by optimizer with weighted metrics',()=>{
  const rules=[{name:'A',keyword:'account',price:10}];
  const rows=[

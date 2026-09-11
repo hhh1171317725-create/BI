@@ -69,7 +69,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
    }
    await route.fulfill({json:syncStatus});
   });
-  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
+  await page.route('**/api/**',route=>{const url=route.request().url();if(url.includes('/server-sync')||url.includes('/dingtalk'))return route.fallback();let data={};if(url.includes('/bid-monitor/history?')){const query=new URL(url).searchParams,startDate=query.get('startDate'),endDate=query.get('endDate');data={startDate,endDate,count:4,rows:[{...sample[0],promotion_id:'history-1',report_date:startDate},{...sample[1],promotion_id:'history-2',report_date:startDate},{...sample[2],promotion_id:'history-3',report_date:endDate},{...sample[3],promotion_id:'history-4',report_date:endDate}]};}else if(url.endsWith('/session'))data={authenticated:true};else if(url.endsWith('/tool-visibility'))data={bidMonitor:true};else if(url.endsWith('/import'))data={rows:sample};else if(url.endsWith('/page')){const p=route.request().postDataJSON().page;queriedPages.push(p);data={total:335367,rows:Array.from({length:100},(_,i)=>({...sample[0],promotion_id:String((p-1)*100+i)}))};}else if(url.endsWith('/snapshot'))data={userId:'1',snapshot};route.fulfill({json:data})});
   await page.route('**/api/bid-monitor/shared-report',route=>route.fulfill({json:{userId:'1',canManage:true,sharedOwnerId:'1',sharedOwnerName:'管理员',strategies:savedStrategies,strategyRevision}}));
   let gapFactor=1;
   await page.route('**/api/bid-monitor/gap?**',route=>{const anchor=new URL(route.request().url()).searchParams.get('endDate'),date=new Date(anchor+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-2);const priceDate=date.toISOString().slice(0,10),accounts={'1866402186668232':{gap:gapFactor,validDays:gapFactor===null?0:3,days:[],dailyPricesByTask:{'任务A':{date:priceDate,price:21.5}}},'1870049327502852':{gap:gapFactor,validDays:gapFactor===null?0:3,days:[],dailyPricesByTask:{'任务B':{date:priceDate,price:30}}}},tasks={'任务A':{gap:gapFactor,dailyPrice:{date:priceDate,price:21.5}},'任务B':{gap:gapFactor,dailyPrice:{date:priceDate,price:30}}};return route.fulfill({json:{anchor,start:'2026-07-29',end:'2026-07-31',priceDate,basis:'test',accounts,tasks}})});
@@ -404,11 +404,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#clearReportFilters').click();
   assert.equal(await page.locator('#platformFilter').inputValue(),'');
   assert.equal(await page.locator('#count').textContent(),'3 条');
+  await page.locator('#viewMode').selectOption('dates');
+  await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('已读取'));
+  assert.equal(await page.locator('#historyToolbar').isVisible(),true);
+  assert.equal(await page.locator('#tableHead th').first().textContent(),'数据日期');
+  assert.match(await page.locator('#count').textContent(),/^2 天（4 条计划）$/);
   await page.locator('#search').fill('无匹配词');assert.match(await card('cost').textContent(),/0.00.*0 条计划/);
   await page.getByRole('button',{name:'清除筛选，查看结果',exact:true}).click();
   assert.equal(await page.locator('#search').inputValue(),'');
   assert.match(await page.locator('.table-guidance').textContent(),/当前按/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  assert.deepEqual(errors,[]);console.log('UI PASS: report views, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');
+  assert.deepEqual(errors,[]);console.log('UI PASS: report views including saved time history, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

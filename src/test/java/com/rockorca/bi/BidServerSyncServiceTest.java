@@ -274,6 +274,17 @@ class BidServerSyncServiceTest {
     doReturn(Map.of("total",300,"rows",rows(0,100)),Map.of("total",301,"rows",rows(100,100))).when(upstream).page(anyMap());
     assertThrows(IllegalArgumentException.class,()->service.collect(input(),"cookie"));
   }
+  @Test void historyCollectionReadsYesterdayForThePreviousFourCreationDates()throws Exception{
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      Map<String,Object> request=call.getArgument(0);
+      assertEquals("2026-09-10",request.get("startDate"));assertEquals("2026-09-10",request.get("endDate"));
+      assertEquals("2026-09-07",request.get("createdStart"));assertEquals("2026-09-10",request.get("createdEnd"));
+      return Map.of("total",1,"rows",rows(0,1));
+    });
+    var history=service.collectHistory(input(),input().get("cookie").toString(),java.time.LocalDate.of(2026,9,11));
+    assertEquals("2026-09-10",history.get("date"));assertEquals("2026-09-07",history.get("createdStart"));
+    assertEquals(1,((List<?>)history.get("rows")).size());
+  }
   @Test void persistedScheduleRunsWithoutBrowserAndAfterServiceRestart()throws Exception{
     service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
     when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",rows(0,1)));

@@ -76,8 +76,9 @@ function syncShow(result){
   const last=result.lastSuccess?'；最近成功：'+new Date(result.lastSuccess).toLocaleString('zh-CN'):'';
   const next=result.enabled&&['ready','retrying'].includes(result.state)&&result.dueAt?'；下次查询：'+new Date(result.dueAt).toLocaleString('zh-CN'):'';
   const progress=syncProgressText(result.progress);
+  const history=result.historyError?`；历史归档：${result.historyError}`:result.historyLastDate?`；历史归档：已保存 ${result.historyLastDate}`:'；历史归档：每天 00:30 保存昨天数据';
   syncText(result.error?result.error+last+next:(names[result.state]||'未开启定时同步')+last+next+
-    (progress?'；'+progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划':''),Boolean(result.error));
+    (progress?'；'+progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划'+history:''),Boolean(result.error));
 }
 function syncProgressText(progress){
   if(!progress)return '';

@@ -18,7 +18,7 @@ public class BidSnapshotController {
   private final ObjectMapper mapper;
   private final BidServerSyncStore serverSync;
   private volatile boolean initialized;
-  private static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
+  static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
       "media_account_id", "advertiser_id", "media_account_name", "user_name", "promotion_create_time",
       "stat_cost", "convert_cnt", "active_register", "cpa_bid", "app_type_text", "deep_bid_type_text",
       "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "show_cnt", "cpm_platform", "ecpm", "source_platform", "platform_text");
@@ -106,6 +106,36 @@ public class BidSnapshotController {
     if (!(input.get("rows") instanceof List<?> rows) || rows.isEmpty()
         || rows.size() > BidMonitorApiController.MAX_PLAN_ROWS)
       throw new IllegalArgumentException("计划数据为空或超出安全范围，不覆盖旧快照");
+    List<Map<String, Object>> clean = cleanRows(rows, false);
+    Map<String, Object> snapshot = new LinkedHashMap<>(Map.of("date", date, "rows", clean, "updatedAt", Instant.now().toString()));
+    if (input.containsKey("selection")) {
+      boolean all="created_window_all".equals(input.get("selection"));
+      boolean top400="spend_desc_top_400".equals(input.get("selection"));
+      if (!all&&!top400&&!"spend_desc_top_200".equals(input.get("selection"))) throw new IllegalArgumentException("采集范围无效");
+      long total=Long.parseLong(String.valueOf(input.get("upstreamTotal")));
+      if (total<0 || rows.size()!=(all?total:Math.min(top400?400L:200L,total))) throw new IllegalArgumentException("计划数据不完整");
+      snapshot.put("selection", input.get("selection"));snapshot.put("upstreamTotal",total);
+      if(input.containsKey("sourceTotal")){
+        long sourceTotal=Long.parseLong(String.valueOf(input.get("sourceTotal")));
+        long duplicateRows=Long.parseLong(String.valueOf(input.getOrDefault("duplicateRows",0)));
+        if(sourceTotal<total||duplicateRows<0||sourceTotal-total!=duplicateRows)
+          throw new IllegalArgumentException("上游重复计划统计无效");
+        snapshot.put("sourceTotal",sourceTotal);snapshot.put("duplicateRows",duplicateRows);
+      }
+    }
+    if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {
+      LocalDate start = LocalDate.parse(String.valueOf(input.get("createdStart")));
+      LocalDate end = LocalDate.parse(String.valueOf(input.get("createdEnd")));
+      if (start.isAfter(end) || end.isAfter(LocalDate.parse(date)) || start.plusDays(89).isBefore(end))
+        throw new IllegalArgumentException("计划创建范围须为 1 至 90 天，且不晚于统计日期");
+      snapshot.put("createdStart", start.toString()); snapshot.put("createdEnd", end.toString());
+    }
+    return snapshot;
+  }
+
+  static List<Map<String,Object>> cleanRows(List<?> rows, boolean allowEmpty) {
+    if ((!allowEmpty && rows.isEmpty()) || rows.size() > BidMonitorApiController.MAX_PLAN_ROWS)
+      throw new IllegalArgumentException("计划数据为空或超出安全范围");
     List<Map<String, Object>> clean = new ArrayList<>();
     Set<String> ids = new HashSet<>();
     for (Object item : rows) {
@@ -131,30 +161,7 @@ public class BidSnapshotController {
       }
       clean.add(record);
     }
-    Map<String, Object> snapshot = new LinkedHashMap<>(Map.of("date", date, "rows", clean, "updatedAt", Instant.now().toString()));
-    if (input.containsKey("selection")) {
-      boolean all="created_window_all".equals(input.get("selection"));
-      boolean top400="spend_desc_top_400".equals(input.get("selection"));
-      if (!all&&!top400&&!"spend_desc_top_200".equals(input.get("selection"))) throw new IllegalArgumentException("采集范围无效");
-      long total=Long.parseLong(String.valueOf(input.get("upstreamTotal")));
-      if (total<0 || rows.size()!=(all?total:Math.min(top400?400L:200L,total))) throw new IllegalArgumentException("计划数据不完整");
-      snapshot.put("selection", input.get("selection"));snapshot.put("upstreamTotal",total);
-      if(input.containsKey("sourceTotal")){
-        long sourceTotal=Long.parseLong(String.valueOf(input.get("sourceTotal")));
-        long duplicateRows=Long.parseLong(String.valueOf(input.getOrDefault("duplicateRows",0)));
-        if(sourceTotal<total||duplicateRows<0||sourceTotal-total!=duplicateRows)
-          throw new IllegalArgumentException("上游重复计划统计无效");
-        snapshot.put("sourceTotal",sourceTotal);snapshot.put("duplicateRows",duplicateRows);
-      }
-    }
-    if (input.containsKey("createdStart") || input.containsKey("createdEnd")) {
-      LocalDate start = LocalDate.parse(String.valueOf(input.get("createdStart")));
-      LocalDate end = LocalDate.parse(String.valueOf(input.get("createdEnd")));
-      if (start.isAfter(end) || end.isAfter(LocalDate.parse(date)) || start.plusDays(89).isBefore(end))
-        throw new IllegalArgumentException("计划创建范围须为 1 至 90 天，且不晚于统计日期");
-      snapshot.put("createdStart", start.toString()); snapshot.put("createdEnd", end.toString());
-    }
-    return snapshot;
+    return clean;
   }
 
   private static void checkSize(String payload){

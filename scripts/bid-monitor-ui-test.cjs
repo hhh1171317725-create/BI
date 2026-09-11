@@ -294,9 +294,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.goForward();
   await page.waitForFunction(()=>!document.querySelector('#report').hidden);
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
-  await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
+  assert.equal(await page.locator('.report-actions').count(),1);assert.equal(await page.locator('.table-tools #oceanWatch').count(),1);
+  await page.getByRole('button',{name:'刷新全部数据',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
-  assert.match(await page.locator('#syncStatus').textContent(),/已读取/);
+  assert.match(await page.locator('#syncStatus').textContent(),/已读取/);assert.match(await page.locator('#gapStatus').textContent(),/^gap区间/);assert.equal(await page.locator('#reportRefresh').isEnabled(),true);
   gapFactor=.5;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)').textContent==='0.500');
   assert.equal(await page.locator('#rows tr td').nth(15).textContent(),'10.75');
@@ -436,10 +437,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#viewMode').selectOption('plans');await page.locator('#search').fill('history-1');assert.equal(await page.locator('#rows tr').count(),1);assert.equal(await page.locator('#rows tr td').nth(6).textContent(),'125.00');await page.locator('#search').fill('');
   await page.locator('.section-nav a[href="#strategy-lab"]').click();
   assert.deepEqual(await page.locator('#strategyDataSource option').allTextContents(),['跟随当前报表','自选日期']);
+  assert.equal(await page.locator('.strategy-dimension-tab').count(),5);assert.equal(await page.locator('.strategy-dimension-tab.is-active').textContent(),'账户');
   await page.locator('#strategyDataSource').selectOption('history');
   await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('2 / 2 个日期已关联收益口径'));
   assert.equal(await page.locator('#strategyRangeButton').isVisible(),true);const strategyInitialStart=await page.locator('#strategyHistoryStart').inputValue(),strategyInitialEnd=await page.locator('#strategyHistoryEnd').inputValue();assert.match(await page.locator('#strategyRangeButton').textContent(),new RegExp(`${strategyInitialStart}.*${strategyInitialEnd}`));
-  await page.locator('#strategyDimension').selectOption('dates');
+  await page.locator('.strategy-dimension-tab[data-dimension="dates"]').click();
   assert.equal(await page.locator('#strategyDetail thead th').first().textContent(),'数据日期');
   assert.equal(await page.locator('#strategyDetail tbody tr').count(),2);
   assert.match(await page.locator('#strategyDetail').textContent(),/按每个数据日期分别关联任务、单价与 gap/);
@@ -453,7 +455,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('3 / 3 个日期已关联收益口径'));
   assert.equal(await page.locator('#strategyHistoryEnd').inputValue(),todayChina);assert.match(await page.locator('#strategyDataStatus').textContent(),/历史 \+ 今日实时/);
   assert.equal(await page.locator('#strategyDetail tbody tr').count(),3);
-  await page.locator('#strategyDimension').selectOption('accounts');assert.equal(await page.locator('#strategyDetail tbody tr').count(),1);assert.match(await page.locator('#strategyDetail .strategy-metric').first().textContent(),/2 条计划/);
+  await page.locator('.strategy-dimension-tab[data-dimension="accounts"]').click();assert.equal(await page.locator('#strategyDetail tbody tr').count(),1);assert.match(await page.locator('#strategyDetail .strategy-metric').first().textContent(),/2 条计划/);
   await page.locator('.section-nav a[href="#report"]').click();
   await page.locator('#historyRangeButton').click();await page.locator('#historyRangePicker .ocean-range-preset').filter({hasText:'今天'}).click();await page.locator('#historyRangeApply').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('未选择日期'));

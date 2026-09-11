@@ -65,7 +65,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   const download=page.waitForEvent('download');await page.locator('#export').click();
   const csv=fs.readFileSync(await (await download).path(),'utf8');assert.match(csv,/共享计划/);assert.match(csv,/"1.6"/);
   price=3;revision='p2';stamp='2026-09-08T01:10:00Z';
-  await page.getByRole('button',{name:'读取最新快照',exact:true}).click();
+  await page.getByRole('button',{name:'刷新全部数据',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='2.40');
   assert.match(await page.locator('#summaryCards [data-summary="cost"]').textContent(),/100.00/);
   await page.locator('#taskFilterButton').click();await page.locator('#bidMultiFilterDropdown input[value="task:0"]').check();await page.locator('#bidMultiFilterDropdown .multi-filter-done').click();

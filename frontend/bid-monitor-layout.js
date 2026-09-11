@@ -10,23 +10,25 @@
   const links = [...nav.querySelectorAll('a')];
   const refresh = document.createElement('button');
   refresh.type = 'button';
-  refresh.textContent = '读取最新快照';
+  refresh.id = 'reportRefresh';
+  refresh.className = 'primary report-refresh';
+  refresh.textContent = '刷新全部数据';
+  refresh.title = '一次刷新计划快照、任务、单价和 gap';
   refresh.addEventListener('click', async () => {
     refresh.disabled = true;
+    refresh.setAttribute('aria-busy', 'true');
+    refresh.textContent = '正在刷新…';
     try {
       await syncLoad(true);
-      feedback.textContent = document.getElementById('syncStatus').textContent;
     } catch (error) {
-      feedback.textContent = error.message;
+      document.getElementById('message').textContent = error.message;
     } finally {
       refresh.disabled = false;
+      refresh.removeAttribute('aria-busy');
+      refresh.textContent = '刷新全部数据';
     }
   });
-  const feedback = document.createElement('p');
-  feedback.className = 'muted';
-  feedback.setAttribute('role', 'status');
   document.querySelector('.report-toolbar').append(refresh);
-  document.querySelector('.report-toolbar').after(feedback);
 
   function showView() {
     const requested = location.hash.slice(1);

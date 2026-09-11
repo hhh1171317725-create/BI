@@ -3,9 +3,10 @@ body.bid-compact-controls .report-toolbar{padding-block:16px 8px;gap:8px}
 body.bid-compact-controls .workspace-field{font-size:0!important;gap:0;min-width:120px;flex:0 1 165px}
 body.bid-compact-controls .workspace-field.workspace-search{flex:1 1 230px;min-width:180px}
 body.bid-compact-controls .workspace-field :is(input,select){height:34px;min-height:34px;background:#f5f6f8;border-color:transparent;border-radius:6px;font-size:12px}
-body.bid-compact-controls .report-toolbar>button{height:34px;min-height:34px;font-size:12px;padding:6px 12px;border-radius:6px}
+body.bid-compact-controls .report-toolbar>button,body.bid-compact-controls .report-actions>button{height:34px;min-height:34px;font-size:12px;padding:6px 12px;border-radius:6px}
 body.bid-compact-controls .more-filters{background:#f2f4f7;border-color:transparent;color:#344962}
 body.bid-compact-controls #export{background:#f2f4f7;color:#344962;border-color:transparent}
+body.bid-compact-controls #reportRefresh{background:#2a55e5;color:#fff;border-color:#2a55e5}
 body.bid-compact-controls .table-tools{margin-top:10px}
 body.bid-compact-controls .gap-strip #gapStatus{flex:0 1 auto}
 body.bid-compact-controls main button{scroll-margin-block:160px 100px}

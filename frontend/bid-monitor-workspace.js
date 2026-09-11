@@ -12,7 +12,7 @@
   const searchHint=make('small','batch-search-hint','批量查找：多个计划 / 账户 ID 用空格或逗号分隔');searchHint.id='batchSearchHint';
   document.getElementById('search').after(searchHint);
   document.getElementById('search').setAttribute('aria-describedby','batchSearchHint');
-  const watch=make('button','ocean-watch','盯盘助手');watch.type='button';watch.id='oceanWatch';watch.onclick=()=>{const trigger=document.querySelector('.data-pet-toggle');if(trigger)trigger.click();else document.getElementById('message').textContent='数据助手正在加载，请稍后重试。';};toolbar.prepend(watch);
+  const watch=make('button','ocean-watch','AI 数据助手');watch.type='button';watch.id='oceanWatch';watch.onclick=()=>{const trigger=document.querySelector('.data-pet-toggle');if(trigger)trigger.click();else document.getElementById('message').textContent='数据助手正在加载，请稍后重试。';};
   const summary=make('div','filter-summary');summary.id='filterSummary';
   const chips=make('div','filter-chips');
   const reset=make('button','filter-reset','清除全部筛选');reset.type='button';reset.id='clearReportFilters';
@@ -144,7 +144,7 @@
   focus.onclick=()=>setFocus(!focused);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(false);}});
   window.addEventListener('hashchange',()=>setFocus(false));
-  tools.append(batchToggle,density,focus);const reportTable=report.querySelector('.table-wrap');reportTable.before(tableSummary,tools,batchBar);
+  tools.append(watch,batchToggle,density,focus);const reportTable=report.querySelector('.table-wrap');reportTable.before(tableSummary,tools,batchBar);
   reportTable.setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');
   const legend=make('p','table-value-legend','数值 0 表示已取得零值；-- 表示缺失或不适用。点击计划名称可查看数据来源与计算依据。');
   reportTable.after(legend);

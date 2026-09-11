@@ -18,6 +18,11 @@
 
   byId('strategyHistoryStart').value=offsetDate(-7);byId('strategyHistoryEnd').value=offsetDate(-1);
   const make=(tag,className='',text='')=>{const element=document.createElement(tag);element.className=className;if(text)element.textContent=text;return element;};
+  const dimensionSelect=byId('strategyDimension'),dimensionLabel=dimensionSelect.closest('label'),dimensionTabs=make('div','strategy-dimension-tabs');
+  dimensionTabs.setAttribute('role','tablist');dimensionTabs.setAttribute('aria-label','常用策略汇总维度');dimensionLabel.firstChild.textContent='更多维度';
+  for(const [value,label] of [['accounts','账户'],['dates','日期'],['optimizers','优化师'],['tasks','任务'],['platforms','平台']]){const button=make('button','strategy-dimension-tab',label);button.type='button';button.dataset.dimension=value;button.setAttribute('role','tab');button.onclick=()=>{dimensionSelect.value=value;dimensionSelect.dispatchEvent(new Event('change',{bubbles:true}));};dimensionTabs.append(button);}
+  dimensionLabel.before(dimensionTabs);
+  function syncDimensionTabs(){for(const button of dimensionTabs.children){const active=button.dataset.dimension===dimensionSelect.value;button.classList.toggle('is-active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}}
   const addDays=(iso,days)=>{const date=new Date(iso+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
   const addMonths=(iso,months)=>{const [year,month]=iso.split('-').map(Number),date=new Date(Date.UTC(year,month-1+months,1));return date.toISOString().slice(0,7)+'-01';};
   const historyFields=byId('strategyHistoryFields'),historyStart=byId('strategyHistoryStart'),historyEnd=byId('strategyHistoryEnd');
@@ -97,7 +102,7 @@
   }
   function dimensionCell(row,key){return `<td class="dimension-cell">${html(row[key])}</td>`;}
   function drawDetail(){
-    refreshDataStatus();
+    refreshDataStatus();syncDimensionTabs();
     const strategy=strategies.find(item=>item.id===selectedId);if(!strategy){detail.innerHTML='<div class="strategy-empty">请选择一个策略查看数据</div>';return;}
     const data=selectedData(),keys=new Set((strategy.accounts||[]).map(account=>account.key)),dailyRows=(data.rows||[]).filter(row=>keys.has(B.accountIdentity(row))),planRows=B.mergePlanRows(dailyRows);
     const total=B.aggregateGroups(planRows,[],today())[0]||{plans:0,accounts:0,spendingPlans:0,cost:0,conversions:0,registrations:0,ratio:null,priced:0,commission:null,estimatedCompensation:null,cashCost:null,profit:null,estimatedRoi:null};
@@ -145,7 +150,7 @@
   list.onclick=event=>{const edit=event.target.closest('[data-strategy-edit]'),open=event.target.closest('[data-strategy-open]');if(edit){openEditor(edit.dataset.strategyEdit);return;}if(open){selectedId=open.dataset.strategyOpen;draw();}};
   byId('strategyAdd').onclick=()=>openEditor();byId('strategyEditorClose').onclick=()=>editor.close();byId('strategyEditorCancel').onclick=()=>editor.close();
   byId('strategyDataSource').onchange=()=>{const historical=byId('strategyDataSource').value==='history';byId('strategyHistoryFields').hidden=!historical;if(historical&&!historyRange)void loadHistory();else drawDetail();};
-  byId('strategyHistoryLoad').onclick=()=>void loadHistory();byId('strategyDimension').onchange=()=>drawDetail();
+  byId('strategyHistoryLoad').onclick=()=>void loadHistory();dimensionSelect.onchange=()=>drawDetail();
   byId('strategyAccountSearch').oninput=event=>{const term=event.target.value.trim().toLowerCase();for(const label of byId('strategyAccountList').querySelectorAll('.strategy-account-choice'))label.hidden=Boolean(term)&&!label.dataset.search.includes(term);updateEditorCount();};
   byId('strategySelectVisible').onclick=()=>{for(const label of byId('strategyAccountList').querySelectorAll('.strategy-account-choice:not([hidden])')){const box=label.querySelector('input');box.checked=true;draftAccounts.add(box.value);}updateEditorCount();};
   byId('strategyClearAccounts').onclick=()=>{draftAccounts.clear();byId('strategyAccountList').querySelectorAll('input').forEach(box=>box.checked=false);updateEditorCount();};

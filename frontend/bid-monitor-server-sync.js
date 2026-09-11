@@ -52,7 +52,7 @@ async function syncLoad(manual=false){
   const snapshot=response.snapshot;
   if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return false;}
   if(!manual&&(snapshot.updatedAt===syncStamp||(raw.length&&!followSync)))return false;
-  receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
+  await receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
     (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);

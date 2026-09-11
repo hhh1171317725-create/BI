@@ -58,7 +58,7 @@ async function loadGap(){
     gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 有效日结算数合计 ÷ 注册数合计 · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
     $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
   }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
-  finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='刷新任务 / 单价 / gap';}}
+  finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='重算关联';}}
 }
 let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
 function gapTitle(id,row){

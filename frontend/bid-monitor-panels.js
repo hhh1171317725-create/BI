@@ -15,8 +15,9 @@
  filter.body.classList.add('bid-filter-fields');filter.reset.textContent='重置条件';
  const filterIds=['appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'];
  const filterError=make('p','bid-dialog-error');filterError.setAttribute('role','alert');filter.element.querySelector('footer').before(filterError);
- const more=make('button','more-filters','▽ 更多筛选');more.id='openBidFilters';more.type='button';
+ const more=make('button','more-filters','更多筛选');more.id='openBidFilters';more.type='button';
  report.querySelector('.report-toolbar').insertBefore(more,document.getElementById('export'));
+ const reportActions=make('div','report-actions');more.before(reportActions);reportActions.append(more,document.getElementById('export'),document.getElementById('reportRefresh'));
  more.onclick=()=>{
   filter.body.replaceChildren();filterError.textContent='';
   for(const id of filterIds){const input=document.getElementById(id),label=make('label','',input.closest('label').childNodes[0].textContent.trim()),draft=input.cloneNode(true);draft.id='draft-'+id;draft.value=input.value;draft.disabled=false;label.append(draft);filter.body.append(label);}
@@ -108,7 +109,7 @@
   page=1;render();chooser.element.close();
  };
  function indicators(){
-  const count=filterIds.filter(id=>document.getElementById(id).value!=='').length;more.textContent='▽ 更多筛选'+(count?`（${count}）`:'');
+  const count=filterIds.filter(id=>document.getElementById(id).value!=='').length;more.textContent='更多筛选'+(count?`（${count}）`:'');
   for(const [id,label] of [['taskFilter','任务'],['optimizerFilter','优化师']]){const selected=document.getElementById(id).selectedOptions.length,button=document.getElementById(id+'Button');button.textContent=selected?`${label}（${selected}）`:`全部${label}`;button.classList.toggle('has-selection',selected>0);}
   const mode=document.getElementById('viewMode').value,total=mode==='plans'?activePlanColumns().length:viewDimensions(mode).length+currentAggregateColumns(mode).length;open.textContent=`☷ 选择列（${total}）`;
  }

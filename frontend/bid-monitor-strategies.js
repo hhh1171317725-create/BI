@@ -17,6 +17,51 @@
   let historyRaw=[],historyRange=null,historyReferences=null,historyLoading=false;
 
   byId('strategyHistoryStart').value=offsetDate(-7);byId('strategyHistoryEnd').value=offsetDate(-1);
+  const make=(tag,className='',text='')=>{const element=document.createElement(tag);element.className=className;if(text)element.textContent=text;return element;};
+  const addDays=(iso,days)=>{const date=new Date(iso+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
+  const addMonths=(iso,months)=>{const [year,month]=iso.split('-').map(Number),date=new Date(Date.UTC(year,month-1+months,1));return date.toISOString().slice(0,7)+'-01';};
+  const historyFields=byId('strategyHistoryFields'),historyStart=byId('strategyHistoryStart'),historyEnd=byId('strategyHistoryEnd');
+  const rangeField=make('div','ocean-range-field strategy-range-field'),rangeButton=make('button','ocean-range-button');
+  rangeButton.type='button';rangeButton.id='strategyRangeButton';rangeButton.setAttribute('aria-haspopup','dialog');rangeButton.setAttribute('aria-expanded','false');
+  const rangeText=make('span','ocean-range-text'),rangeIcon=make('span','ocean-range-icon');
+  rangeIcon.innerHTML='<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="4" width="15" height="13.5" rx="2"/><path d="M6 2v4M14 2v4M2.5 8h15"/></svg>';rangeIcon.setAttribute('aria-hidden','true');rangeButton.append(rangeText,rangeIcon);rangeField.append(rangeButton);historyFields.prepend(rangeField);
+  const rangePopover=make('div','ocean-range-popover');rangePopover.id='strategyRangePicker';rangePopover.hidden=true;rangePopover.setAttribute('role','dialog');rangePopover.setAttribute('aria-label','选择策略数据日期范围');
+  const rangePresets=make('div','ocean-range-presets'),calendarPane=make('div','ocean-calendar-pane'),calendarHeader=make('div','ocean-calendar-header'),calendarMonths=make('div','ocean-calendar-months'),calendarFooter=make('div','ocean-calendar-footer');
+  let draftStart='',draftEnd='',calendarMonth=today().slice(0,7)+'-01';
+  const navButton=(label,textValue,offset)=>{const button=make('button','ocean-calendar-nav',textValue);button.type='button';button.setAttribute('aria-label',label);button.onclick=()=>{calendarMonth=addMonths(calendarMonth,offset);renderCalendar();};return button;};
+  const prevYear=navButton('上一年','«',-12),prevMonth=navButton('上个月','‹',-1),monthTitles=make('div','ocean-calendar-titles'),nextMonth=navButton('下个月','›',1),nextYear=navButton('下一年','»',12);
+  calendarHeader.append(prevYear,prevMonth,monthTitles,nextMonth,nextYear);calendarPane.append(calendarHeader,calendarMonths,calendarFooter);rangePopover.append(rangePresets,calendarPane);document.body.append(rangePopover);
+  const presetRanges=()=>{const current=today(),yesterday=addDays(current,-1),weekday=new Date(current+'T00:00:00Z').getUTCDay()||7;return [['今天',[current,current]],['昨天',[yesterday,yesterday]],['最近3天',[addDays(current,-2),current]],['最近7天',[addDays(current,-6),current]],['最近15天',[addDays(current,-14),current]],['最近30天',[addDays(current,-29),current]],['上周',[addDays(current,-weekday-6),addDays(current,-weekday)]],['本月',[current.slice(0,7)+'-01',current]]];};
+  function chooseDate(date){
+    if(date>today())return;
+    if(!draftStart||draftEnd){draftStart=date;draftEnd='';}
+    else if(date<draftStart){draftEnd=draftStart;draftStart=date;}else draftEnd=date;
+    renderCalendar();
+  }
+  function buildMonth(month){
+    const [year,monthNumber]=month.split('-').map(Number),section=make('section','ocean-calendar-month'),title=make('h3','',`${year}年 ${monthNumber}月`),week=make('div','ocean-calendar-week');
+    for(const label of ['日','一','二','三','四','五','六'])week.append(make('span','',label));
+    const grid=make('div','ocean-calendar-grid'),first=new Date(Date.UTC(year,monthNumber-1,1)),start=new Date(first);start.setUTCDate(1-first.getUTCDay());
+    for(let index=0;index<42;index++){
+      const cursor=new Date(start);cursor.setUTCDate(start.getUTCDate()+index);const date=cursor.toISOString().slice(0,10),button=make('button','ocean-calendar-day',String(cursor.getUTCDate()));button.type='button';button.dataset.date=date;
+      const outside=cursor.getUTCMonth()!==monthNumber-1,future=date>today(),edge=date===draftStart||date===draftEnd,inside=draftEnd&&date>draftStart&&date<draftEnd;
+      button.classList.toggle('is-outside',outside);button.classList.toggle('is-edge',edge);button.classList.toggle('is-in-range',Boolean(inside));button.classList.toggle('is-today',date===today());button.disabled=future;button.setAttribute('aria-label',`${date}${date===today()?'，今天':''}`);if(edge)button.setAttribute('aria-pressed','true');button.onclick=()=>chooseDate(date);grid.append(button);
+    }
+    section.append(title,week,grid);return section;
+  }
+  function renderCalendar(){
+    const second=addMonths(calendarMonth,1);monthTitles.innerHTML=`<strong>${calendarMonth.slice(0,4)}年 ${Number(calendarMonth.slice(5,7))}月</strong><strong>${second.slice(0,4)}年 ${Number(second.slice(5,7))}月</strong>`;calendarMonths.replaceChildren(buildMonth(calendarMonth),buildMonth(second));
+    rangePresets.replaceChildren();for(const [label,range] of presetRanges()){const button=make('button','ocean-range-preset',label);button.type='button';button.classList.toggle('is-active',draftStart===range[0]&&draftEnd===range[1]);button.onclick=()=>{draftStart=range[0];draftEnd=range[1];calendarMonth=range[0].slice(0,7)+'-01';renderCalendar();};rangePresets.append(button);}
+    const selection=make('span','ocean-range-selection',draftEnd?`${draftStart} ~ ${draftEnd}`:draftStart?`已选 ${draftStart}，请选择结束日期`:'请选择开始日期'),cancel=make('button','','取消'),apply=make('button','primary','确定');cancel.type=apply.type='button';apply.id='strategyRangeApply';apply.disabled=!draftStart||!draftEnd;cancel.onclick=closeRange;apply.onclick=()=>{historyStart.value=draftStart;historyEnd.value=draftEnd;syncRangeButton();closeRange();void loadHistory();};calendarFooter.replaceChildren(selection,cancel,apply);
+  }
+  function positionRange(){if(rangePopover.hidden)return;const rect=rangeButton.getBoundingClientRect(),width=Math.min(760,window.innerWidth-16),left=Math.max(8,Math.min(rect.right-width,window.innerWidth-width-8));rangePopover.style.width=`${width}px`;rangePopover.style.left=`${left}px`;rangePopover.style.top=`${Math.min(rect.bottom+6,window.innerHeight-rangePopover.offsetHeight-8)}px`;}
+  function openRange(){draftStart=historyStart.value;draftEnd=historyEnd.value;calendarMonth=(draftStart||today()).slice(0,7)+'-01';renderCalendar();rangePopover.hidden=false;rangeButton.setAttribute('aria-expanded','true');positionRange();rangePopover.querySelector('.ocean-range-preset.is-active,.ocean-calendar-day.is-edge')?.focus();}
+  function closeRange(){rangePopover.hidden=true;rangeButton.setAttribute('aria-expanded','false');rangeButton.focus({preventScroll:true});}
+  function syncRangeButton(){rangeText.textContent=historyStart.value&&historyEnd.value?`${historyStart.value}  ~  ${historyEnd.value}`:'选择日期范围';rangeButton.title='点击选择策略测试的数据日期范围';}
+  rangeButton.onclick=()=>rangePopover.hidden?openRange():closeRange();
+  document.addEventListener('pointerdown',event=>{if(!rangePopover.hidden&&!rangePopover.contains(event.target)&&!rangeButton.contains(event.target))closeRange();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!rangePopover.hidden){event.preventDefault();closeRange();}});
+  window.addEventListener('resize',positionRange);window.addEventListener('scroll',positionRange,true);syncRangeButton();
   function currentData(){return window.getBidStrategyData?.()||{rows:[],range:null,source:''};}
   function selectedData(){
     if(byId('strategyDataSource').value!=='history')return currentData();
@@ -38,7 +83,7 @@
   function refreshDataStatus(){
     const data=selectedData();
     if(data.historical){const coverage=historyReferences instanceof Map?` · ${historyReferences.size} / ${historyReferences.totalDates} 个日期已关联收益口径`:'';setDataStatus(historyLoading?'正在读取历史归档与逐日收益口径…':historyRange?`${historyRange.end===today()?'历史 + 今日实时':'历史'} ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据${coverage}`:'请选择日期读取历史归档');return;}
-    setDataStatus(data.range?`当前报表 ${data.range.start} 至 ${data.range.end} · ${(data.rows||[]).length} 条计划`:'当前报表尚无数据');
+    setDataStatus(data.range?`跟随当前报表 ${data.range.start} 至 ${data.range.end} · ${(data.rows||[]).length} 条计划`:'当前报表尚无数据');
   }
   function applyBundle(bundle){
     if(!bundle)return;userId=String(bundle.userId||'');canManage=Boolean(bundle.canManage);strategies=Array.isArray(bundle.strategies)?bundle.strategies:[];revision=bundle.revision||'';
@@ -69,13 +114,13 @@
   async function loadHistory(){
     if(historyLoading)return;const start=byId('strategyHistoryStart').value,end=byId('strategyHistoryEnd').value,button=byId('strategyHistoryLoad');
     if(!start||!end||start>end||end>today()){setDataStatus('请选择不晚于今天的有效日期范围',true);return;}
-    historyLoading=true;button.disabled=true;refreshDataStatus();let failure='',warning='';
+    historyLoading=true;button.disabled=true;rangeButton.disabled=true;refreshDataStatus();let failure='',warning='';
     try{
       const data=await window.loadBidHistoryRange(start,end);if(!Array.isArray(data.rows))throw Error('日期范围接口返回格式异常');
       historyRaw=data.rows.map(B.normalize);historyRange={start:data.startDate||start,end:data.endDate||end};historyReferences=null;draw();
       try{historyReferences=await window.loadBidHistoricalReferences?.(historyRaw);draw();if(!historyReferences?.complete)warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · ${historyReferences?.size||0} / ${historyReferences?.totalDates||0} 个日期已关联收益口径`;}catch{warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · 逐日任务、单价与 gap 关联暂不可用`;}
     }catch(error){failure='历史数据读取失败：'+error.message;setDataStatus(failure,true);}
-    finally{historyLoading=false;button.disabled=false;if(warning)setDataStatus(warning,true);else if(!failure)refreshDataStatus();}
+    finally{historyLoading=false;button.disabled=false;rangeButton.disabled=false;if(warning)setDataStatus(warning,true);else if(!failure)refreshDataStatus();}
   }
   function updateEditorCount(){
     const visible=[...byId('strategyAccountList').querySelectorAll('.strategy-account-choice:not([hidden])')];

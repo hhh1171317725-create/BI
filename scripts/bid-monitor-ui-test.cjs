@@ -435,8 +435,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#historyStart').inputValue(),'2026-09-09');assert.equal(await page.locator('#historyEnd').inputValue(),todayChina);assert.match(await page.locator('#source').textContent(),/历史归档 \+ 今日实时.*今日 1 条/);assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
   await page.locator('#viewMode').selectOption('plans');await page.locator('#search').fill('history-1');assert.equal(await page.locator('#rows tr').count(),1);assert.equal(await page.locator('#rows tr td').nth(6).textContent(),'125.00');await page.locator('#search').fill('');
   await page.locator('.section-nav a[href="#strategy-lab"]').click();
+  assert.deepEqual(await page.locator('#strategyDataSource option').allTextContents(),['跟随当前报表','自选日期']);
   await page.locator('#strategyDataSource').selectOption('history');
   await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('2 / 2 个日期已关联收益口径'));
+  assert.equal(await page.locator('#strategyRangeButton').isVisible(),true);const strategyInitialStart=await page.locator('#strategyHistoryStart').inputValue(),strategyInitialEnd=await page.locator('#strategyHistoryEnd').inputValue();assert.match(await page.locator('#strategyRangeButton').textContent(),new RegExp(`${strategyInitialStart}.*${strategyInitialEnd}`));
   await page.locator('#strategyDimension').selectOption('dates');
   assert.equal(await page.locator('#strategyDetail thead th').first().textContent(),'数据日期');
   assert.equal(await page.locator('#strategyDetail tbody tr').count(),2);
@@ -444,8 +446,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#strategyDetail thead').textContent(),/预估佣金|预估 ROI/);
   await page.locator('#strategyDimension').selectOption('dateOptimizers');
   assert.deepEqual(await page.locator('#strategyDetail thead th').evaluateAll(headers=>headers.slice(0,2).map(header=>header.textContent)),['数据日期','优化师']);
+  await page.locator('#strategyRangeButton').click();
+  assert.equal(await page.locator('#strategyRangePicker').isVisible(),true);assert.equal(await page.locator('#strategyRangePicker .ocean-range-preset').count(),8);assert.equal(await page.locator('#strategyRangePicker .ocean-calendar-month').count(),2);
+  assert.deepEqual(await page.locator('#strategyRangePicker .ocean-range-preset').allTextContents(),['今天','昨天','最近3天','最近7天','最近15天','最近30天','上周','本月']);
+  await page.locator('#strategyRangePicker .ocean-range-preset').filter({hasText:'最近3天'}).click();await page.locator('#strategyRangeApply').click();
+  await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('3 / 3 个日期已关联收益口径'));
+  assert.equal(await page.locator('#strategyHistoryEnd').inputValue(),todayChina);assert.match(await page.locator('#strategyDataStatus').textContent(),/历史 \+ 今日实时/);
+  assert.equal(await page.locator('#strategyDetail tbody tr').count(),3);
+  await page.locator('#strategyDimension').selectOption('accounts');assert.equal(await page.locator('#strategyDetail tbody tr').count(),1);assert.match(await page.locator('#strategyDetail .strategy-metric').first().textContent(),/2 条计划/);
   await page.locator('.section-nav a[href="#report"]').click();
-  await page.locator('#historyRangeButton').click();await page.locator('.ocean-range-preset').filter({hasText:'今天'}).click();await page.locator('#historyRangeApply').click();
+  await page.locator('#historyRangeButton').click();await page.locator('#historyRangePicker .ocean-range-preset').filter({hasText:'今天'}).click();await page.locator('#historyRangeApply').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('未选择日期'));
   assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');assert.match(await page.locator('#historyRangeButton').textContent(),new RegExp(todayChina+'.*实时'));
   assert.equal(await page.locator('#gapReload').isVisible(),true);

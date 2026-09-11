@@ -37,7 +37,7 @@
   function setDataStatus(text,bad=false){const target=byId('strategyDataStatus');target.textContent=text;target.className=bad?'error':'muted';}
   function refreshDataStatus(){
     const data=selectedData();
-    if(data.historical){setDataStatus(historyLoading?'正在读取历史归档…':historyRange?`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据`:'请选择日期读取历史归档');return;}
+    if(data.historical){const coverage=historyReferences instanceof Map?` · ${historyReferences.size} / ${historyReferences.totalDates} 个日期已关联收益口径`:'';setDataStatus(historyLoading?'正在读取历史归档与逐日收益口径…':historyRange?`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据${coverage}`:'请选择日期读取历史归档');return;}
     setDataStatus(data.range?`当前报表 ${data.range.start} 至 ${data.range.end} · ${(data.rows||[]).length} 条计划`:'当前报表尚无数据');
   }
   function applyBundle(bundle){
@@ -61,7 +61,8 @@
     const metricHtml=metric('总消耗',number(total.cost),`${total.plans} 条计划`)+metric('预估赔付',number(total.estimatedCompensation))+metric('现金消耗',number(total.cashCost))+metric('转化数',number(total.conversions))+metric('注册数',number(total.registrations))+metric('回传比例',percent(total.ratio))+metric('账户数',String(total.accounts))+metric('有消耗计划',String(total.spendingPlans||0))+(hasFinancial?metric('预估佣金',number(total.commission),`${total.priced} / ${total.plans} 条计划可计算`)+metric('预估 ROI',roi(total.estimatedRoi)):'');
     const financialColumns=hasFinancial?[['预估佣金','commission',number],['预估 ROI','estimatedRoi',roi]]:[],metricColumns=[['计划数','plans',String],['账户数','accounts',String],['总消耗','cost',number],['转化数','conversions',number],['注册数','registrations',number],['回传比例','ratio',percent],['预估赔付','estimatedCompensation',number],['现金消耗','cashCost',number],...financialColumns];
     const table=rows.length?`<div class="table-wrap strategy-table"><table><thead><tr>${groupDimensions.map(key=>`<th>${html(dimensionLabels[key])}</th>`).join('')}${metricColumns.map(([label])=>`<th>${html(label)}</th>`).join('')}</tr></thead><tbody>${groups.map(group=>`<tr>${groupDimensions.map(key=>dimensionCell(group,key)).join('')}${metricColumns.map(([,key,format])=>`<td>${html(format(group[key]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:`<div class="strategy-empty">${data.historical?'所选历史日期没有这些账户的数据。':'当前报表没有这些账户的数据，请先读取最新快照。'}</div>`;
-    detail.innerHTML=`<div class="strategy-detail-head"><div><h3>${html(strategy.name)}</h3><p class="muted">${html(strategy.note||'未填写测试说明')}${range?` · 数据 ${html(range.start)} 至 ${html(range.end)}`:''}</p></div><span class="strategy-coverage">${matched} / ${keys.size} 个账户有数据</span></div><div class="strategy-metrics">${metricHtml}</div>${data.historical?'<p class="muted strategy-financial-note">历史策略数据按每日归档汇总；跨日期不套用单日价格和 gap，因此佣金、利润与 ROI 暂不计算。</p>':''}${table}`;
+    const historyNote=data.historical?(historyReferences instanceof Map&&historyReferences.complete?'历史策略数据已按每个数据日期分别关联任务、单价与 gap，佣金、赔付和 ROI 使用同一套逐日口径。':'历史投放数据已显示，正在关联各数据日期的任务、单价与 gap。'):'';
+    detail.innerHTML=`<div class="strategy-detail-head"><div><h3>${html(strategy.name)}</h3><p class="muted">${html(strategy.note||'未填写测试说明')}${range?` · 数据 ${html(range.start)} 至 ${html(range.end)}`:''}</p></div><span class="strategy-coverage">${matched} / ${keys.size} 个账户有数据</span></div><div class="strategy-metrics">${metricHtml}</div>${historyNote?`<p class="muted strategy-financial-note">${html(historyNote)}</p>`:''}${table}`;
   }
   function draw(){drawList();drawDetail();}
 
@@ -72,7 +73,7 @@
     try{
       const response=await fetch('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}),text=await response.text();let data;try{data=JSON.parse(text);}catch{throw Error(`接口 HTTP ${response.status}，未返回 JSON`);}if(response.status===401){location.replace('/login');return;}if(!response.ok)throw Error(data.error||data.message||`HTTP ${response.status}`);if(!Array.isArray(data.rows))throw Error('历史归档接口返回格式异常');
       historyRaw=data.rows.map(B.normalize);historyRange={start:data.startDate||start,end:data.endDate||end};historyReferences=null;draw();
-      try{historyReferences=await window.loadBidStrategyReferences?.(historyRange.end);draw();}catch{warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · 任务关联暂不可用`;}
+      try{historyReferences=await window.loadBidHistoricalReferences?.(historyRaw);draw();if(!historyReferences?.complete)warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · ${historyReferences?.size||0} / ${historyReferences?.totalDates||0} 个日期已关联收益口径`;}catch{warning=`历史 ${historyRange.start} 至 ${historyRange.end} · ${historyRaw.length} 条计划日数据 · 逐日任务、单价与 gap 关联暂不可用`;}
     }catch(error){failure='历史数据读取失败：'+error.message;setDataStatus(failure,true);}
     finally{historyLoading=false;button.disabled=false;if(warning)setDataStatus(warning,true);else if(!failure)refreshDataStatus();}
   }

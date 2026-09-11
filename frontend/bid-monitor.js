@@ -6,11 +6,18 @@ $('#startDate').value=$('#endDate').value=$('#createdEnd').value=today();
 const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creationDate.getUTCDate()-3);
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 let raw=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
-let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,priorConversionGeneration=0;
+let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,historyFinancialReady=false,priorConversionGeneration=0;
 window.getBidStrategyData=()=>({rows:analyzed,range,source});
 const strategyAnalysisCache=B.createAnalysisCache();
+let historicalAnalysisRows=null,historicalAnalysisReferences=null,historicalAnalysisRules='',historicalAnalysisResult=[];
 window.analyzeBidStrategyRows=(rows,references=null)=>{
   if(!references)return strategyAnalysisCache(rows,taskRules,false,null,null);
+  if(references instanceof Map){
+    const ruleKey=JSON.stringify(taskRules);if(rows===historicalAnalysisRows&&references===historicalAnalysisReferences&&ruleKey===historicalAnalysisRules)return historicalAnalysisResult;
+    const prepared=B.withOverallConversions(rows),groups=new Map();prepared.forEach((row,index)=>{const date=row.statDate||'';if(!groups.has(date))groups.set(date,[]);groups.get(date).push({row,index});});const output=new Array(rows.length);
+    for(const [date,items] of groups){const group=items.map(item=>item.row),indexes=new Set(items.map(item=>item.index)),prior=prepared.filter((_,index)=>!indexes.has(index)),daily=references.get(date),analyzer=B.createAnalysisCache(),result=daily?analyzer(group,taskRules,false,daily.accounts,daily,prior):analyzer(group,taskRules,false,null,null,prior);items.forEach((item,index)=>output[item.index]=result[index]);}
+    historicalAnalysisRows=rows;historicalAnalysisReferences=references;historicalAnalysisRules=ruleKey;historicalAnalysisResult=output;return output;
+  }
   rows=B.withOverallConversions(rows);const accounts=references.accounts||{},inferred=B.inferAccountTasks(rows,taskRules,accounts,references),canonical=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   const accountFor=row=>{for(const id of [row.accountId,row.internalAccountId]){const exact=accounts[String(id)];if(exact)return exact;const key=Object.keys(accounts).find(candidate=>canonical(candidate)===canonical(id));if(key)return accounts[key];}return null;};
   return rows.map(row=>{const match=inferred.get(B.inferenceIdentity(row))||B.inferTaskFromBidReturn(row,taskRules,accountFor(row),references);return B.analyzeTask(row,taskRules,0,20,false,null,match);});
@@ -20,7 +27,7 @@ let aggregateSettings={};
 try{const saved=JSON.parse(localStorage.getItem(aggregateColumnStorage)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))aggregateSettings=saved;}catch{}
 const timeViews=new Set(['dates','datePlatforms','dateAccounts','dateOptimizers','dateTasks','dateConversionTargets']);
 const isTimeView=view=>timeViews.has(view);
-function currentAggregateColumns(view){const unavailable=new Set((historyMode||isTimeView(view))?['priced','commission','profit','estimatedRoi','bidProfitRate']:[]);if(historyMode&&!isTimeView(view))unavailable.add('todayPlans');const selected=aggregateSettings[view],defaults=aggregateColumns.filter(([,key])=>!unavailable.has(key)),columns=Array.isArray(selected)?selected.map(key=>aggregateColumns.find(column=>column[1]===key)).filter(column=>column&&!unavailable.has(column[1])):defaults;return columns.map(([label,key])=>[isTimeView(view)&&key==='todayPlans'?'当日新上':label,key]);}
+function currentAggregateColumns(view){const unavailable=new Set(historyMode&&!historyFinancialReady?['priced','commission','profit','estimatedRoi','bidProfitRate']:[]);if(historyMode&&!isTimeView(view))unavailable.add('todayPlans');const selected=aggregateSettings[view],defaults=aggregateColumns.filter(([,key])=>!unavailable.has(key)),columns=Array.isArray(selected)?selected.map(key=>aggregateColumns.find(column=>column[1]===key)).filter(column=>column&&!unavailable.has(column[1])):defaults;return columns.map(([label,key])=>[isTimeView(view)&&key==='todayPlans'?'当日新上':label,key]);}
 function saveAggregateSettings(){try{localStorage.setItem(aggregateColumnStorage,JSON.stringify(aggregateSettings));}catch{message('浏览器未允许保存展示列，本次选择仍然有效。');}}
 function drawAggregateColumns(view){
   $('#aggregateSettings').hidden=view==='plans';if(view==='plans')return;
@@ -54,6 +61,11 @@ async function loadGap(){
 }
 let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
 function gapTitle(id,row){
+  if(historyMode){
+    if(row?.gap===null)return row?.gapReason||'该数据日期无可计算的 gap';
+    const source=row?.gapSource==='task-reference'?`同任务“${row.referenceTask}”参考 gap`:'账户 gap';
+    return `${row?.statDate||'该数据日期'} 对应的${source}`;
+  }
   const canonical=value=>String(value??'').replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   if(gapTitleSource!==gapData){
     gapTitleSource=gapData;gapAccountIndex=new Map();gapTaskIndex=new Map();
@@ -113,6 +125,11 @@ window.loadBidStrategyReferences=end=>{
   if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).catch(error=>{historyReferencePromises.delete(end);throw error;}));
   return historyReferencePromises.get(end);
 };
+window.loadBidHistoricalReferences=async rows=>{
+  const dates=[...new Set(rows.map(row=>row.statDate).filter(Boolean))].sort(),references=new Map();let cursor=0;
+  const worker=async()=>{while(cursor<dates.length){const date=dates[cursor++];try{references.set(date,await window.loadBidStrategyReferences(date));}catch{}}};
+  await Promise.all(Array.from({length:Math.min(4,dates.length)},worker));references.complete=references.size===dates.length;references.totalDates=dates.length;return references;
+};
 async function loadPriorPlanConversions(anchor,expectedRows,generation){
   const endDate=new Date(anchor+'T00:00:00Z');endDate.setUTCDate(endDate.getUTCDate()-1);const startDate=new Date(anchor+'T00:00:00Z');startDate.setUTCDate(startDate.getUTCDate()-4);
   try{
@@ -127,8 +144,8 @@ function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!s
 function receive(rows,label,datesValue,live=false,historical=false){
   if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);for(const row of next)if(!row.statDate)row.statDate=datesValue?.end||'';
   if(!next.some(r=>r.cost!==null&&r.registrations!==null&&r.conversions!==null&&r.bid!==null))throw Error('未识别到消耗、转化数、注册数和出价四个字段，请核对报表');
-  raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;priorConversionRows=[];page=1;const conversionGeneration=++priorConversionGeneration;
-  if(historical){++gapGeneration;gapData=null;render();message(`已读取 ${raw.length} 条计划日数据`);return Promise.resolve();}
+  raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;historyFinancialReady=false;priorConversionRows=[];page=1;const conversionGeneration=++priorConversionGeneration;
+  if(historical){++gapGeneration;gapData=null;render();message(`已读取 ${raw.length} 条计划日数据，正在按日期关联任务、单价与 gap…`);return Promise.resolve();}
   if(live&&datesValue?.end===today())void loadPriorPlanConversions(datesValue.end,next,conversionGeneration);
   const loading=loadGap();message(`已读取 ${raw.length} 条计划`);return loading;
 }
@@ -195,7 +212,7 @@ function render(){
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
   const unpriced=analyzed.filter(r=>r.price===null).length;
   const manualCount=analyzed.filter(r=>r.priceSource==='manual').length,dailyCount=analyzed.filter(r=>r.priceSource==='daily-account'||r.priceSource==='daily-task').length,taskGapCount=analyzed.filter(r=>r.gapSource==='task-reference').length,estimateCount=analyzed.filter(r=>r.taskSource==='bid-return').length;
-  $('#pricingCoverage').textContent=historyMode?'历史汇总使用每日归档的投放指标；为避免跨日期套用错误单价和 gap，收益指标暂不计算。':raw.length?`${raw.length-unpriced} / ${raw.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
+  $('#pricingCoverage').textContent=historyMode?(historyFinancialReady?`历史汇总已按每个数据日期分别关联任务、单价与 gap；${raw.length-unpriced} / ${raw.length} 条计划日数据可计算收益。`:'历史投放指标已显示，正在按每个数据日期关联任务、单价与 gap…'):raw.length?`${raw.length-unpriced} / ${raw.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
   const groupKey=viewMode+':'+today();
   if(aggregateMode&&!groupCache.has(groupKey))groupCache.set(groupKey,B.aggregateGroups(filteredRows,dimensions,today()));
   aggregateRows=aggregateMode?sortRows([...groupCache.get(groupKey)]):[];if(!aggregateMode)sortRows(visible);
@@ -268,11 +285,11 @@ async function loadHistory(){
   try{
     const data=await api('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)});
     if(!Array.isArray(data.rows))throw Error('历史归档接口返回格式异常');
-    if(!data.rows.length){++gapGeneration;gapData=null;historyTaskReferences=null;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
-    historyTaskReferences=null;
+    if(!data.rows.length){++gapGeneration;gapData=null;historyTaskReferences=null;historyFinancialReady=false;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
+    historyTaskReferences=null;historyFinancialReady=false;
     await receive(data.rows,`每日 00:30 历史归档 · ${data.count} 条计划日数据`,{start:data.startDate,end:data.endDate},false,true);
     $('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据`;
-    void window.loadBidStrategyReferences(data.endDate).then(references=>{if(historyMode&&range?.end===data.endDate){historyTaskReferences=references;render();$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据 · 任务关联已完成`;}}).catch(()=>{});
+    void window.loadBidHistoricalReferences(raw).then(references=>{if(historyMode&&range?.end===data.endDate){historyTaskReferences=references;historyFinancialReady=Boolean(references.complete);render();const coverage=`${references.size} / ${references.totalDates} 个数据日期`;$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据 · ${coverage} 已关联任务、单价与 gap`;message(historyFinancialReady?'历史数据及逐日收益计算已完成':'历史投放数据已读取，部分日期的收益关联失败',!historyFinancialReady);}});
   }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);}
   finally{busy=false;button.disabled=false;}
 }

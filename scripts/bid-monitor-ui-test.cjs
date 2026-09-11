@@ -408,7 +408,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#count').textContent(),/^1 天（3 条计划）$/);
   assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');
   await page.locator('#historyStart').fill('2026-09-01');await page.locator('#historyEnd').fill('2026-09-02');await page.locator('#historyLoad').click();
-  await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('已读取'));
+  await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.includes('2 / 2 个数据日期'));
   assert.equal(await page.locator('#historyToolbar').isVisible(),true);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'数据日期');
   assert.match(await page.locator('#count').textContent(),/^2 天（4 条计划）$/);
@@ -422,12 +422,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
   await page.locator('.section-nav a[href="#strategy-lab"]').click();
   await page.locator('#strategyDataSource').selectOption('history');
-  await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.startsWith('历史 '));
+  await page.waitForFunction(()=>document.querySelector('#strategyDataStatus').textContent.includes('2 / 2 个日期已关联收益口径'));
   await page.locator('#strategyDimension').selectOption('dates');
   assert.equal(await page.locator('#strategyDetail thead th').first().textContent(),'数据日期');
   assert.equal(await page.locator('#strategyDetail tbody tr').count(),2);
-  assert.match(await page.locator('#strategyDetail').textContent(),/历史策略数据按每日归档汇总/);
-  assert.doesNotMatch(await page.locator('#strategyDetail thead').textContent(),/预估佣金|预估 ROI/);
+  assert.match(await page.locator('#strategyDetail').textContent(),/按每个数据日期分别关联任务、单价与 gap/);
+  assert.match(await page.locator('#strategyDetail thead').textContent(),/预估佣金|预估 ROI/);
   await page.locator('#strategyDimension').selectOption('dateOptimizers');
   assert.deepEqual(await page.locator('#strategyDetail thead th').evaluateAll(headers=>headers.slice(0,2).map(header=>header.textContent)),['数据日期','优化师']);
   await page.locator('.section-nav a[href="#report"]').click();

@@ -23,11 +23,61 @@
   for(const [value,label] of levelOptions){const button=make('button','ocean-level-tab',label);button.type='button';button.dataset.view=value;button.setAttribute('role','tab');button.onclick=()=>{const select=document.getElementById('viewMode');if(select.value===value)return;select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));};levelTabs.append(button);}
   const levelHint=make('span','ocean-level-hint','常用维度一键切换，其他组合在“统计维度”中选择');levelBar.append(levelTitle,levelTabs,levelHint);
   toolbar.before(controlDeck);controlDeck.append(levelBar,toolbar,summary,document.getElementById('historyStatus'));
-  const historyToolbar=document.getElementById('historyToolbar'),datePresets=make('span','ocean-date-presets');datePresets.setAttribute('role','group');datePresets.setAttribute('aria-label','快捷日期');
-  const chinaDate=offset=>{const date=new Date(new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+offset);return date.toISOString().slice(0,10);};
+  const historyToolbar=document.getElementById('historyToolbar');
+  const chinaToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+  const addDays=(iso,offset)=>{const date=new Date(iso+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+offset);return date.toISOString().slice(0,10);};
+  const addMonths=(iso,offset)=>{const [year,month]=iso.split('-').map(Number),date=new Date(Date.UTC(year,month-1+offset,1));return date.toISOString().slice(0,7)+'-01';};
   const setHistory=(start,end)=>{document.getElementById('historyStart').value=start;document.getElementById('historyEnd').value=end;if(start&&end)document.getElementById('historyLoad').click();else document.getElementById('historyToday').click();};
-  for(const [label,range] of [['实时',null],['昨天',[-1,-1]],['近 7 天',[-7,-1]]]){const button=make('button','ocean-date-preset',label);button.type='button';button.dataset.range=label;button.onclick=()=>range?setHistory(chinaDate(range[0]),chinaDate(range[1])):setHistory('','');datePresets.append(button);}
-  historyToolbar.before(datePresets);
+  const rangeField=make('div','ocean-range-field'),rangeButton=make('button','ocean-range-button');
+  rangeButton.type='button';rangeButton.id='historyRangeButton';rangeButton.setAttribute('aria-haspopup','dialog');rangeButton.setAttribute('aria-expanded','false');
+  const rangeText=make('span','ocean-range-text'),rangeIcon=make('span','ocean-range-icon');rangeIcon.innerHTML='<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="4" width="15" height="13.5" rx="2"/><path d="M6 2v4M14 2v4M2.5 8h15"/></svg>';rangeIcon.setAttribute('aria-hidden','true');rangeButton.append(rangeText,rangeIcon);rangeField.append(rangeButton);historyToolbar.before(rangeField);
+  const rangePopover=make('div','ocean-range-popover');rangePopover.id='historyRangePicker';rangePopover.hidden=true;rangePopover.setAttribute('role','dialog');rangePopover.setAttribute('aria-label','选择数据日期范围');
+  const rangePresets=make('div','ocean-range-presets'),calendarPane=make('div','ocean-calendar-pane'),calendarHeader=make('div','ocean-calendar-header'),calendarMonths=make('div','ocean-calendar-months'),calendarFooter=make('div','ocean-calendar-footer');
+  const navButton=(label,text,offset)=>{const button=make('button','ocean-calendar-nav',text);button.type='button';button.setAttribute('aria-label',label);button.onclick=()=>{calendarMonth=addMonths(calendarMonth,offset);renderCalendar();};return button;};
+  const prevYear=navButton('上一年','«',-12),prevMonth=navButton('上个月','‹',-1),monthTitles=make('div','ocean-calendar-titles'),nextMonth=navButton('下个月','›',1),nextYear=navButton('下一年','»',12);
+  calendarHeader.append(prevYear,prevMonth,monthTitles,nextMonth,nextYear);calendarPane.append(calendarHeader,calendarMonths,calendarFooter);rangePopover.append(rangePresets,calendarPane);document.body.append(rangePopover);
+  let draftStart='',draftEnd='',draftLive=true,calendarMonth=chinaToday().slice(0,7)+'-01';
+  const presetRanges=()=>{
+    const today=chinaToday(),yesterday=addDays(today,-1),weekday=new Date(today+'T00:00:00Z').getUTCDay()||7;
+    return [['今天',null],['昨天',[yesterday,yesterday]],['最近3天',[addDays(today,-3),yesterday]],['最近7天',[addDays(today,-7),yesterday]],['最近15天',[addDays(today,-15),yesterday]],['最近30天',[addDays(today,-30),yesterday]],['上周',[addDays(today,-weekday-6),addDays(today,-weekday)]],['本月',[today.slice(0,7)+'-01',yesterday]]];
+  };
+  const sameRange=range=>range?draftStart===range[0]&&draftEnd===range[1]:draftLive;
+  function chooseDate(date){
+    const today=chinaToday();if(date>today)return;
+    if(date===today){draftLive=true;draftStart='';draftEnd='';renderCalendar();return;}
+    draftLive=false;
+    if(!draftStart||draftEnd){draftStart=date;draftEnd='';}
+    else if(date<draftStart){draftEnd=draftStart;draftStart=date;}else draftEnd=date;
+    renderCalendar();
+  }
+  function buildMonth(month){
+    const [year,monthNumber]=month.split('-').map(Number),section=make('section','ocean-calendar-month'),title=make('h3','',`${year}年 ${monthNumber}月`),week=make('div','ocean-calendar-week');
+    for(const label of ['日','一','二','三','四','五','六'])week.append(make('span','',label));
+    const grid=make('div','ocean-calendar-grid'),first=new Date(Date.UTC(year,monthNumber-1,1)),start=new Date(first);start.setUTCDate(1-first.getUTCDay());
+    for(let index=0;index<42;index++){
+      const cursor=new Date(start);cursor.setUTCDate(start.getUTCDate()+index);const date=cursor.toISOString().slice(0,10),button=make('button','ocean-calendar-day',String(cursor.getUTCDate()));button.type='button';button.dataset.date=date;
+      const outside=cursor.getUTCMonth()!==monthNumber-1,future=date>chinaToday(),edge=!draftLive&&(date===draftStart||date===draftEnd),inside=!draftLive&&draftEnd&&date>draftStart&&date<draftEnd;
+      button.classList.toggle('is-outside',outside);button.classList.toggle('is-edge',edge);button.classList.toggle('is-in-range',Boolean(inside));button.classList.toggle('is-today',date===chinaToday());button.classList.toggle('is-live-selected',draftLive&&date===chinaToday());
+      button.disabled=future;button.setAttribute('aria-label',`${date}${date===chinaToday()?'，今天实时':''}`);if(edge||draftLive&&date===chinaToday())button.setAttribute('aria-pressed','true');button.onclick=()=>chooseDate(date);grid.append(button);
+    }
+    section.append(title,week,grid);return section;
+  }
+  function renderCalendar(){
+    const second=addMonths(calendarMonth,1);monthTitles.innerHTML=`<strong>${calendarMonth.slice(0,4)}年 ${Number(calendarMonth.slice(5,7))}月</strong><strong>${second.slice(0,4)}年 ${Number(second.slice(5,7))}月</strong>`;calendarMonths.replaceChildren(buildMonth(calendarMonth),buildMonth(second));
+    rangePresets.replaceChildren();for(const [label,range] of presetRanges()){const button=make('button','ocean-range-preset',label);button.type='button';button.classList.toggle('is-active',sameRange(range));button.onclick=()=>{draftLive=!range;draftStart=range?.[0]||'';draftEnd=range?.[1]||'';if(range)calendarMonth=range[0].slice(0,7)+'-01';renderCalendar();};rangePresets.append(button);}
+    const selection=make('span','ocean-range-selection',draftLive?'今天 · 实时':draftEnd?`${draftStart} ~ ${draftEnd}`:`已选 ${draftStart}，请选择结束日期`),cancel=make('button','','取消'),apply=make('button','primary','确定');cancel.type=apply.type='button';apply.id='historyRangeApply';apply.disabled=!draftLive&&(!draftStart||!draftEnd);cancel.onclick=closeRange;apply.onclick=()=>{if(draftLive)setHistory('','');else setHistory(draftStart,draftEnd);closeRange();};calendarFooter.replaceChildren(selection,cancel,apply);
+  }
+  function positionRange(){
+    if(rangePopover.hidden)return;const rect=rangeButton.getBoundingClientRect(),width=Math.min(760,window.innerWidth-16),left=Math.max(8,Math.min(rect.right-width,window.innerWidth-width-8));rangePopover.style.width=`${width}px`;rangePopover.style.left=`${left}px`;rangePopover.style.top=`${Math.min(rect.bottom+6,window.innerHeight-rangePopover.offsetHeight-8)}px`;
+  }
+  function openRange(){
+    const start=document.getElementById('historyStart').value,end=document.getElementById('historyEnd').value;draftLive=!start&&!end;draftStart=start;draftEnd=end;calendarMonth=(start||chinaToday()).slice(0,7)+'-01';renderCalendar();rangePopover.hidden=false;rangeButton.setAttribute('aria-expanded','true');positionRange();rangePopover.querySelector('.ocean-range-preset.is-active,.ocean-calendar-day.is-edge,.ocean-calendar-day.is-live-selected')?.focus();
+  }
+  function closeRange(){rangePopover.hidden=true;rangeButton.setAttribute('aria-expanded','false');rangeButton.focus({preventScroll:true});}
+  rangeButton.onclick=()=>rangePopover.hidden?openRange():closeRange();
+  document.addEventListener('pointerdown',event=>{if(!rangePopover.hidden&&!rangePopover.contains(event.target)&&!rangeButton.contains(event.target))closeRange();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!rangePopover.hidden){event.preventDefault();closeRange();}});
+  window.addEventListener('resize',positionRange);window.addEventListener('scroll',positionRange,true);
   function refresh(){
     chips.replaceChildren();let count=0;
     for(const [id,label,empty] of filters){
@@ -50,8 +100,8 @@
     if(guidance)guidance.textContent=sort?`当前按${sort.textContent.trim()}${sort.getAttribute('aria-sort')==='ascending'?'升序':'降序'} · 点击表头切换排序`:'点击表头排序 · 横向滚动查看更多指标';
     const view=document.getElementById('viewMode').value;
     for(const button of levelTabs.children){const active=button.dataset.view===view;button.classList.toggle('is-active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
-    const start=document.getElementById('historyStart').value,end=document.getElementById('historyEnd').value,yesterday=chinaDate(-1),weekStart=chinaDate(-7);
-    for(const button of datePresets.children){const active=button.dataset.range==='实时'?!start&&!end:button.dataset.range==='昨天'?start===yesterday&&end===yesterday:start===weekStart&&end===yesterday;button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));}
+    const start=document.getElementById('historyStart').value,end=document.getElementById('historyEnd').value;
+    rangeText.textContent=start&&end?`${start}  ~  ${end}`:`${chinaToday()}（实时）`;rangeButton.title=start&&end?'点击修改历史数据范围':'点击选择历史数据范围；当前显示今日实时数据';
     enhanceSelection();drawTableSummary();
   }
   reset.onclick=()=>{

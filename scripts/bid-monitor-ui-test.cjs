@@ -385,6 +385,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await card('grant').textContent(),/预估赠款0.00.*3 \/ 3 条计划可计算/);
   await page.locator('#search').fill('estimated-task');assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('.plan-detail-link').click();
+  const detailLayout=await page.evaluate(()=>{const rect=id=>document.querySelector(id).getBoundingClientRect(),dialog=rect('#bidPlanDetail'),range=document.querySelector('#bidPlanDetail .plan-detail-range'),start=rect('#planDetailStart'),end=rect('#planDetailEnd'),button=rect('#planDetailLoad');return{display:getComputedStyle(range).display,dialogWidth:dialog.width,startTop:start.top,endTop:end.top,buttonTop:button.top,startLeft:start.left,endLeft:end.left,buttonLeft:button.left};});
+  assert.equal(detailLayout.display,'grid');assert.ok(detailLayout.dialogWidth<=902);assert.ok(Math.abs(detailLayout.startTop-detailLayout.endTop)<2&&Math.abs(detailLayout.startTop-detailLayout.buttonTop)<2);assert.ok(detailLayout.startLeft<detailLayout.endLeft&&detailLayout.endLeft<detailLayout.buttonLeft);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/不是日报直接确认的归属/);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/每注册估算结算金额 21.50/);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/现金利润 = 佣金 − 现金消耗115.00/);

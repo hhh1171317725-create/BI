@@ -17,7 +17,7 @@ body[data-page="bid-monitor"] #export{background:#1767ca;color:white;border-colo
 .filter-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 12px;min-height:34px}
 .filter-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
 .filter-placeholder{font-size:12px;color:#75869a}
-.bid-multi-dropdown{position:fixed;z-index:1200;padding:12px;background:#fff;border:1px solid #cfdceb;border-radius:8px;box-shadow:0 12px 32px #1c385329}.multi-filter-head,.multi-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.multi-filter-head{margin-bottom:10px}.multi-filter-head strong{font-size:13px;color:#29445f}.multi-filter-footer{justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid #edf1f5}.multi-filter-footer button{min-height:32px}.multi-filter-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:320px;overflow:auto;margin-top:10px}.multi-filter-list .column-choice{margin:0}
+.bid-multi-dropdown{position:fixed;z-index:1200;padding:0;overflow:hidden;background:#fff;border:1px solid #d9e2ec;border-radius:8px;box-shadow:0 16px 40px #172b4d24}.multi-filter-head,.multi-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.multi-filter-head{height:48px;margin:0;padding:0 14px}.multi-filter-head strong{font-size:14px;color:#263b52}.multi-filter-head .dialog-close{width:28px;min-width:28px;min-height:28px;padding:0;border:0;background:transparent;color:#7c8998;font-size:20px;box-shadow:none}.bid-multi-dropdown>.column-search{width:calc(100% - 28px);height:36px;margin:0 14px 10px;background:#f8fafc}.multi-filter-footer{justify-content:flex-end;margin:0;padding:10px 14px;border-top:1px solid #edf1f5;background:#f8fafc}.multi-filter-footer .dialog-reset{margin-right:auto;border:0;background:transparent;color:#64748b;box-shadow:none}.multi-filter-footer button{min-height:32px}.multi-filter-list{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow:auto;margin:0;padding:6px 8px}.bid-multi-dropdown .multi-filter-list .column-choice{display:flex;width:100%;min-height:40px;margin:0;padding:8px 10px;border-radius:5px;color:#40566f;line-height:1.45}.bid-multi-dropdown .multi-filter-list .column-choice:hover{background:#f5f8fc}.bid-multi-dropdown .multi-filter-list .column-choice:has(input:checked){background:#eff6ff;color:#174f9d}.bid-multi-dropdown .multi-filter-list .column-choice input{margin-top:2px}
 body[data-page="bid-monitor"] .filter-chip{font-size:12px;min-height:28px;padding:4px 9px;color:#15579d;background:#edf5ff;border:1px solid #d2e4f8;border-radius:5px;white-space:normal;overflow-wrap:anywhere;text-align:left;max-width:100%}
 body[data-page="bid-monitor"] .filter-reset{flex:none;min-height:28px;padding:4px 8px;border:0;color:#1767ca;background:transparent;box-shadow:none}
 body[data-page="bid-monitor"] #columnSettings,body[data-page="bid-monitor"] #aggregateSettings{background:#f8fafc;border-radius:8px;margin:8px 0 14px}
@@ -30,9 +30,9 @@ body[data-page="bid-monitor"] .credential-details:not([open])>summary{margin:0}
 .table-tools button{min-height:32px;font-size:12px}
 .table-tools button[aria-pressed="true"]{background:#edf5ff;color:#15579d;border-color:#a6c6ec}
 .bid-multi-dropdown{max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box}
-.multi-filter-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.multi-filter-tools button{font-size:12px;min-height:30px;padding:4px 8px}
-.multi-filter-count{flex-basis:100%;font-size:11px;color:#718198}
+.multi-filter-tools{display:flex;align-items:center;gap:4px;margin:0;padding:0 14px 8px;border-bottom:1px solid #edf1f5}
+.multi-filter-tools button{min-height:26px;padding:3px 5px;border:0;background:transparent;color:#2563a8;font-size:11px;box-shadow:none}
+.multi-filter-count{margin-left:auto;font-size:11px;color:#718198}
 .multi-filter-list .column-choice[hidden]{display:none!important}
 .bid-multi-dropdown .column-no-results{margin:14px 0}
 .table-value-legend,.empty-guidance{font-size:12px;color:#718198;line-height:1.7;margin:10px 0}
@@ -64,7 +64,7 @@ body[data-page="bid-monitor"].bid-table-focus main{max-width:none;padding:0 16px
 body[data-page="bid-monitor"].bid-table-focus #report{margin:12px 0}
 body[data-page="bid-monitor"].bid-table-focus #report .table-wrap{max-height:75vh}
 @media(max-width:760px){
- .multi-filter-list{grid-template-columns:1fr}
+ .multi-filter-list{max-height:300px}
  .quality-heading{align-items:flex-start;flex-direction:column;gap:4px}.data-quality-cards,.detail-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-fields{grid-template-columns:1fr}body[data-page="bid-monitor"] .quality-card{padding:10px 12px}.quality-card strong{font-size:21px}
  body[data-page="bid-monitor"] .report-surface{padding:14px;margin:12px 0;border-radius:8px}
  body[data-page="bid-monitor"] .report-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}

@@ -431,10 +431,14 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#tableHead th').first().textContent(),'平台');
   assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
   includeSharedSnapshot=true;snapshot={date:todayChina,updatedAt:new Date().toISOString(),rows:[{...sample[0],promotion_id:'history-1',stat_cost:25}]};
-  await page.locator('#historyRangeButton').click();await page.locator('.ocean-calendar-day[data-date="2026-09-09"]').first().click();await page.locator('.ocean-calendar-day[data-date="2026-09-11"]').first().click();await page.locator('#historyRangeApply').click();
+  const recentStartDate=new Date(todayChina+'T00:00:00Z');recentStartDate.setUTCDate(recentStartDate.getUTCDate()-2);const recentStart=recentStartDate.toISOString().slice(0,10);
+  await page.locator('#historyRangeButton').click();await page.locator(`.ocean-calendar-day[data-date="${recentStart}"]`).first().click();await page.locator(`.ocean-calendar-day[data-date="${todayChina}"]`).first().click();await page.locator('#historyRangeApply').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.includes('含今日实时'));
-  assert.equal(await page.locator('#historyStart').inputValue(),'2026-09-09');assert.equal(await page.locator('#historyEnd').inputValue(),todayChina);assert.match(await page.locator('#source').textContent(),/历史归档 \+ 今日实时.*今日 1 条/);assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
-  await page.locator('#viewMode').selectOption('plans');await page.locator('#search').fill('history-1');assert.equal(await page.locator('#rows tr').count(),1);assert.equal(await page.locator('#rows tr td').nth(6).textContent(),'125.00');await page.locator('#search').fill('');
+  assert.equal(await page.locator('#historyStart').inputValue(),recentStart);assert.equal(await page.locator('#historyEnd').inputValue(),todayChina);assert.match(await page.locator('#source').textContent(),/历史归档 \+ 今日实时.*今日 1 条/);assert.match(await page.locator('#count').textContent(),/^2 个平台（4 条计划）$/);
+  await page.locator('#viewMode').selectOption('plans');await page.locator('#search').fill('history-1');assert.equal(await page.locator('#rows tr').count(),1);assert.equal(await page.locator('#rows tr td').nth(6).textContent(),'125.00');
+  await page.locator('.plan-detail-link').click();assert.equal(await page.locator('#planDetailStart').inputValue(),recentStart);assert.equal(await page.locator('#planDetailEnd').inputValue(),todayChina);
+  await page.locator('#planDetailLoad').click();await page.waitForFunction(()=>document.querySelector('#bidPlanDetail .bid-dialog-note').textContent.includes('2 条计划日数据已合并为 1 条'));
+  assert.match(await page.locator('#bidPlanDetail .detail-kpis').textContent(),/总消耗125.00/);assert.match(await page.locator('#bidPlanDetail').textContent(),/查询多日时/);await page.keyboard.press('Escape');await page.locator('#search').fill('');
   await page.locator('.section-nav a[href="#strategy-lab"]').click();
   assert.deepEqual(await page.locator('#strategyDataSource option').allTextContents(),['跟随当前报表','自选日期']);
   assert.equal(await page.locator('.strategy-dimension-tab').count(),5);assert.equal(await page.locator('.strategy-dimension-tab.is-active').textContent(),'账户');

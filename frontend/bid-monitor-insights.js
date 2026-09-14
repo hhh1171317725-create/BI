@@ -26,22 +26,28 @@
   document.addEventListener('bid:rendered',drawCards);drawCards();
 
   const dialog=document.createElement('dialog');dialog.id='bidPlanDetail';dialog.className='bid-dialog bid-plan-detail';dialog.setAttribute('aria-labelledby','bidPlanDetailTitle');
-  dialog.innerHTML='<header class="bid-dialog-head"><h2 id="bidPlanDetailTitle">计划数据与计算依据</h2><button type="button" class="dialog-close" aria-label="关闭计划详情">×</button></header><p class="bid-dialog-note"></p><div class="bid-dialog-body"></div><footer class="bid-dialog-footer"><button type="button">关闭</button></footer>';
-  document.body.append(dialog);dialog.querySelectorAll('button').forEach(button=>button.onclick=()=>dialog.close());
+  dialog.innerHTML=`<header class="bid-dialog-head"><h2 id="bidPlanDetailTitle">计划数据与计算依据</h2><button type="button" class="dialog-close" aria-label="关闭计划详情">×</button></header>
+    <div class="plan-detail-range" aria-label="查询计划指定时间数据"><label>开始日期<input id="planDetailStart" type="date" aria-label="计划详情开始日期"></label><span aria-hidden="true">至</span><label>结束日期<input id="planDetailEnd" type="date" aria-label="计划详情结束日期"></label><button id="planDetailLoad" class="primary" type="button">查询</button></div>
+    <p class="bid-dialog-note" role="status" aria-live="polite"></p><div class="bid-dialog-body"></div><footer class="bid-dialog-footer"><button type="button">关闭</button></footer>`;
+  document.body.append(dialog);
+  dialog.querySelector('.dialog-close').onclick=dialog.querySelector('.bid-dialog-footer button').onclick=()=>dialog.close();
+  const startInput=dialog.querySelector('#planDetailStart'),endInput=dialog.querySelector('#planDetailEnd'),loadButton=dialog.querySelector('#planDetailLoad'),note=dialog.querySelector('.bid-dialog-note'),body=dialog.querySelector('.bid-dialog-body');
   const field=(label,value)=>`<div><dt>${esc(label)}</dt><dd>${esc(value??'--')}</dd></div>`;
   const sourceLabels={'account-name':'账户名称关键词','daily-report':'大航海日报任务','plan-name':'计划 / 账户名称识别','bid-return':'出价 × 回传比例估算','inferred':'历史价格推测'};
-  $('#rows').addEventListener('click',event=>{
-    const button=event.target.closest('[data-plan-detail]');if(!button||$('#viewMode').value!=='plans')return;
-    const row=visible[Number(button.dataset.planDetail)];if(!row)return;
+  let selectedIdentity='',queryGeneration=0;
+
+  function renderDetail(row,detailRange,recordCount=null){
     const detail=row.inference||{},estimated=['bid-return','inferred'].includes(row.taskSource);
     const cashProfit=Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;
     const issues=[];
     if(!row.task)issues.push(names[row.pricingStatus]||'尚未识别任务，请核对日报任务名或账户关键词。');
     if(row.missingReason)issues.push(row.missingReason);
     if(!Number.isFinite(row.bidProfitRate)&&!row.missingReason)issues.push(names[row.status]||'出价利润率暂无有效结果，请检查出价、注册数、转化数与实际单价。');
-    const priceSource={manual:'手动设置（优先）','daily-account':`${row.priceDate} 账户日报`,'daily-task':`${row.priceDate} 同任务日报参考`}[row.priceSource]||'暂无有效单价';
-    dialog.querySelector('.bid-dialog-note').textContent=`统计区间 ${range?.start||'--'} 至 ${range?.end||'--'} · 打开时的数据快照；刷新后可重新打开查看。`;
-    dialog.querySelector('.bid-dialog-body').innerHTML=`
+    const priceSource={manual:'手动设置（优先）','daily-account':`${row.priceDate} 账户日报`,'daily-task':`${row.priceDate} 同任务日报参考`,'range-total':`${row.rangeStart} 至 ${row.rangeEnd} 每日结果合并`}[row.priceSource]||'暂无有效单价';
+    const countText=recordCount===null?'当前报表数据':`${recordCount} 条计划日数据已合并为 1 条`;
+    note.textContent=`统计区间 ${detailRange.start} 至 ${detailRange.end} · ${countText}`;
+    const detailGap=row.gapSource==='range-total'?`${row.rangeStart} 至 ${row.rangeEnd} 按各日任务、单价与 gap 计算后合并`:gapTitle(row.accountId,row);
+    body.innerHTML=`
       <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
       ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}
@@ -49,15 +55,43 @@
       <h3>任务与单价来源</h3><dl class="detail-fields">
       ${field('关联任务',row.task||'未匹配任务')}${field('关联依据',sourceLabels[row.taskSource]||'未识别')}
       ${field('结算单价',fmt(row.basePrice))}${field('单价来源',priceSource)}
-      ${field('gap',fmtRoi(row.gap))}${field('gap 来源',gapTitle(row.accountId,row))}
-      ${field('实际单价 = 结算单价 × gap',fmt(row.price))}${field('日报任务日期',detail.taskDate||'--')}</dl>
+      ${field('gap',fmtRoi(row.gap))}${field('gap 来源',detailGap)}
+      ${field('实际单价 = 结算单价 × gap',fmt(row.price))}${field('日报任务日期',detail.taskDate||row.priceDate||'--')}</dl>
       ${row.taskSource==='bid-return'?`<div class="detail-callout"><strong>估算匹配过程</strong><p>当前出价 ${fmt(row.bid)} × 回传比例 ${fmtPercent(row.ratio)} = 每注册估算结算金额 ${fmt(detail.estimatedSettlementPrice)}</p><p>最近且唯一的任务实际单价 ${fmt(detail.matchedActualPrice)}；绝对差值 ${fmtRoi(detail.difference)}。金额接近不代表任务一定正确。</p></div>`:''}
       <h3>投放与收益计算</h3><dl class="detail-fields">
-      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('本行转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('同计划查询范围累计转化数',fmt(row.overallConversions))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
+      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('计划所选区间累计转化数',fmt(row.overallConversions))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
       ${field('当前出价',fmt(row.bid))}${field('预估赔付',fmt(row.estimatedCompensation))}
       ${field('赠款',fmt(row.grant))}${field('现金利润 = 佣金 − 现金消耗',fmt(cashProfit))}
       ${field('盈亏线出价 = 实际单价 ÷ 回传比例',fmt(row.breakEvenBid))}${field('出价利润率',fmtPercent(row.bidProfitRate))}</dl>
-      <p class="detail-footnote">佣金 = 注册数 × 实际单价；预估 ROI =（佣金 + 预估赔付）÷ 总消耗。缺失值保持 --，不会当作 0。全部计划的消耗均保留，汇总收益只覆盖具备有效单价和 gap 的计划。</p>`;
+      <p class="detail-footnote">查询多日时，系统先按每天对应的任务、单价和 gap 计算，再将同一计划的消耗、佣金和赔付合并为一条。预估 ROI =（佣金 + 预估赔付）÷ 总消耗；缺失值保持 --，不会当作 0。</p>`;
+  }
+
+  async function loadDetailRange(){
+    const start=startInput.value,end=endInput.value,generation=++queryGeneration;
+    if(!start||!end||start>end||end>today()){note.textContent='请选择不晚于今天的有效开始和结束日期。';return;}
+    loadButton.disabled=true;loadButton.textContent='查询中…';note.textContent=`正在查询 ${start} 至 ${end} 的计划数据与每日计算依据…`;
+    try{
+      const data=await window.loadBidHistoryRange(start,end),normalized=(Array.isArray(data.rows)?data.rows:[]).map(B.normalize),matched=normalized.filter(row=>B.planIdentity(row)===selectedIdentity);
+      if(generation!==queryGeneration)return;
+      if(!matched.length){body.innerHTML='<div class="plan-detail-empty"><strong>所选时间没有该计划的数据</strong><p>可以扩大日期范围，或确认该计划当时已经创建并产生快照。</p></div>';note.textContent=`${start} 至 ${end} · 未找到该计划`;return;}
+      const references=await window.loadBidHistoricalReferences(matched);
+      if(generation!==queryGeneration)return;
+      const calculated=window.analyzeBidStrategyRows(matched,references),merged=B.mergePlanRows(calculated)[0];
+      renderDetail(merged,{start,end},matched.length);
+      if(!references.complete)note.textContent+=` · ${references.size} / ${references.totalDates} 个日期已关联收益口径`;
+    }catch(error){if(generation===queryGeneration)note.textContent='查询失败：'+error.message;}
+    finally{if(generation===queryGeneration){loadButton.disabled=false;loadButton.textContent='查询';}}
+  }
+  loadButton.onclick=()=>void loadDetailRange();
+  for(const input of [startInput,endInput])input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void loadDetailRange();}};
+
+  $('#rows').addEventListener('click',event=>{
+    const button=event.target.closest('[data-plan-detail]');if(!button||$('#viewMode').value!=='plans')return;
+    const row=visible[Number(button.dataset.planDetail)];if(!row)return;
+    selectedIdentity=B.planIdentity(row);queryGeneration++;
+    const detailRange={start:range?.start||today(),end:range?.end||today()};
+    startInput.max=endInput.max=today();startInput.value=detailRange.start;endInput.value=detailRange.end;
+    loadButton.disabled=false;loadButton.textContent='查询';renderDetail(row,detailRange);
     dialog.showModal();
   });
 })();

@@ -50,6 +50,7 @@ body[data-page="bid-monitor"] .quality-card{display:flex;flex-direction:column;a
 body[data-page="bid-monitor"] .plan-detail-link{display:block;text-align:left;white-space:normal;overflow-wrap:anywhere;font:inherit;line-height:inherit;color:#245d9f;background:none;border:0;padding:0;min-height:0;box-shadow:none}
 .plan-detail-link:hover{text-decoration:underline}.plan-detail-link:focus-visible{outline:2px solid #1767ca;outline-offset:3px}
 .bid-plan-detail .bid-dialog-body{font-size:13px}.bid-plan-detail h3{font-size:13px;margin:20px 0 10px;color:#34516d}
+.plan-detail-range{display:flex;align-items:end;gap:8px;margin:0 24px 12px;padding:12px 14px;border:1px solid #e4eaf1;border-radius:6px;background:#f8fafc}.plan-detail-range label{display:grid;gap:5px;min-width:165px;font-size:11px;color:#6d7f96}.plan-detail-range input{width:100%;min-height:34px;background:#fff}.plan-detail-range>span{padding-bottom:9px;color:#8391a3}.plan-detail-range button{min-height:34px;min-width:72px}.plan-detail-empty{margin:18px 0;padding:36px 18px;text-align:center;border:1px dashed #d7e0ea;border-radius:7px;color:#536a82}.plan-detail-empty p{margin:8px 0 0;color:#7c8c9d}
 .plan-detail-identity{overflow-wrap:anywhere}.plan-detail-identity h3{margin:0;font-size:15px}.plan-detail-identity p{margin:6px 0;color:#76869a;font-size:12px}
 .detail-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0}.detail-kpis>div{background:#f2f6fc;border-radius:7px;padding:12px;min-width:0}.detail-kpis span{display:block;font-size:11px;color:#6d7f96}.detail-kpis strong{display:block;font-size:20px;margin-top:6px;overflow-wrap:anywhere}
 .detail-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin:0}.detail-fields>div{padding:12px 0;border-bottom:1px solid #edf1f6;min-width:0}.detail-fields dt{font-size:11px;color:#76869a;margin-bottom:6px}.detail-fields dd{margin:0;overflow-wrap:anywhere;line-height:1.7;font-variant-numeric:tabular-nums}
@@ -75,6 +76,7 @@ body[data-page="bid-monitor"].bid-table-focus #report .table-wrap{max-height:75v
  body[data-page="bid-monitor"] .report-heading .metric{padding:12px}
  body[data-page="bid-monitor"] .report-heading .metric strong{font-size:24px}
  body[data-page="bid-monitor"] .report-toolbar>button{font-size:12px;padding-inline:6px}
+ .plan-detail-range{display:grid;grid-template-columns:1fr auto 1fr;margin:0 16px 10px;padding:10px}.plan-detail-range label{min-width:0}.plan-detail-range button{grid-column:1/-1}.plan-detail-range>span{padding-bottom:9px}
 }
 .report-history-filter{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.report-history-filter label{min-width:145px}.report-history-filter input{width:100%}.report-history-filter button{align-self:end}
 @media(max-width:760px){.report-history-filter{width:100%;align-items:stretch}.report-history-filter label{flex:1;min-width:140px}.report-history-filter button{flex:1}}

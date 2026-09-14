@@ -22,6 +22,12 @@ body.site-polished[data-report-style="jd"]{--polish-accent:#bd352f;--polish-soft
 .site-polished[data-report-style] :is(.controls,.filters){gap:12px;align-items:end}
 .site-polished[data-report-style] :is(.controls,.filters) :is(input,select,button){min-height:40px}
 .site-polished[data-report-style] .cards{gap:12px;margin-block:18px}
+.site-polished[data-report-style] :is(.card .v,td,.pager){font-variant-numeric:tabular-nums}
+.site-polished[data-report-style] :is(.controls,.filters)>*{min-width:0}
+.site-polished[data-report-style] :is(.controls,.filters) :is(input,select){max-width:100%}
+.site-polished[data-report-style] .table-wrap{scrollbar-gutter:stable}
+.site-polished[data-report-style] .tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+.site-polished[data-report-style] .tab{flex-shrink:0;white-space:nowrap}
 .site-polished[data-report-style] .card{position:relative;padding:16px 18px;min-height:98px;border-radius:10px;border:1px solid #e0e7f0;background:#fff;box-shadow:0 3px 14px #20344f04}
 .site-polished[data-report-style] .card:before{content:'';position:absolute;left:18px;top:0;width:24px;height:3px;border-radius:0 0 3px 3px;background:var(--polish-accent);opacity:.55}
 .site-polished[data-report-style] .card .k{font-size:12px;color:#738297}

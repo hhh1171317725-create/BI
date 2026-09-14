@@ -229,12 +229,19 @@ public class ReportService {
     jdAnalysisCache.entrySet().removeIf(entry -> now - entry.getValue().createdAtMillis() >= JD_ANALYSIS_CACHE_TTL_MILLIS);
     CachedJdAnalysis cached = jdAnalysisCache.get(key);
     if (cached != null) return cached.analysis();
-    if (jdAnalysisCache.size() >= JD_ANALYSIS_CACHE_MAX_ENTRIES) jdAnalysisCache.clear();
-
-    Map<String, Object> analysis = buildJdAnalysis(
-        repository.readJdRows(start, end, accountId), start, end, excludeUnknownOptimizer, cachedAt);
-    jdAnalysisCache.put(key, new CachedJdAnalysis(now, analysis));
-    return analysis;
+    // Concurrent viewers of the same range share one database read and aggregation.
+    CachedJdAnalysis loaded = jdAnalysisCache.computeIfAbsent(key, ignored -> {
+      Map<String, Object> analysis = buildJdAnalysis(
+          repository.readJdRows(start, end, accountId), start, end, excludeUnknownOptimizer, cachedAt);
+      return new CachedJdAnalysis(System.currentTimeMillis(), analysis);
+    });
+    while (jdAnalysisCache.size() > JD_ANALYSIS_CACHE_MAX_ENTRIES) {
+      var oldest = jdAnalysisCache.entrySet().stream()
+          .min(Comparator.comparingLong(entry -> entry.getValue().createdAtMillis()));
+      if (oldest.isEmpty()) break;
+      jdAnalysisCache.remove(oldest.get().getKey(), oldest.get().getValue());
+    }
+    return loaded.analysis();
   }
 
   private Map<String, Object> cachedDhhAnalysis(
@@ -247,14 +254,20 @@ public class ReportService {
         entry -> now - entry.getValue().createdAtMillis() >= DHH_ANALYSIS_CACHE_TTL_MILLIS);
     CachedDhhAnalysis cached = dhhAnalysisCache.get(key);
     if (cached != null) return cached.analysis();
-    if (dhhAnalysisCache.size() >= DHH_ANALYSIS_CACHE_MAX_ENTRIES) dhhAnalysisCache.clear();
-
-    boolean includeAccountInfo = view.isBlank() || view.equals("by_account");
-    Map<String, Object> analysis = buildDhhAnalysis(
-        repository.readDhhRows(start, end, alertDate, accountId, includeAccountInfo),
-        start, end, cachedAt, view);
-    dhhAnalysisCache.put(key, new CachedDhhAnalysis(now, analysis));
-    return analysis;
+    CachedDhhAnalysis loaded = dhhAnalysisCache.computeIfAbsent(key, ignored -> {
+      boolean includeAccountInfo = view.isBlank() || view.equals("by_account");
+      Map<String, Object> analysis = buildDhhAnalysis(
+          repository.readDhhRows(start, end, alertDate, accountId, includeAccountInfo),
+          start, end, cachedAt, view);
+      return new CachedDhhAnalysis(System.currentTimeMillis(), analysis);
+    });
+    while (dhhAnalysisCache.size() > DHH_ANALYSIS_CACHE_MAX_ENTRIES) {
+      var oldest = dhhAnalysisCache.entrySet().stream()
+          .min(Comparator.comparingLong(entry -> entry.getValue().createdAtMillis()));
+      if (oldest.isEmpty()) break;
+      dhhAnalysisCache.remove(oldest.get().getKey(), oldest.get().getValue());
+    }
+    return loaded.analysis();
   }
 
   public Map<String, Object> buildDhhAnalysis(

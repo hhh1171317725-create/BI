@@ -21,6 +21,15 @@ public class BidHistoryController {
 
   @GetMapping
   public Map<String,Object> get(HttpServletRequest request,@RequestParam String startDate,@RequestParam String endDate)throws Exception{
+    return read(request,startDate,endDate,false);
+  }
+
+  @GetMapping("/conversions")
+  public Map<String,Object> conversions(HttpServletRequest request,@RequestParam String startDate,@RequestParam String endDate)throws Exception{
+    return read(request,startDate,endDate,true);
+  }
+
+  private Map<String,Object> read(HttpServletRequest request,String startDate,String endDate,boolean conversionsOnly)throws Exception{
     var viewer=sessions.currentUser(request);
     if(viewer==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     if(!viewer.active()||!users.canUseTool(viewer,"bidMonitor"))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
@@ -29,7 +38,7 @@ public class BidHistoryController {
       throw new IllegalArgumentException("历史时间范围须为昨天以前，且不超过 31 天");
     var owner=shared.source();
     if(!users.canUseTool(owner,"bidMonitor"))throw new ResponseStatusException(HttpStatus.CONFLICT,"共享来源暂不可用，请联系管理员");
-    var rows=history.read(owner.id(),start,end);
+    var rows=conversionsOnly?history.readConversions(owner.id(),start,end):history.read(owner.id(),start,end);
     return Map.of("startDate",start.toString(),"endDate",end.toString(),"rows",rows,"count",rows.size());
   }
 }

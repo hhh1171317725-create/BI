@@ -136,7 +136,7 @@ window.loadBidHistoricalReferences=async rows=>{
 async function loadPriorPlanConversions(anchor,expectedRows,generation){
   const endDate=new Date(anchor+'T00:00:00Z');endDate.setUTCDate(endDate.getUTCDate()-1);const startDate=new Date(anchor+'T00:00:00Z');startDate.setUTCDate(startDate.getUTCDate()-4);
   try{
-    const data=await api('/api/bid-monitor/history?startDate='+startDate.toISOString().slice(0,10)+'&endDate='+endDate.toISOString().slice(0,10),{signal:AbortSignal.timeout(30000)});
+    const data=await api('/api/bid-monitor/history/conversions?startDate='+startDate.toISOString().slice(0,10)+'&endDate='+endDate.toISOString().slice(0,10),{signal:AbortSignal.timeout(30000)});
     if(generation!==priorConversionGeneration||historyMode||range?.end!==anchor)return;
     const currentPlans=new Set(expectedRows.map(B.planIdentity));priorConversionRows=(Array.isArray(data.rows)?data.rows:[]).map(B.normalize).filter(row=>currentPlans.has(B.planIdentity(row)));
     render();if(!$('#historyStart').value&&!$('#historyEnd').value)$('#historyStatus').textContent=`未选择日期，显示当日最新实时数据；赔付门槛已合并 ${data.startDate} 至 ${data.endDate} 同计划转化。`;
@@ -285,16 +285,20 @@ $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(t
 async function fetchHistoryRange(start,end){
   const current=today();if(!start||!end||start>end||end>current)throw Error('请选择不晚于今天的有效日期范围');
   const rows=[];let archivedCount=0,liveCount=0;
+  const archiveEnd=end===current?new Date(new Date(current+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10):end;
+  // Independent sources load together; merge only after both have succeeded.
+  const [archived,shared]=await Promise.all([
+    start<current?api('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(archiveEnd),{signal:AbortSignal.timeout(30000)}):null,
+    end===current?api('/api/bid-monitor/shared-report',{signal:AbortSignal.timeout(15000)}):null
+  ]);
   if(start<current){
-    const archiveEnd=end===current?new Date(new Date(current+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10):end;
-    const archived=await api('/api/bid-monitor/history?startDate='+encodeURIComponent(start)+'&endDate='+encodeURIComponent(archiveEnd),{signal:AbortSignal.timeout(30000)});
-    if(!Array.isArray(archived.rows))throw Error('历史归档接口返回格式异常');rows.push(...archived.rows);archivedCount=archived.rows.length;
+    if(!Array.isArray(archived.rows))throw Error('历史归档接口返回格式异常');for(const row of archived.rows)rows.push(row);archivedCount=archived.rows.length;
   }
   if(end===current){
-    const shared=await api('/api/bid-monitor/shared-report',{signal:AbortSignal.timeout(15000)}),snapshot=shared.snapshot;
+    const snapshot=shared.snapshot;
     if(!snapshot?.updatedAt||!Array.isArray(snapshot.rows))throw Error('当前还没有今日实时快照，请先读取最新快照');
     if(snapshot.date&&snapshot.date!==current)throw Error(`最新实时快照日期为 ${snapshot.date}，今日 ${current} 的数据尚未生成`);
-    const todayRows=snapshot.rows.map(row=>({...row,report_date:current}));rows.push(...todayRows);liveCount=todayRows.length;
+    for(const row of snapshot.rows)rows.push({...row,report_date:current});liveCount=snapshot.rows.length;
   }
   return{startDate:start,endDate:end,rows,count:rows.length,archivedCount,liveCount,includesToday:end===current};
 }

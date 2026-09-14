@@ -47,20 +47,28 @@ public class BidHistoryStore {
   }
 
   List<Map<String,Object>> read(long owner,LocalDate start,LocalDate end)throws Exception{
+    return read(owner,start,end,false);
+  }
+
+  List<Map<String,Object>> readConversions(long owner,LocalDate start,LocalDate end)throws Exception{
+    return read(owner,start,end,true);
+  }
+
+  private List<Map<String,Object>> read(long owner,LocalDate start,LocalDate end,boolean conversionsOnly)throws Exception{
     initialize();
+    // Preserve both account IDs and the displayed platform used by frontend planIdentity.
+    String projection=conversionsOnly?"JSON_OBJECT('promotion_id',promotion_id,'media_account_id',media_account_id,"
+        +"'source_platform',source_platform,'advertiser_id',JSON_EXTRACT(payload,'$.advertiser_id'),"
+        +"'platform_text',JSON_EXTRACT(payload,'$.platform_text'),'convert_cnt',JSON_EXTRACT(payload,'$.convert_cnt')) AS payload":"payload";
     try(var connection=reports.openConnection()){
-      try(var count=connection.prepareStatement("SELECT COUNT(*) FROM bid_monitor_history_rows WHERE user_id=? AND report_date BETWEEN ? AND ?")){
-        count.setLong(1,owner);count.setString(2,start.toString());count.setString(3,end.toString());
-        try(var result=count.executeQuery()){
-          result.next();
-          if(result.getLong(1)>MAX_QUERY_ROWS)throw new IllegalArgumentException("历史计划超过 200000 条，请缩小时间范围");
-        }
-      }
-      try(var query=connection.prepareStatement("SELECT report_date,payload FROM bid_monitor_history_rows WHERE user_id=? AND report_date BETWEEN ? AND ? ORDER BY report_date DESC")){
+      try(var query=connection.prepareStatement("SELECT report_date,"+projection+" FROM bid_monitor_history_rows WHERE user_id=? AND report_date BETWEEN ? AND ? ORDER BY report_date DESC LIMIT "+(MAX_QUERY_ROWS+1))){
         query.setLong(1,owner);query.setString(2,start.toString());query.setString(3,end.toString());
+        // MySQL streams rows instead of buffering the entire payload in the JDBC driver.
+        query.setFetchSize(Integer.MIN_VALUE);
         try(var result=query.executeQuery()){
           var rows=new ArrayList<Map<String,Object>>();
           while(result.next()){
+            if(rows.size()==MAX_QUERY_ROWS)throw new IllegalArgumentException("历史计划超过 200000 条，请缩小时间范围");
             var row=mapper.readValue(result.getString("payload"),new TypeReference<Map<String,Object>>(){});
             row.put("report_date",result.getString("report_date"));rows.add(row);
           }

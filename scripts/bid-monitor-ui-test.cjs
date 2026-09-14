@@ -295,7 +295,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.goForward();
   await page.waitForFunction(()=>!document.querySelector('#report').hidden);
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
-  assert.equal(await page.locator('.report-actions').count(),1);assert.equal(await page.locator('.table-tools #oceanWatch').count(),0);assert.equal(await page.locator('#viewMode').isHidden(),true);
+  assert.equal(await page.locator('.report-actions').count(),1);assert.equal(await page.locator('.table-tools #oceanWatch').count(),0);assert.equal(await page.locator('#viewMode').isVisible(),true);assert.equal(await page.locator('#viewMode optgroup[label="时间组合维度"]').isHidden(),true);
   await page.getByRole('button',{name:'刷新全部数据',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
   assert.match(await page.locator('#syncStatus').textContent(),/已读取/);assert.match(await page.locator('#gapStatus').textContent(),/^gap区间/);assert.equal(await page.locator('#reportRefresh').isEnabled(),true);

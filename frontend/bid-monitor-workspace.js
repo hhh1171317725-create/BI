@@ -4,7 +4,8 @@
   const toolbar=report.querySelector('.report-toolbar');
   const filters=[['search','关键词',''],['taskFilter','任务',''],['optimizerFilter','优化师',''],['platformFilter','平台',''],['appTypeFilter','应用类型',''],['deepBidTypeFilter','深度出价类型',''],['deepExternalActionFilter','深度转化目标',''],['externalActionFilter','转化目标',''],['statusFilter','计划状态',''],['deepCpaBidMin','深度 CPA 最低',''],['deepCpaBidMax','深度 CPA 最高','']];
   const make=(tag,cls,text)=>{const el=document.createElement(tag);el.className=cls;if(text)el.textContent=text;return el;};
-  for(const [id,label] of [['search','搜索计划 / 账户 / 优化师'],['viewMode','统计维度'],['taskFilterButton','任务'],['optimizerFilterButton','优化师'],['platformFilter','投放平台']]){
+  document.getElementById('viewMode').hidden=true;
+  for(const [id,label] of [['search','搜索计划 / 账户 / 优化师'],['taskFilterButton','任务'],['optimizerFilterButton','优化师'],['platformFilter','投放平台']]){
     const input=document.getElementById(id),wrapper=make('label','workspace-field',label);
     if(id==='search')wrapper.classList.add('workspace-search');
     input.before(wrapper);wrapper.append(input);
@@ -12,7 +13,6 @@
   const searchHint=make('small','batch-search-hint','批量查找：多个计划 / 账户 ID 用空格或逗号分隔');searchHint.id='batchSearchHint';
   document.getElementById('search').after(searchHint);
   document.getElementById('search').setAttribute('aria-describedby','batchSearchHint');
-  const watch=make('button','ocean-watch','AI 数据助手');watch.type='button';watch.id='oceanWatch';watch.onclick=()=>{const trigger=document.querySelector('.data-pet-toggle');if(trigger)trigger.click();else document.getElementById('message').textContent='数据助手正在加载，请稍后重试。';};
   const summary=make('div','filter-summary');summary.id='filterSummary';
   const chips=make('div','filter-chips');
   const reset=make('button','filter-reset','清除全部筛选');reset.type='button';reset.id='clearReportFilters';
@@ -21,7 +21,7 @@
   const levelBar=make('div','ocean-level-bar'),levelTitle=make('span','ocean-level-title','数据层级'),levelTabs=make('div','ocean-level-tabs');levelTabs.setAttribute('role','tablist');levelTabs.setAttribute('aria-label','常用统计维度');
   const levelOptions=[['plans','计划'],['accounts','账户'],['optimizers','优化师'],['tasks','任务'],['dates','日期']];
   for(const [value,label] of levelOptions){const button=make('button','ocean-level-tab',label);button.type='button';button.dataset.view=value;button.setAttribute('role','tab');button.onclick=()=>{const select=document.getElementById('viewMode');if(select.value===value)return;select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));};levelTabs.append(button);}
-  const levelHint=make('span','ocean-level-hint','常用维度一键切换，其他组合在“统计维度”中选择');levelBar.append(levelTitle,levelTabs,levelHint);
+  const levelHint=make('span','ocean-level-hint','点击标签切换数据维度');levelBar.append(levelTitle,levelTabs,levelHint);
   toolbar.before(controlDeck);controlDeck.append(levelBar,toolbar,summary,document.getElementById('historyStatus'));
   const historyToolbar=document.getElementById('historyToolbar');
   const chinaToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
@@ -144,7 +144,7 @@
   focus.onclick=()=>setFocus(!focused);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(false);}});
   window.addEventListener('hashchange',()=>setFocus(false));
-  tools.append(watch,batchToggle,density,focus);const reportTable=report.querySelector('.table-wrap');reportTable.before(tableSummary,tools,batchBar);
+  tools.append(batchToggle,density,focus);const reportTable=report.querySelector('.table-wrap');reportTable.before(tableSummary,tools,batchBar);
   reportTable.setAttribute('aria-label','计划表现数据表，点击表头排序，可横向滚动');
   const legend=make('p','table-value-legend','数值 0 表示已取得零值；-- 表示缺失或不适用。点击计划名称可查看数据来源与计算依据。');
   reportTable.after(legend);

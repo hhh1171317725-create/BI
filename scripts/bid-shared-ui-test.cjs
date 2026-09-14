@@ -10,6 +10,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
  try{
   browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
+  const selectView=value=>page.evaluate(value=>{const select=document.getElementById('viewMode');select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));},value);
   const errors=[],forbidden=[],petRequests=[];page.on('pageerror',e=>errors.push(e.message));
   let stamp='2026-09-08T01:00:00Z',price=2,revision='p1';
   const rows=[{promotion_id:'12345',promotion_name:'共享计划',advertiser_id:'111',media_account_name:'客户A',user_name:'张三',stat_cost:100,convert_cnt:10,active_register:100,cpa_bid:10}];
@@ -46,7 +47,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(petRequests[0].context.summary['佣金'],160);
   assert.doesNotMatch(JSON.stringify(petRequests[0].context),/cookie|apiKey|webhook|secret/i);
   await page.locator('.data-pet-toggle').focus();await page.keyboard.press('Enter');
-  await page.locator('#viewMode').selectOption('accounts');
+  await selectView('accounts');
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');
   assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
   assert.match(await page.locator('#count').textContent(),/^1 个账户（1 条计划）$/);
@@ -54,7 +55,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#accountDrill').isVisible(),true);
   assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('#accountDrillBack').click();
-  await page.locator('#viewMode').selectOption('plans');
+  await selectView('plans');
   await page.locator('#openBidColumns').click();await page.locator('[data-column-key="optimizer"]').uncheck();
   await page.locator('#bidColumnsDialog').getByRole('button',{name:'取消',exact:true}).click();
   assert.equal(await page.locator('#tableHead [data-sort-key="optimizer"]').count(),1);

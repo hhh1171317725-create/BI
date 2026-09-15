@@ -7,13 +7,13 @@
   function drawCompensationAlert(){
     if(!compensationWarningsReady()){
       alert.hidden=false;alertFilter.hidden=true;
-      alertText.textContent=priorConversionStatus==='error'?'历史累计转化读取失败，暂不判断转化缺口，请刷新全部数据重试。':'正在读取历史累计转化，完成后显示转化门槛预警…';return;
+      alertText.textContent=priorConversionStatus==='error'?'历史累计消耗与转化读取失败，暂不判断转化缺口，请刷新全部数据重试。':'正在读取历史累计消耗与转化，完成后显示转化门槛预警…';return;
     }
     alertFilter.hidden=false;
     const count=new Set(compensationCandidates.map(B.planIdentity)).size;
     alert.hidden=!count&&!compensationOnly;
-    alertText.textContent=count?`转化门槛预警：${count} 个计划消耗已超成本线，累计转化不足 6 个。请查看计划旁的转化缺口。`:'当前筛选下没有转化门槛预警。';
-    alert.title='按当前已读取数据判断：消耗 > 出价 × 转化数 × 1.2，累计转化 < 6；本提示不代表平台已确认赔付。';
+    alertText.textContent=count?`转化门槛预警：${count} 个计划累计消耗已高于出价 × 7.2，累计转化不足 6 个。请查看计划旁的转化缺口。`:'当前筛选下没有转化门槛预警。';
+    alert.title='按计划已读取的全时间数据判断：累计消耗 > 当前出价 × 7.2，且累计转化 < 6；低于最低消耗线不预警。';
     alertFilter.textContent=compensationOnly?'取消预警筛选':'只看预警计划';alertFilter.setAttribute('aria-pressed',String(compensationOnly));
   }
   document.addEventListener('bid:rendered',drawCompensationAlert);drawCompensationAlert();
@@ -66,7 +66,7 @@
     const detailGap=row.gapSource==='range-total'?`${row.rangeStart} 至 ${row.rangeEnd} 按各日任务、单价与 gap 计算后合并`:gapTitle(row.accountId,row);
     body.innerHTML=`
       <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
-      ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>已读取的计划累计转化 ${fmt(row.overallConversions)} 个，门槛为 6 个；消耗已超过成本线，当前预估赔付为 0。</p></div>`:''}
+      ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>计划累计消耗 ${fmt(row.overallCost)} 元，高于最低消耗 ${fmt(row.compensationWarningThreshold)} 元（当前出价 × 7.2）；累计转化 ${fmt(row.overallConversions)} 个，门槛为 6 个。</p></div>`:''}
       ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}
       <div class="detail-kpis">${[['总消耗',fmt(row.cost)],['现金消耗',fmt(row.cashCost)],['预估佣金',fmt(row.commission)],['预估 ROI',fmtRoi(row.estimatedRoi)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
@@ -77,7 +77,7 @@
       ${field('实际单价 = 结算单价 × gap',fmt(row.price))}${field('日报任务日期',detail.taskDate||row.priceDate||'--')}</dl>
       ${row.taskSource==='bid-return'?`<div class="detail-callout"><strong>估算匹配过程</strong><p>当前出价 ${fmt(row.bid)} × 回传比例 ${fmtPercent(row.ratio)} = 每注册估算结算金额 ${fmt(detail.estimatedSettlementPrice)}</p><p>最近且唯一的任务实际单价 ${fmt(detail.matchedActualPrice)}；绝对差值 ${fmtRoi(detail.difference)}。金额接近不代表任务一定正确。</p></div>`:''}
       <h3>投放与收益计算</h3><dl class="detail-fields">
-      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('计划所选区间累计转化数',fmt(row.overallConversions))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
+      ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('计划累计转化数',fmt(row.overallConversions))}${field('计划累计消耗',fmt(row.overallCost))}${field('预警最低消耗 = 当前出价 × 7.2',fmt(row.compensationWarningThreshold))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
       ${field('当前出价',fmt(row.bid))}${field('预估赔付',fmt(row.estimatedCompensation))}
       ${field('赠款',fmt(row.grant))}${field('现金利润 = 佣金 − 现金消耗',fmt(cashProfit))}
       ${field('盈亏线出价 = 实际单价 ÷ 回传比例',fmt(row.breakEvenBid))}${field('出价利润率',fmtPercent(row.bidProfitRate))}</dl>

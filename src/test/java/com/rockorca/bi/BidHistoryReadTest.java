@@ -21,7 +21,7 @@ class BidHistoryReadTest {
     when(result.next()).thenReturn(true,false);
     when(result.getString("report_date")).thenReturn("2026-09-13");
     when(result.getString("payload")).thenReturn("""
-        {"promotion_id":"123","media_account_id":"456","advertiser_id":"789","source_platform":"gdt","platform_text":"广点通","convert_cnt":6}
+        {"promotion_id":"123","media_account_id":"456","advertiser_id":"789","source_platform":"gdt","platform_text":"广点通","convert_cnt":6,"stat_cost":72.5}
         """);
     var store=new BidHistoryStore(reports,new ObjectMapper());
     ReflectionTestUtils.setField(store,"initialized",true);
@@ -29,10 +29,12 @@ class BidHistoryReadTest {
     assertEquals("789",rows.getFirst().get("advertiser_id"));
     assertEquals("广点通",rows.getFirst().get("platform_text"));
     assertEquals(6,rows.getFirst().get("convert_cnt"));
+    assertEquals(72.5,((Number)rows.getFirst().get("stat_cost")).doubleValue());
     assertEquals("2026-09-13",rows.getFirst().get("report_date"));
     var sql=ArgumentCaptor.forClass(String.class);
     verify(connection,times(1)).prepareStatement(sql.capture());
     assertTrue(sql.getValue().contains("JSON_OBJECT"));
+    assertTrue(sql.getValue().contains("stat_cost"));
     assertTrue(sql.getValue().contains("LIMIT 200001"));
     assertFalse(sql.getValue().contains("COUNT(*)"));
     verify(statement).setFetchSize(Integer.MIN_VALUE);

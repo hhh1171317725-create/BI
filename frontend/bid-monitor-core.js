@@ -124,8 +124,11 @@
       // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
       const tolerance=Number.EPSILON*Math.max(Math.abs(row.cost),Math.abs(threshold))*8;
       const overallConversions=valid(row.overallConversions)?row.overallConversions:row.conversions;
+      const overallCost=valid(row.overallCost)?row.overallCost:row.cost;
+      const warningThreshold=valid(row.bid)?row.bid*7.2:null;
       const eligible=overallConversions>=6&&row.cost-threshold>tolerance;
-      if(row.bid>0&&overallConversions<6&&row.cost-threshold>tolerance)compensationShortfall=Math.ceil(6-overallConversions);
+      const warningTolerance=Number.EPSILON*Math.max(Math.abs(overallCost),Math.abs(warningThreshold||0))*8;
+      if(row.bid>0&&overallConversions<6&&overallCost-warningThreshold>warningTolerance)compensationShortfall=Math.ceil(6-overallConversions);
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
       estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;
@@ -133,6 +136,7 @@
         ?finite((commission+estimatedCompensation)/row.cost):null;
     }
     return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,compensationShortfall,
+      compensationWarningThreshold:valid(row.bid)?row.bid*7.2:null,
       roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
       bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
   }
@@ -140,8 +144,15 @@
   const NO_PRIOR_ROWS=[];
   function withOverallConversions(rows,priorRows=[]){
     const totals=new Map();
-    for(const row of [...priorRows,...rows])if(Number.isFinite(row.conversions))totals.set(planIdentity(row),(totals.get(planIdentity(row))||0)+row.conversions);
-    return rows.map(row=>({...row,overallConversions:totals.get(planIdentity(row))??row.conversions}));
+    for(const row of [...priorRows,...rows]){
+      const key=planIdentity(row),total=totals.get(key)||{conversions:0,cost:0,hasConversions:false,hasCost:false};
+      if(Number.isFinite(row.conversions)){total.conversions+=row.conversions;total.hasConversions=true;}
+      if(Number.isFinite(row.cost)){total.cost+=row.cost;total.hasCost=true;}
+      totals.set(key,total);
+    }
+    return rows.map(row=>{const total=totals.get(planIdentity(row));return{...row,
+      overallConversions:total?.hasConversions?total.conversions:row.conversions,
+      overallCost:total?.hasCost?total.cost:row.cost};});
   }
   function mergePlanRows(rows){
     const groups=new Map();for(const row of rows){const key=planIdentity(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
@@ -155,12 +166,17 @@
       const price=commission!==null&&registrations>0?commission/registrations:null,gap=price!==null&&basePrice>0?price/basePrice:null;
       const ratio=registrations>0&&conversions!==null?conversions/registrations:null,breakEvenBid=commission>0&&conversions>0?commission/conversions:null;
       const rangeStart=items[0].statDate||'',rangeEnd=latest.statDate||'',allEstimated=items.some(row=>row.impressionsEstimated);
-      return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions:conversions,ratio,cpa:registrations>0&&cost!==null?cost/registrations:null,
+      const overallConversions=Number.isFinite(latest.overallConversions)?latest.overallConversions:conversions;
+      const overallCost=Number.isFinite(latest.overallCost)?latest.overallCost:cost;
+      const compensationWarningThreshold=Number.isFinite(latest.bid)?latest.bid*7.2:null;
+      const warningTolerance=Number.EPSILON*Math.max(Math.abs(overallCost||0),Math.abs(compensationWarningThreshold||0))*8;
+      const compensationShortfall=latest.bid>0&&overallConversions<6&&overallCost-compensationWarningThreshold>warningTolerance?Math.ceil(6-overallConversions):0;
+      return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions,overallCost,ratio,cpa:registrations>0&&cost!==null?cost/registrations:null,
         mediaCpm:cost!==null&&impressions>0?cost/impressions*1000:null,ecpm:Number.isFinite(latest.bid)&&conversions!==null&&impressions>0?latest.bid*conversions/impressions*1000:null,
         commission,revenue:commission,basePrice,price,gap,priceSource:'range-total',priceDate:`${rangeStart} ~ ${rangeEnd}`,gapSource:'range-total',
         breakEven:breakEvenBid,breakEvenBid,actualRoi:commission!==null&&cost>0?commission/cost:null,roi:commission!==null&&cashCost>0?commission/cashCost:null,
         profit:commission!==null&&cashCost!==null?commission-cashCost:null,bidCost,grant,cashCost,estimatedCompensation,
-        compensationShortfall:conversions>=6?0:items.reduce((maximum,row)=>Math.max(maximum,row.compensationShortfall||0),0),
+        compensationWarningThreshold,compensationShortfall,
         estimatedRoi:commission!==null&&estimatedCompensation!==null&&cost>0?(commission+estimatedCompensation)/cost:null,
         bidProfitRate:commission>0&&bidCost!==null?(commission-bidCost)/commission:null,projectedCost:bidCost,projectedProfit:commission!==null&&bidCost!==null?commission-bidCost:null,
         pricingStatus:price===null?'price-missing':'priced',missingReason:price===null?'区间内部分日期缺少任务、单价或 gap，无法完整合并收益':'',rangeStart,rangeEnd,rangeDays:new Set(items.map(row=>row.statDate).filter(Boolean)).size};

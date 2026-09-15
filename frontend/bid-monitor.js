@@ -165,7 +165,7 @@ async function loadPriorPlanConversions(anchor,expectedRows,generation){
     if(generation!==priorConversionGeneration||historyMode||range?.end!==anchor)return;
     if(!Array.isArray(data.rows))throw Error('历史累计转化接口返回格式异常');
     const currentPlans=new Set(expectedRows.map(B.planIdentity));priorConversionRows=(Array.isArray(data.rows)?data.rows:[]).map(B.normalize).filter(row=>currentPlans.has(B.planIdentity(row)));
-    priorConversionStatus='ready';render();if(!$('#historyStart').value&&!$('#historyEnd').value)$('#historyStatus').textContent=`未选择日期，显示当日最新实时数据；赔付门槛已合并 ${data.startDate} 至 ${data.endDate} 同计划转化。`;
+    priorConversionStatus='ready';render();if(!$('#historyStart').value&&!$('#historyEnd').value)$('#historyStatus').textContent=`未选择日期，显示当日最新实时数据；预警判断已合并 ${data.startDate} 至 ${data.endDate} 同计划累计消耗和转化。`;
   }catch{if(generation===priorConversionGeneration&&!historyMode){priorConversionStatus='error';render();}}
 }
 function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}

@@ -39,7 +39,7 @@ test('lightweight prior conversions preserve platform/account identity and the s
   let requested='';
   const context=vm.createContext({Date,AbortSignal,B,priorConversionGeneration:1,historyMode:false,range:{end:'2026-09-14'},priorConversionRows:[],render:()=>{},$:()=>({value:'',textContent:''}),api:async path=>{
     requested=path;
-    return {startDate:'2026-09-10',endDate:'2026-09-13',rows:[{...identity,convert_cnt:5},{...identity,advertiser_id:'other',convert_cnt:100}]};
+    return {startDate:'2026-09-10',endDate:'2026-09-13',rows:[{...identity,convert_cnt:5,stat_cost:60},{...identity,advertiser_id:'other',convert_cnt:100,stat_cost:1000}]};
   }});
   vm.runInContext(source.slice(source.indexOf('async function loadPriorPlanConversions('),source.indexOf('function setBusy(')),context);
   await context.loadPriorPlanConversions('2026-09-14',[current],1);
@@ -47,4 +47,5 @@ test('lightweight prior conversions preserve platform/account identity and the s
   assert.equal(context.priorConversionRows.length,1);
   const prepared=B.withOverallConversions([current],context.priorConversionRows);
   assert.equal(prepared[0].overallConversions,6);
+  assert.equal(prepared[0].overallCost,80);
 });

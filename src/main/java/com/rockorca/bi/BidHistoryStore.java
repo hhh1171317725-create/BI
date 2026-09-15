@@ -59,7 +59,8 @@ public class BidHistoryStore {
     // Preserve both account IDs and the displayed platform used by frontend planIdentity.
     String projection=conversionsOnly?"JSON_OBJECT('promotion_id',promotion_id,'media_account_id',media_account_id,"
         +"'source_platform',source_platform,'advertiser_id',JSON_EXTRACT(payload,'$.advertiser_id'),"
-        +"'platform_text',JSON_EXTRACT(payload,'$.platform_text'),'convert_cnt',JSON_EXTRACT(payload,'$.convert_cnt')) AS payload":"payload";
+        +"'platform_text',JSON_EXTRACT(payload,'$.platform_text'),'convert_cnt',JSON_EXTRACT(payload,'$.convert_cnt'),"
+        +"'stat_cost',JSON_EXTRACT(payload,'$.stat_cost')) AS payload":"payload";
     try(var connection=reports.openConnection()){
       try(var query=connection.prepareStatement("SELECT report_date,"+projection+" FROM bid_monitor_history_rows WHERE user_id=? AND report_date BETWEEN ? AND ? ORDER BY report_date DESC LIMIT "+(MAX_QUERY_ROWS+1))){
         query.setLong(1,owner);query.setString(2,start.toString());query.setString(3,end.toString());

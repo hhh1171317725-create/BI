@@ -95,11 +95,10 @@ systemctl restart dahanghai-analysis
 
 ```bash
 cd /www/wwwroot/BI
-git pull origin main
-chmod +x mvnw
-./mvnw clean package -DskipTests
-systemctl restart dahanghai-analysis
+sh scripts/deploy-server.sh
 ```
+
+脚本会自动查找宝塔或系统中的 Java 21 JDK，设置当前终端的 `JAVA_HOME`，拉取主分支，构建成功后再重启服务。`systemctl` 服务中配置的环境变量只对服务进程生效，不会自动出现在 SSH 终端中。
 
 构建产物为 `target/marketing-reports-1.0.0.jar`。也可以在宝塔“Java 项目”中直接选择该 JAR，端口设为 `8765`，启动命令使用：
 

@@ -45,10 +45,7 @@ Run from a server terminal independent of the website:
 
 ```bash
 cd /www/wwwroot/BI
-git pull --ff-only origin main
-export JAVA_HOME=/www/server/java/jdk-21.0.2
-export PATH="$JAVA_HOME/bin:$PATH"
-./mvnw package && systemctl restart dahanghai-analysis
+sh scripts/deploy-server.sh
 ```
 
 Only restart after a successful build. Administrators can enable `bidMonitor` for operators in the existing tool permission dialog. All endpoints enforce login and tool permission. The query-and-enable action saves encrypted credentials for reuse and scheduling; snapshots contain only allowlisted plan data. Snapshot reads always use the current website user; configuration changes also verify the website user bound when the page was loaded.

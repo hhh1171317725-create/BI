@@ -1,0 +1,59 @@
+/* One console layout: overview, dimensions/date, filters, then the table. */
+body.bid-console{--ocean-blue:#1664ff;--ocean-blue-hover:#0e52db;background:#f4f5f7}
+body.bid-console main{max-width:none;padding-inline:24px}
+body.bid-console .section-nav{margin-inline:-24px;padding-inline:24px}
+body.bid-console .ocean-overview-card{padding:16px 20px;border-radius:6px;box-shadow:none}
+body.bid-console .report-heading{gap:16px;min-height:0;padding-bottom:0;border-bottom:0}
+body.bid-console .report-heading>div:first-child{flex:1;min-width:0}
+body.bid-console .page-eyebrow{display:none}
+body.bid-console .report-heading #source{font-size:11px}
+body.bid-console #metrics{display:none}
+body.bid-console #toggleBidOverview{flex:none;min-height:30px;padding:4px 10px;font-size:12px;color:#64748b;border-color:transparent;background:transparent}
+body.bid-console .quality-heading{margin:12px 0 7px}
+body.bid-console .data-quality-cards{gap:0;border:1px solid #e8edf3;border-radius:4px;background:#fff}
+body.bid-console .quality-card{min-height:82px;border:0;border-right:1px solid #e8edf3;background:transparent;border-radius:0;padding:10px 18px}
+body.bid-console .quality-card:last-child{border-right:0}
+body.bid-console .quality-card strong{font-size:24px;color:#172b4d;letter-spacing:0}
+body.bid-console .console-explanation{margin-top:10px;color:#64748b;font-size:11px}
+body.bid-console .console-explanation>summary{font-size:11px;font-weight:400;min-height:20px;padding:0;color:#64748b}
+body.bid-console .console-explanation :is(#source,#summaryCoverage){margin:8px 0;font-size:11px}
+body.bid-console #message{padding-top:0;font-size:11px;color:#64748b}
+body.bid-console #message.error{color:#b42318}
+body.bid-console .console-overview-collapsed>:not(.report-heading):not(#message){display:none!important}
+body.bid-console .ocean-list-card{margin-top:12px;border-radius:6px;box-shadow:none}
+body.bid-console .ocean-level-bar{padding:8px 16px;gap:12px;flex-wrap:wrap;min-height:54px}
+body.bid-console .ocean-level-title{display:none}
+body.bid-console .ocean-level-tabs{align-self:center;gap:4px}
+body.bid-console .ocean-level-tab{min-width:60px;min-height:34px;height:34px;border-radius:4px;padding:0 14px;color:#475569}
+body.bid-console .ocean-level-tab::after{display:none}
+body.bid-console .ocean-level-tab.is-active{background:#edf3ff;color:#1664ff}
+body.bid-console .console-dimension{flex:0 1 200px;min-width:0!important}
+body.bid-console .ocean-level-bar>.ocean-range-field{margin-left:auto;min-width:270px;width:290px}
+body.bid-console .report-toolbar{display:grid;grid-template-columns:minmax(230px,2fr) repeat(3,minmax(140px,1fr));gap:10px;padding:14px 16px 10px;align-items:start}
+body.bid-console .report-toolbar>.workspace-field{grid-column:auto}
+body.bid-console .report-toolbar>.workspace-search{grid-column:auto}
+body.bid-console .report-toolbar>.report-actions{grid-column:3/5;min-height:34px;align-self:start}
+body.bid-console .report-toolbar>.console-presets{grid-column:1/3;display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
+body.bid-console .console-presets select{width:170px;min-width:0}
+body.bid-console .console-presets :is(button,select){height:34px;min-height:34px;font-size:12px;padding:5px 9px}
+body.bid-console .console-preset-status{flex-basis:100%;font-size:11px;color:#64748b;line-height:1.5}
+body.bid-console .console-preset-status:empty{display:none}
+body.bid-console .workspace-field :is(input,select,button){background:#fff;border-color:#dce2eb}
+body.bid-console .filter-summary{padding:4px 16px 8px;min-height:28px}
+body.bid-console #historyStatus{font-size:11px;padding-bottom:8px}
+body.bid-console .gap-strip{padding-block:7px;background:#fbfcfe}
+body.bid-console .table-tools{padding-block:7px}
+body.bid-console .ocean-table-summary{min-height:34px;padding-block:6px;background:#f7f9fc}
+body.bid-console #report .table-wrap td{height:44px;padding-block:9px}
+body.bid-console #report.compact-table .table-wrap td{height:32px;padding-block:5px}
+body.bid-console .table-wrap td.good{color:#087f67}
+body.bid-console .table-wrap td.bad{color:#bc3028}
+body.bid-console .table-wrap td.warn{color:#8a6417}
+body.bid-console .compensation-alert{margin:8px 16px}
+body.bid-console .console-save-dialog{width:min(440px,calc(100vw - 24px))}
+body.bid-console .console-save-dialog form{margin:0}
+body.bid-console .console-save-dialog input{width:100%}
+.console-save-error{color:#b42318;font-size:12px}
+@media(max-width:760px){body.bid-console>header{height:auto;padding:10px 14px;gap:8px}body.bid-console>header nav{height:auto;width:100%;flex-wrap:wrap;gap:0}body.bid-console>header nav a{height:30px;padding:4px 10px}body.bid-console .report-heading{display:flex!important;flex-wrap:nowrap!important}body.bid-console .report-heading>div:first-child{flex:1!important}body.bid-console #toggleBidOverview{font-size:11px;padding-inline:5px}}
+@media(max-width:1100px){body.bid-console .ocean-level-bar>.ocean-range-field{width:260px;min-width:240px}body.bid-console .console-dimension{flex-basis:160px}body.bid-console .report-toolbar{grid-template-columns:repeat(3,minmax(0,1fr))}body.bid-console .report-toolbar>.workspace-search{grid-column:1/-1}body.bid-console .report-toolbar>.console-presets{grid-column:1/-1}body.bid-console .report-toolbar>.report-actions{grid-column:1/-1;justify-content:flex-end}}
+@media(max-width:760px){body.bid-console main{padding-inline:10px}body.bid-console .section-nav{margin-inline:-10px;padding-inline:10px}body.bid-console .ocean-overview-card{padding:12px}body.bid-console .report-heading{flex-direction:row;align-items:flex-start}body.bid-console .report-heading h2{font-size:17px!important}body.bid-console .quality-card{padding:10px;min-height:80px}body.bid-console .quality-card:nth-child(2){border-right:0}body.bid-console .quality-card:nth-child(-n+2){border-bottom:1px solid #e8edf3}body.bid-console .quality-card strong{font-size:21px}body.bid-console .quality-heading small{display:none}body.bid-console .ocean-level-bar{flex-direction:row;padding:10px;gap:8px}body.bid-console .ocean-level-tabs{width:100%;flex-basis:100%}body.bid-console .ocean-level-tab{flex:1;padding-inline:6px;min-width:0}body.bid-console .console-dimension{flex:1 1 100%}body.bid-console .ocean-level-bar>.ocean-range-field{width:100%;flex-basis:100%;min-width:0}body.bid-console .report-toolbar{grid-template-columns:1fr 1fr;padding:10px;gap:8px}body.bid-console .report-toolbar>.workspace-field:last-of-type{grid-column:1/-1}body.bid-console .report-toolbar>.report-actions{display:flex;flex-wrap:wrap}body.bid-console .console-presets select{flex:1;width:130px}body.bid-console .console-presets button{padding-inline:7px}body.bid-console .table-guidance{font-size:11px}body.bid-console .gap-strip{align-items:flex-start}body.bid-console #report .table-wrap{min-height:260px}}

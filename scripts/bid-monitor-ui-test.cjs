@@ -488,6 +488,35 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#clearReportFilters').click();assert.equal(await page.locator('#count').textContent(),'2 条');
   await page.evaluate(()=>{priorConversionStatus='error';render();});assert.match(await page.locator('#compensationAlert').textContent(),/读取失败/);assert.equal(await page.locator('.compensation-badge').count(),0);
   await page.evaluate(()=>{priorConversionStatus='ready';priorConversionRows=[{...raw[0],conversions:1}];render();});assert.equal(await page.locator('#compensationAlert').isVisible(),false);assert.equal(await page.locator('.compensation-badge').count(),0);
-  assert.deepEqual(errors,[]);console.log('UI PASS: report views, history, filters, exports, mobile layout, conversion warning/filter/detail and cumulative-history readiness');
+  await page.setViewportSize({width:1440,height:1000});
+  await page.evaluate(async ({sample,todayChina})=>{compensationOnly=false;priorConversionRows=[];document.getElementById('clearReportFilters').click();await receive(sample,'布局验收',{start:todayChina,end:todayChina});location.hash='#report';},{sample,todayChina});
+  await page.locator('#search').fill('李四');
+  await page.locator('#saveBidFilters').click();await page.locator('#bidFilterPresetName').fill('李四的广点通计划');await page.locator('#saveBidFilterDialog button[type="submit"]').click();
+  assert.equal(await page.locator('#saveBidFilterDialog').isVisible(),false);
+  await page.locator('#clearReportFilters').click();assert.equal(await page.locator('#count').textContent(),'105 条');
+  const datesBefore=await page.locator('#historyRangeButton').textContent();
+  await page.locator('#savedBidFilters').selectOption('0');assert.equal(await page.locator('#count').textContent(),'52 条');assert.equal(await page.locator('#search').inputValue(),'李四');
+  assert.equal(await page.locator('#historyRangeButton').textContent(),datesBefore);
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('bid-filter-presets-v1'))[0].filters.search),'李四');
+  await page.locator('#deleteBidFilters').click();assert.equal(await page.locator('#savedBidFilters option').count(),1);assert.equal(await page.locator('#search').inputValue(),'李四');
+  await page.locator('#toggleBidOverview').click();assert.equal(await page.locator('#summaryCards').isVisible(),false);await page.locator('#toggleBidOverview').click();assert.equal(await page.locator('#summaryCards').isVisible(),true);
+  await page.locator('.ocean-level-tab[data-view="plans"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#viewMode').inputValue(),'accounts');await page.keyboard.press('End');assert.equal(await page.locator('#viewMode').inputValue(),'platforms');await page.keyboard.press('Home');assert.equal(await page.locator('#viewMode').inputValue(),'plans');
+  await page.keyboard.press('/');assert.equal(await page.locator('#search').evaluate(el=>document.activeElement===el),true);
+  await page.locator('#clearReportFilters').click();
+  assert.deepEqual(await page.evaluate(()=>getPetReportContext(true).summary),await page.evaluate(()=>getPetReportContext().summary));
+  await page.evaluate(()=>{const select=document.getElementById('optimizerFilter');for(const option of select.options)option.selected=option.textContent==='李四';select.dispatchEvent(new Event('input',{bubbles:true}));});
+  await page.locator('#saveBidFilters').click();await page.locator('#bidFilterPresetName').fill('优化师多选方案');await page.locator('#saveBidFilterDialog button[type="submit"]').click();
+  await page.locator('#clearReportFilters').click();await page.locator('#savedBidFilters').selectOption('0');assert.equal(await page.locator('#count').textContent(),'52 条');
+  await page.locator('#clearReportFilters').click();
+  await page.evaluate(()=>{const el=document.getElementById('optimizerFilter');for(const option of [...el.options])if(option.textContent==='李四')option.remove();});
+  await page.locator('#savedBidFilters').selectOption('0');assert.match(await page.locator('#bidPresetStatus').textContent(),/未应用/);assert.equal(await page.locator('#count').textContent(),'105 条');
+  await page.locator('#deleteBidFilters').click();
+  await page.evaluate(()=>window.scrollTo(0,0));
+  const controlIds=['search','taskFilterButton','optimizerFilterButton','platformFilter','historyRangeButton','savedBidFilters','export','reportRefresh'];
+  async function verifyControls(){const boxes=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {id,x:r.x,y:r.y,right:r.right,bottom:r.bottom};}),controlIds);for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];assert.equal(a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y,false,`${a.id} overlaps ${b.id}`);}assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
+  await verifyControls();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-desktop.png')});
+  await page.setViewportSize({width:1024,height:900});await verifyControls();
+  await page.setViewportSize({width:390,height:844});await verifyControls();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-mobile.png'),fullPage:true});
+  assert.deepEqual(errors,[]);console.log('UI PASS: report, console layout, saved filters, keyboard dimensions, responsive controls, warnings and history');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

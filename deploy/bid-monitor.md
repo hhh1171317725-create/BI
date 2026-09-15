@@ -1,5 +1,13 @@
 # Bid Monitor
 
+## 投放工作台（2026-09-15）
+
+维度快捷标签、完整维度下拉框和日期组件放在第一栏；搜索、任务、优化师与平台放在筛选栏。汇总可折叠，数据来源、回补说明及收益覆盖范围在“数据说明与计算范围”内展开查看。
+
+“保存筛选”可在当前浏览器保存最多 12 个命名方案，包含多选任务、优化师、平台及其他字段筛选。应用时保留当前日期，按选项名称恢复多选；若当前数据缺少方案中的选项，则提示并保留原筛选。支持删除方案。方向键切换维度标签，`/` 聚焦搜索。共享报表成员也可使用这些浏览器内操作。
+
+表格汇总使用精简的数据上下文，不再为每次汇总生成 AI 排名和异常样本。财务计算与预警规则保持不变，无数据库迁移。
+
 ## Account task and price precomputation
 
 The application now creates `bid_account_references` automatically (requires the same CREATE TABLE permission as the snapshot store). Each statistical date stores the derived account tasks, optimizer-specific tasks, dated settlement prices and gap, plus task-level references, in a versioned JSON payload. Manual user prices are still applied separately and take precedence.

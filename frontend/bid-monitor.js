@@ -402,11 +402,12 @@ $('#export').onclick=()=>{
 $('#gapReload').onclick=()=>void loadGap();
 
 // Only report fields are exposed to the assistant; configuration credentials stay out.
-window.getPetReportContext=()=>{
+window.getPetReportContext=(summaryOnly=false)=>{
   const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
-  const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};
+  if(summaryOnly===true)return {summary:pick(totals)};
+  const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const filters=Object.fromEntries(['search','taskFilter','optimizerFilter','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).multiple?[...$('#'+id).selectedOptions].map(option=>option.value):$('#'+id).value]));
   return {mode:'bid',reportType:'出价监测',range:range?[range.start,range.end]:[],loaded:!!range,source,
     filters:JSON.stringify({...filters,account:selectedAccount?.label||''}),view:$('#viewMode').value,

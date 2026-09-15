@@ -24,7 +24,7 @@ class ToolPermissionInterceptorTest {
       when(sessions.currentUser(request)).thenReturn(operator);
       assertFalse(interceptor.preHandle(request,response,new Object()));assertEquals(403,response.getStatus());
     }
-    for(String path:java.util.List.of("/api/bid-monitor/shared-report","/api/bid-monitor/gap")){
+    for(String path:java.util.List.of("/api/bid-monitor/shared-report","/api/bid-monitor/gap","/api/bid-monitor/gap/revision","/api/bid-monitor/history","/api/bid-monitor/history/conversions")){
       var request=new MockHttpServletRequest("GET",path);when(sessions.currentUser(request)).thenReturn(operator);
       assertTrue(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()));
     }

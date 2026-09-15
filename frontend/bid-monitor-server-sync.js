@@ -99,6 +99,7 @@ function syncDuration(seconds){
 }
 async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;
+  void window.checkBidGapRevision?.();
   if(!bidCanManage){await bidRefreshShared();return;}
   syncPolling=true;const revision=syncRevision;
   try{

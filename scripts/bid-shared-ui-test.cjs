@@ -13,6 +13,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   const selectView=value=>page.evaluate(value=>{const select=document.getElementById('viewMode');select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));},value);
   const errors=[],forbidden=[],petRequests=[];page.on('pageerror',e=>errors.push(e.message));
   let stamp='2026-09-08T01:00:00Z',price=2,revision='p1';
+  let dailyRevision='dhh-v1',gapFactor=.8;
   const rows=[{promotion_id:'12345',promotion_name:'共享计划',advertiser_id:'111',media_account_name:'客户A',user_name:'张三',stat_cost:100,convert_cnt:10,active_register:100,cpa_bid:10}];
   await page.route('**/api/**',route=>{
    const url=new URL(route.request().url());let data;
@@ -23,7 +24,8 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
    else if(url.pathname==='/api/bid-monitor/shared-report')data={userId:'2',canManage:false,sharedOwnerId:'1',sharedOwnerName:'管理员',version:'1:'+stamp,
     snapshot:url.searchParams.get('after')==='1:'+stamp?null:{date:'2026-09-08',updatedAt:stamp,rows},status:{enabled:true},rules:[{name:'共享任务',keyword:'客户',price}],pricingRevision:revision,
     strategies:[{id:'s1',name:'共享策略',note:'成员可查看',accounts:[{key:'["","id","111"]',label:'客户A',accountId:'111',platform:''}]}],strategyRevision:'s1'};
-   else if(url.pathname==='/api/bid-monitor/gap')data={anchor:'2026-09-08',start:'2026-09-05',end:'2026-09-07',basis:'测试口径',accounts:{111:{gap:.8,validDays:3,days:[]}}};
+   else if(url.pathname==='/api/bid-monitor/gap/revision')data={sourceRevision:dailyRevision};
+   else if(url.pathname==='/api/bid-monitor/gap')data={sourceRevision:dailyRevision,anchor:'2026-09-08',start:'2026-09-05',end:'2026-09-07',basis:'测试口径',accounts:{111:{gap:gapFactor,validDays:3,days:[]}}};
    else if(url.pathname==='/api/bid-monitor/history')data={startDate:url.searchParams.get('startDate'),endDate:url.searchParams.get('endDate'),count:0,rows:[]};
    else{forbidden.push(url.pathname);return route.fulfill({status:403,json:{error:'member read-only'}});}
    return route.fulfill({json:data});
@@ -77,6 +79,12 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.match(await page.locator('#bidPlanDetail').textContent(),/现金利润 = 佣金 − 现金消耗140.00/);
   await page.keyboard.press('Escape');
   await page.locator('#clearReportFilters').click();
+  gapFactor=.6;dailyRevision='dhh-v2';
+  await page.evaluate(()=>window.dispatchEvent(new StorageEvent('storage',{key:'dhh-report-updated',newValue:String(Date.now())})));
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='1.80');
+  assert.equal(stamp,'2026-09-08T01:10:00Z'); // Same plan snapshot, different daily-report revision.
+  gapFactor=.5;dailyRevision='dhh-v3';
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='1.50');
   assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

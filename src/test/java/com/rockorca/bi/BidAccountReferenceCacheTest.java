@@ -7,6 +7,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class BidAccountReferenceCacheTest {
+  @Test void committedImportImmediatelyPreparesTodayAndRevisionCheckIsLightweight(){
+    var repository=mock(ReportRepository.class);var reports=mock(ReportService.class);var store=mock(BidAccountReferenceStore.class);
+    when(store.revision()).thenReturn("committed-v2");when(reports.buildDhhAccountRows(anyList())).thenReturn(List.of());
+    when(store.read(anyString(),anyString())).thenReturn(null);
+    var service=new BidGapService(repository,reports,store);
+    var controller=new BidGapController(service);
+    assertEquals("committed-v2",controller.revision().getBody().get("sourceRevision"));
+    assertEquals("no-store",controller.revision().getHeaders().getCacheControl());
+    verifyNoInteractions(repository,reports);
+    service.onDailyReportUpdated(new DhhReportUpdated());
+    verify(store).save(eq(java.time.LocalDate.now(ReportService.BEIJING).toString()),eq("committed-v2"),anyMap());
+  }
   @Test void reusesSavedReferencesAfterRestartAndDoesNotReadDailyRows(){
     var repository=mock(ReportRepository.class);var reports=mock(ReportService.class);var store=mock(BidAccountReferenceStore.class);
     when(store.revision()).thenReturn("v1:1:1");

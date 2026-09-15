@@ -157,6 +157,12 @@
   byId('strategySave').onclick=()=>{const name=byId('strategyName').value.trim(),note=byId('strategyNote').value.trim(),accounts=accountPayload();if(!name){byId('strategyEditorError').textContent='请填写策略名称';byId('strategyName').focus();return;}if(!accounts.length){byId('strategyEditorError').textContent='请至少选择一个账户';return;}const id=editor.dataset.strategyId||('strategy-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)),next={id,name,note,accounts},index=strategies.findIndex(item=>item.id===id);const updated=[...strategies];if(index<0)updated.push(next);else updated[index]=next;selectedId=id;void saveAll(updated,'策略已保存，数据会随快照自动更新。');};
   byId('strategyDelete').onclick=()=>{const id=editor.dataset.strategyId,strategy=strategies.find(item=>item.id===id);if(!strategy||!confirm(`删除策略“${strategy.name}”？`))return;void saveAll(strategies.filter(item=>item.id!==id),'策略已删除。');};
   document.addEventListener('bid:strategies-shared',event=>applyBundle(event.detail));
+  window.refreshBidStrategyReferences=async()=>{
+    if(!historyRaw.length)return true;
+    const expected=historyRaw,refs=await window.loadBidHistoricalReferences(expected);
+    if(historyRaw!==expected)return false;
+    historyReferences=refs;drawDetail();refreshDataStatus();return Boolean(refs.complete);
+  };
   document.addEventListener('bid:rendered',()=>{if(byId('strategyDataSource').value==='current')drawDetail();});
   applyBundle(window.bidStrategyBundle);
 })();

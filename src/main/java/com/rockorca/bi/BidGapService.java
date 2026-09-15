@@ -42,6 +42,11 @@ public class BidGapService {
     catch(Exception error){org.slf4j.LoggerFactory.getLogger(BidGapService.class).warn("账户任务单价预计算失败，下次自动重试",error);}
   }
 
+  public String sourceRevision(){return references==null?"":references.revision();}
+
+  @org.springframework.context.event.EventListener
+  public void onDailyReportUpdated(DhhReportUpdated event){prepareToday();}
+
   private Map<String,Object> compute(String endDate) {
     LocalDate anchor=LocalDate.parse(endDate), start=anchor.minusDays(TASK_HISTORY_DAYS), end=anchor.minusDays(1);
     List<Map<String,Object>> rows=reports.buildDhhAccountRows(repository.readDhhRows(start.toString(),end.toString(),""));

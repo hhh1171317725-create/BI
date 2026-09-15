@@ -94,6 +94,8 @@ class CoreBehaviorTest {
     ReportRepository repository = mock(ReportRepository.class);
     CsvImportService upstream = mock(CsvImportService.class);
     ReportService service = new ReportService(repository, upstream, config, objectMapper);
+    var events=mock(org.springframework.context.ApplicationEventPublisher.class);
+    service.setEvents(events);
     List<Map<String, Object>> rows = List.of(map(
         "日期", "2026-07-25", "优化师", "宏辉", "项目", "京东",
         "任务名", "任务A", "消耗", 100, "现金消耗", 80,
@@ -112,6 +114,14 @@ class CoreBehaviorTest {
     assertEquals(List.of("2026-07-25", "2026-07-25"), result.get("range"));
     verify(repository).replaceDhhRange(
         rows, "2026-07-01", "2026-07-25", "manual");
+    var order=org.mockito.Mockito.inOrder(repository,events);
+    order.verify(repository).replaceDhhRange(rows,"2026-07-01","2026-07-25","manual");
+    order.verify(events).publishEvent(org.mockito.ArgumentMatchers.any(DhhReportUpdated.class));
+    org.mockito.Mockito.clearInvocations(events);
+    org.mockito.Mockito.doThrow(new IllegalStateException("rollback")).when(repository)
+        .replaceDhhRange(rows,"2026-07-01","2026-07-25","manual");
+    org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,()->service.loadDhh("temporary-token","20","2026-07-01","2026-07-25"));
+    org.mockito.Mockito.verifyNoInteractions(events);
   }
 
   @Test

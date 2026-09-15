@@ -127,14 +127,36 @@ async function api(path,options={}){
   if(!response.ok)throw Error(data.error||data.message||`HTTP ${response.status}`);return data;
 }
 const historyReferencePromises=new Map();
+let historyReferenceEpoch=0;
 window.loadBidStrategyReferences=end=>{
-  if(!historyReferencePromises.has(end))historyReferencePromises.set(end,api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)}).then(B.normalizeGapPayload).catch(error=>{historyReferencePromises.delete(end);throw error;}));
+  if(!historyReferencePromises.has(end)){
+    const epoch=historyReferenceEpoch;
+    const pending=api('/api/bid-monitor/gap?endDate='+encodeURIComponent(end),{signal:AbortSignal.timeout(30000)})
+      .then(data=>epoch===historyReferenceEpoch?B.normalizeGapPayload(data):window.loadBidStrategyReferences(end))
+      .catch(error=>{if(historyReferencePromises.get(end)===pending)historyReferencePromises.delete(end);throw error;});
+    historyReferencePromises.set(end,pending);
+  }
   return historyReferencePromises.get(end);
 };
 window.loadBidHistoricalReferences=async rows=>{
+  const epoch=historyReferenceEpoch;
   const dates=[...new Set(rows.map(row=>row.statDate).filter(Boolean))].sort(),references=new Map();let cursor=0;
   const worker=async()=>{while(cursor<dates.length){const date=dates[cursor++];try{references.set(date,await window.loadBidStrategyReferences(date));}catch{}}};
-  await Promise.all(Array.from({length:Math.min(4,dates.length)},worker));references.complete=references.size===dates.length;references.totalDates=dates.length;return references;
+  await Promise.all(Array.from({length:Math.min(4,dates.length)},worker));if(epoch!==historyReferenceEpoch)return window.loadBidHistoricalReferences(rows);references.complete=references.size===dates.length;references.totalDates=dates.length;return references;
+};
+window.refreshBidReferences=async revision=>{
+  ++historyReferenceEpoch;historyReferencePromises.clear();
+  let complete=true;
+  if(historyMode&&raw.length){
+    const expected=raw,refs=await window.loadBidHistoricalReferences(expected);
+    if(raw!==expected||!historyMode)return false;
+    historyTaskReferences=refs;historyFinancialReady=Boolean(refs.complete);complete=historyFinancialReady;render();
+    $('#historyStatus').textContent=complete?'日报已更新，当前历史报表的任务、单价与 gap 已同步。':'日报已更新，部分日期的 gap 同步失败，将自动重试。';
+  }else if(range&&raw.length){
+    await loadGap();complete=gapData?.sourceRevision===revision;
+  }
+  if(window.refreshBidStrategyReferences)complete=(await window.refreshBidStrategyReferences())&&complete;
+  return complete;
 };
 async function loadPriorPlanConversions(anchor,expectedRows,generation){
   const endDate=new Date(anchor+'T00:00:00Z');endDate.setUTCDate(endDate.getUTCDate()-1);const startDate=new Date(anchor+'T00:00:00Z');startDate.setUTCDate(startDate.getUTCDate()-4);

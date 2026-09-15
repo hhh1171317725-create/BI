@@ -45,6 +45,14 @@ public class ReportService {
   private final RuntimeConfig config;
   private final ObjectMapper objectMapper;
   private final AtomicBoolean refreshRunning = new AtomicBoolean(false);
+  private org.springframework.context.ApplicationEventPublisher events;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setEvents(org.springframework.context.ApplicationEventPublisher events) { this.events=events; }
+
+  private void dailyReportUpdated() {
+    if(events!=null)events.publishEvent(new DhhReportUpdated());
+  }
   private final Map<JdAnalysisKey, CachedJdAnalysis> jdAnalysisCache = new ConcurrentHashMap<>();
   private final Map<DhhAnalysisKey, CachedDhhAnalysis> dhhAnalysisCache = new ConcurrentHashMap<>();
 
@@ -102,6 +110,7 @@ public class ReportService {
       saveSchedulerCredentials(resolvedToken, resolvedUserId);
       repository.replaceDhhRange(rows, start, end, "manual");
       dhhAnalysisCache.clear();
+      dailyReportUpdated();
       return analyzeDhh(start, end, "");
     });
   }
@@ -161,6 +170,7 @@ public class ReportService {
       repository.replaceDhhRangeAndJd(dhhRows, start, end, jdRows, "scheduled");
       dhhAnalysisCache.clear();
       jdAnalysisCache.clear();
+      dailyReportUpdated();
       return null;
     });
   }

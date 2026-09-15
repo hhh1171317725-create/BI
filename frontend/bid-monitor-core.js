@@ -112,7 +112,19 @@
     const best=candidates[0];if(!best||candidates[1]&&Math.abs(candidates[1].difference-best.difference)<=1e-6)return null;
     return{task:best.task,rule:best.rule||null,detail:{method:'bid-return-estimate',estimatedSettlementPrice:estimated,matchedActualPrice:best.actualPrice,difference:best.difference,returnRatio:ratio}};
   }
-  function cashMetrics(row,price){
+  const beijingDate=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+  function normalizedDate(value){
+    const text=String(value??'').trim(),matched=text.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if(matched)return `${matched[1]}-${matched[2]}-${matched[3]}`;
+    if(/^\d{10}(?:\d{3})?$/.test(text)){
+      const timestamp=Number(text)*(text.length===10?1000:1);
+      if(Number.isFinite(timestamp))return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(timestamp));
+    }
+    return '';
+  }
+  function daysBefore(date,days){const parsed=new Date(`${date}T00:00:00Z`);if(Number.isNaN(parsed.getTime()))return '';parsed.setUTCDate(parsed.getUTCDate()-days);return parsed.toISOString().slice(0,10);}
+  function warningCreationEligible(createdAt,referenceDate=beijingDate()){return normalizedDate(createdAt)===daysBefore(referenceDate,3);}
+  function cashMetrics(row,price,warningDate=row.warningReferenceDate||beijingDate()){
     const valid=n=>Number.isFinite(n)&&n>=0;
     const finite=n=>Number.isFinite(n)?n:null;
     const commission=valid(row.registrations)&&Number.isFinite(price)&&price>=0?finite(row.registrations*price):null;
@@ -128,7 +140,7 @@
       const warningThreshold=valid(row.bid)?row.bid*7.2:null;
       const eligible=overallConversions>=6&&row.cost-threshold>tolerance;
       const warningTolerance=Number.EPSILON*Math.max(Math.abs(overallCost),Math.abs(warningThreshold||0))*8;
-      if(row.bid>0&&overallConversions<6&&overallCost-warningThreshold>warningTolerance)compensationShortfall=Math.ceil(6-overallConversions);
+      if(warningCreationEligible(row.createdAt,warningDate)&&row.bid>0&&overallConversions<6&&overallCost-warningThreshold>warningTolerance)compensationShortfall=Math.ceil(6-overallConversions);
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
       estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;
@@ -136,7 +148,7 @@
         ?finite((commission+estimatedCompensation)/row.cost):null;
     }
     return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,compensationShortfall,
-      compensationWarningThreshold:valid(row.bid)?row.bid*7.2:null,
+      compensationWarningThreshold:valid(row.bid)?row.bid*7.2:null,compensationWarningCreationDate:daysBefore(warningDate,3),
       roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
       bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
   }
@@ -170,13 +182,14 @@
       const overallCost=Number.isFinite(latest.overallCost)?latest.overallCost:cost;
       const compensationWarningThreshold=Number.isFinite(latest.bid)?latest.bid*7.2:null;
       const warningTolerance=Number.EPSILON*Math.max(Math.abs(overallCost||0),Math.abs(compensationWarningThreshold||0))*8;
-      const compensationShortfall=latest.bid>0&&overallConversions<6&&overallCost-compensationWarningThreshold>warningTolerance?Math.ceil(6-overallConversions):0;
+      const warningDate=latest.warningReferenceDate||beijingDate();
+      const compensationShortfall=warningCreationEligible(latest.createdAt,warningDate)&&latest.bid>0&&overallConversions<6&&overallCost-compensationWarningThreshold>warningTolerance?Math.ceil(6-overallConversions):0;
       return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions,overallCost,ratio,cpa:registrations>0&&cost!==null?cost/registrations:null,
         mediaCpm:cost!==null&&impressions>0?cost/impressions*1000:null,ecpm:Number.isFinite(latest.bid)&&conversions!==null&&impressions>0?latest.bid*conversions/impressions*1000:null,
         commission,revenue:commission,basePrice,price,gap,priceSource:'range-total',priceDate:`${rangeStart} ~ ${rangeEnd}`,gapSource:'range-total',
         breakEven:breakEvenBid,breakEvenBid,actualRoi:commission!==null&&cost>0?commission/cost:null,roi:commission!==null&&cashCost>0?commission/cashCost:null,
         profit:commission!==null&&cashCost!==null?commission-cashCost:null,bidCost,grant,cashCost,estimatedCompensation,
-        compensationWarningThreshold,compensationShortfall,
+        compensationWarningThreshold,compensationWarningCreationDate:daysBefore(warningDate,3),compensationShortfall,
         estimatedRoi:commission!==null&&estimatedCompensation!==null&&cost>0?(commission+estimatedCompensation)/cost:null,
         bidProfitRate:commission>0&&bidCost!==null?(commission-bidCost)/commission:null,projectedCost:bidCost,projectedProfit:commission!==null&&bidCost!==null?commission-bidCost:null,
         pricingStatus:price===null?'price-missing':'priced',missingReason:price===null?'区间内部分日期缺少任务、单价或 gap，无法完整合并收益':'',rangeStart,rangeEnd,rangeDays:new Set(items.map(row=>row.statDate).filter(Boolean)).size};
@@ -272,5 +285,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,normalizeGapPayload,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,normalizeGapPayload,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,warningCreationEligible,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

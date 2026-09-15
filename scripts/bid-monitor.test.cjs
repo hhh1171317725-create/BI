@@ -5,12 +5,15 @@ const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOpt
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
 test('conversion warning uses strict cost boundary and overall conversions without granting compensation',()=>{
  const B=require('../frontend/bid-monitor-core.js');
- const base={cost:73,conversions:5,bid:10,registrations:10};
+ const base={cost:73,conversions:5,bid:10,registrations:10,createdAt:'2026-09-12 08:00:00',warningReferenceDate:'2026-09-15'};
  assert.equal(B.cashMetrics(base,null).compensationShortfall,1);
  assert.equal(B.cashMetrics(base,null).estimatedCompensation,0);
  assert.equal(B.cashMetrics({...base,cost:72},null).compensationShortfall,0);
  assert.equal(B.cashMetrics({...base,cost:1,overallCost:73},null).compensationShortfall,1);
  assert.equal(B.cashMetrics({...base,cost:100,overallCost:72},null).compensationShortfall,0);
+ assert.equal(B.cashMetrics({...base,createdAt:'2026-09-11'},null).compensationShortfall,0);
+ assert.equal(B.cashMetrics({...base,createdAt:'2026-09-13'},null).compensationShortfall,0);
+ assert.equal(B.cashMetrics({...base,createdAt:''},null).compensationShortfall,0);
  assert.equal(B.cashMetrics({...base,overallConversions:6},null).compensationShortfall,0);
  assert.equal(B.cashMetrics({...base,overallConversions:6},null).estimatedCompensation,23);
  assert.equal(B.cashMetrics({...base,conversions:0},null).compensationShortfall,6);
@@ -21,12 +24,19 @@ test('conversion warning uses strict cost boundary and overall conversions witho
 });
 test('merged warning uses total plan spend and latest bid',()=>{
  const B=require('../frontend/bid-monitor-core.js');
- const rows=B.withOverallConversions([{id:'1',accountId:'a',platform:'字节',statDate:'2026-09-13',cost:72,conversions:1,bid:100},{id:'1',accountId:'a',platform:'字节',statDate:'2026-09-14',cost:1,conversions:1,bid:10}]);
+ const rows=B.withOverallConversions([{id:'1',accountId:'a',platform:'字节',createdAt:'2026-09-12',warningReferenceDate:'2026-09-15',statDate:'2026-09-13',cost:72,conversions:1,bid:100},{id:'1',accountId:'a',platform:'字节',createdAt:'2026-09-12',warningReferenceDate:'2026-09-15',statDate:'2026-09-14',cost:1,conversions:1,bid:10}]);
  const merged=B.mergePlanRows(rows.map(row=>({...row,...B.cashMetrics(row,null)})))[0];
  assert.equal(merged.compensationShortfall,4);
  assert.equal(merged.overallCost,73);
  assert.equal(merged.compensationWarningThreshold,72);
  assert.equal(merged.estimatedCompensation,0);
+});
+test('warning creation window is exactly the third prior calendar date',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ assert.equal(B.warningCreationEligible('2026-09-12 23:59:59','2026-09-15'),true);
+ assert.equal(B.warningCreationEligible('2026/09/12 00:00:00','2026-09-15'),true);
+ assert.equal(B.warningCreationEligible('2026-09-11','2026-09-15'),false);
+ assert.equal(B.warningCreationEligible('2026-09-13','2026-09-15'),false);
 });
 test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
  const rules=[{name:'甲',keyword:'account',price:2}];

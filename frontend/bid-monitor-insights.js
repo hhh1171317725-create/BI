@@ -12,8 +12,8 @@
     alertFilter.hidden=false;
     const count=new Set(compensationCandidates.map(B.planIdentity)).size;
     alert.hidden=!count&&!compensationOnly;
-    alertText.textContent=count?`转化门槛预警：${count} 个计划累计消耗已高于出价 × 7.2，累计转化不足 6 个。请查看计划旁的转化缺口。`:'当前筛选下没有转化门槛预警。';
-    alert.title='按计划已读取的全时间数据判断：累计消耗 > 当前出价 × 7.2，且累计转化 < 6；低于最低消耗线不预警。';
+    alertText.textContent=count?`转化门槛预警：${count} 个计划（三天前创建）累计消耗已高于出价 × 7.2，累计转化不足 6 个。`:'当前筛选下没有转化门槛预警。';
+    alert.title='只判断创建日期恰好为今天往前第3天的计划：累计消耗 > 当前出价 × 7.2，且累计转化 < 6；其他创建日期不预警。';
     alertFilter.textContent=compensationOnly?'取消预警筛选':'只看预警计划';alertFilter.setAttribute('aria-pressed',String(compensationOnly));
   }
   document.addEventListener('bid:rendered',drawCompensationAlert);drawCompensationAlert();
@@ -66,7 +66,7 @@
     const detailGap=row.gapSource==='range-total'?`${row.rangeStart} 至 ${row.rangeEnd} 按各日任务、单价与 gap 计算后合并`:gapTitle(row.accountId,row);
     body.innerHTML=`
       <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
-      ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>计划累计消耗 ${fmt(row.overallCost)} 元，高于最低消耗 ${fmt(row.compensationWarningThreshold)} 元（当前出价 × 7.2）；累计转化 ${fmt(row.overallConversions)} 个，门槛为 6 个。</p></div>`:''}
+      ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>该计划创建于 ${esc(String(row.createdAt||'').slice(0,10))}，符合三天前创建的预警范围。累计消耗 ${fmt(row.overallCost)} 元，高于最低消耗 ${fmt(row.compensationWarningThreshold)} 元（当前出价 × 7.2）；累计转化 ${fmt(row.overallConversions)} 个。</p></div>`:''}
       ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}
       <div class="detail-kpis">${[['总消耗',fmt(row.cost)],['现金消耗',fmt(row.cashCost)],['预估佣金',fmt(row.commission)],['预估 ROI',fmtRoi(row.estimatedRoi)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>

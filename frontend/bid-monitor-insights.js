@@ -1,5 +1,22 @@
 // Read-only report insights. Uses the same filtered rows and formulas as the table/export.
 (() => {
+  const alert=document.createElement('div');alert.id='compensationAlert';alert.className='compensation-alert';alert.hidden=true;
+  const alertText=document.createElement('span'),alertFilter=document.createElement('button');alertFilter.type='button';alertFilter.id='compensationAlertFilter';
+  alert.append(alertText,alertFilter);document.querySelector('#report .table-wrap').before(alert);
+  alertFilter.onclick=()=>{compensationOnly=!compensationOnly;page=1;render();};
+  function drawCompensationAlert(){
+    if(!compensationWarningsReady()){
+      alert.hidden=false;alertFilter.hidden=true;
+      alertText.textContent=priorConversionStatus==='error'?'历史累计转化读取失败，暂不判断转化缺口，请刷新全部数据重试。':'正在读取历史累计转化，完成后显示转化门槛预警…';return;
+    }
+    alertFilter.hidden=false;
+    const count=new Set(compensationCandidates.map(B.planIdentity)).size;
+    alert.hidden=!count&&!compensationOnly;
+    alertText.textContent=count?`转化门槛预警：${count} 个计划消耗已超成本线，累计转化不足 6 个。请查看计划旁的转化缺口。`:'当前筛选下没有转化门槛预警。';
+    alert.title='按当前已读取数据判断：消耗 > 出价 × 转化数 × 1.2，累计转化 < 6；本提示不代表平台已确认赔付。';
+    alertFilter.textContent=compensationOnly?'取消预警筛选':'只看预警计划';alertFilter.setAttribute('aria-pressed',String(compensationOnly));
+  }
+  document.addEventListener('bid:rendered',drawCompensationAlert);drawCompensationAlert();
   const cards=$('#summaryCards');
   let displayedRows=null;
   function drawCards(){
@@ -49,6 +66,7 @@
     const detailGap=row.gapSource==='range-total'?`${row.rangeStart} 至 ${row.rangeEnd} 按各日任务、单价与 gap 计算后合并`:gapTitle(row.accountId,row);
     body.innerHTML=`
       <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
+      ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>已读取的计划累计转化 ${fmt(row.overallConversions)} 个，门槛为 6 个；消耗已超过成本线，当前预估赔付为 0。</p></div>`:''}
       ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}
       <div class="detail-kpis">${[['总消耗',fmt(row.cost)],['现金消耗',fmt(row.cashCost)],['预估佣金',fmt(row.commission)],['预估 ROI',fmtRoi(row.estimatedRoi)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>

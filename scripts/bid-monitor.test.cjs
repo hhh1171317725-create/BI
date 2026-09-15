@@ -3,6 +3,26 @@ const assert=require('node:assert/strict');
 const {analyze,normalize,normalizeGapPayload,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache,mergePlanRows}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
+test('conversion warning uses strict cost boundary and overall conversions without granting compensation',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const base={cost:61,conversions:5,bid:10,registrations:10};
+ assert.equal(B.cashMetrics(base,null).compensationShortfall,1);
+ assert.equal(B.cashMetrics(base,null).estimatedCompensation,0);
+ assert.equal(B.cashMetrics({...base,cost:60},null).compensationShortfall,0);
+ assert.equal(B.cashMetrics({...base,overallConversions:6},null).compensationShortfall,0);
+ assert.equal(B.cashMetrics({...base,overallConversions:6},null).estimatedCompensation,11);
+ assert.equal(B.cashMetrics({...base,conversions:0},null).compensationShortfall,6);
+ for(const changes of [{cost:null},{conversions:null},{bid:null},{bid:0},{cost:0}])assert.equal(B.cashMetrics({...base,...changes},null).compensationShortfall,0);
+ const prepared=B.withOverallConversions([{...base,id:'1',accountId:'a',platform:'字节',conversions:1}],[{id:'1',accountId:'a',platform:'字节',conversions:4},{id:'1',accountId:'b',platform:'字节',conversions:100}]);
+ assert.equal(B.cashMetrics(prepared[0],null).compensationShortfall,1);
+});
+test('merged warning retains daily cost triggers even when bids change between dates',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const rows=B.withOverallConversions([{id:'1',accountId:'a',platform:'字节',statDate:'2026-09-13',cost:20,conversions:1,bid:10},{id:'1',accountId:'a',platform:'字节',statDate:'2026-09-14',cost:1,conversions:1,bid:100}]);
+ const merged=B.mergePlanRows(rows.map(row=>({...row,...B.cashMetrics(row,null)})))[0];
+ assert.equal(merged.compensationShortfall,4);
+ assert.equal(merged.estimatedCompensation,0);
+});
 test('gap changes actual price and related financial metrics; missing never defaults to one',()=>{
  const rules=[{name:'甲',keyword:'account',price:2}];
  const source={...row,account:'account',cost:100,conversions:10,registrations:100,bid:5};

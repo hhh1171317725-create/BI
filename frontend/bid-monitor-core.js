@@ -118,20 +118,21 @@
     const commission=valid(row.registrations)&&Number.isFinite(price)&&price>=0?finite(row.registrations*price):null;
     const bidCost=valid(row.bid)&&valid(row.conversions)?finite(row.bid*row.conversions):null;
     const breakEvenBid=commission>0&&row.conversions>0?finite(commission/row.conversions):null;
-    let grant=null,cashCost=null,estimatedCompensation=null,estimatedRoi=null;
+    let grant=null,cashCost=null,estimatedCompensation=null,estimatedRoi=null,compensationShortfall=0;
     if(valid(row.cost)&&valid(row.conversions)&&bidCost!==null){
       const threshold=1.2*bidCost;
       // Do not let binary rounding turn equality at the 1.2 boundary into a grant.
       const tolerance=Number.EPSILON*Math.max(Math.abs(row.cost),Math.abs(threshold))*8;
       const overallConversions=valid(row.overallConversions)?row.overallConversions:row.conversions;
       const eligible=overallConversions>=6&&row.cost-threshold>tolerance;
+      if(row.bid>0&&overallConversions<6&&row.cost-threshold>tolerance)compensationShortfall=Math.ceil(6-overallConversions);
       grant=eligible?row.cost-bidCost:0;
       cashCost=eligible?bidCost:row.cost;
       estimatedCompensation=eligible?Math.max(0,row.cost-bidCost):0;
       estimatedRoi=commission!==null&&row.cost>0
         ?finite((commission+estimatedCompensation)/row.cost):null;
     }
-    return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,
+    return{cost:valid(row.cost)?row.cost:null,commission,bidCost,breakEvenBid,grant,cashCost,estimatedCompensation,estimatedRoi,compensationShortfall,
       roi:commission!==null&&cashCost>0?finite(commission/cashCost):null,
       bidProfitRate:breakEvenBid>0&&valid(row.bid)?finite((breakEvenBid-row.bid)/breakEvenBid):null};
   }
@@ -159,6 +160,7 @@
         commission,revenue:commission,basePrice,price,gap,priceSource:'range-total',priceDate:`${rangeStart} ~ ${rangeEnd}`,gapSource:'range-total',
         breakEven:breakEvenBid,breakEvenBid,actualRoi:commission!==null&&cost>0?commission/cost:null,roi:commission!==null&&cashCost>0?commission/cashCost:null,
         profit:commission!==null&&cashCost!==null?commission-cashCost:null,bidCost,grant,cashCost,estimatedCompensation,
+        compensationShortfall:conversions>=6?0:items.reduce((maximum,row)=>Math.max(maximum,row.compensationShortfall||0),0),
         estimatedRoi:commission!==null&&estimatedCompensation!==null&&cost>0?(commission+estimatedCompensation)/cost:null,
         bidProfitRate:commission>0&&bidCost!==null?(commission-bidCost)/commission:null,projectedCost:bidCost,projectedProfit:commission!==null&&bidCost!==null?commission-bidCost:null,
         pricingStatus:price===null?'price-missing':'priced',missingReason:price===null?'区间内部分日期缺少任务、单价或 gap，无法完整合并收益':'',rangeStart,rangeEnd,rangeDays:new Set(items.map(row=>row.statDate).filter(Boolean)).size};

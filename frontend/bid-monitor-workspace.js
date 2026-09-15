@@ -86,6 +86,7 @@
       chip.setAttribute('aria-label',`清除${label}筛选`);
       chip.onclick=()=>{if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;input.dispatchEvent(new Event('input',{bubbles:true}));const trigger=document.getElementById(id+'Button');if(trigger)trigger.focus();else input.focus();};chips.append(chip);
     }
+    if(typeof compensationOnly!=='undefined'&&compensationOnly){count++;const chip=make('button','filter-chip','转化门槛预警 ×');chip.type='button';chip.onclick=()=>{compensationOnly=false;page=1;render();};chips.append(chip);}
     if(!count)chips.append(make('span','filter-placeholder','未设置筛选 · 当前展示已加载数据'));
     reset.hidden=!count;
     const empty=report.querySelector('#rows .empty');
@@ -104,6 +105,7 @@
     enhanceSelection();drawTableSummary();
   }
   reset.onclick=()=>{
+    compensationOnly=false;
     filters.forEach(([id,,empty])=>{const input=document.getElementById(id);if(input.multiple)for(const option of input.options)option.selected=false;else input.value=empty;});
     // One event renders once; do not clear columns, sort order or account drilldown.
     document.getElementById('search').dispatchEvent(new Event('input',{bubbles:true}));

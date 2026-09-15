@@ -474,6 +474,19 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#search').inputValue(),'');
   assert.match(await page.locator('.table-guidance').textContent(),/当前按/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  assert.deepEqual(errors,[]);console.log('UI PASS: report views including saved time history, retained configuration, deep links, report-first layout, collapsible settings, all-plan paging, optimizer detail and summary, estimated ROI, exports, task prices, mobile width, credential reuse and sync');
+  await page.setViewportSize({width:1440,height:1000});
+  await selectView('plans');
+  await page.evaluate(async ({sample,todayChina})=>{document.getElementById('clearReportFilters').click();await receive([{...sample[0],promotion_id:'warning-1',promotion_name:'转化门槛测试',stat_cost:100,convert_cnt:5,cpa_bid:10},{...sample[1],promotion_id:'ready-1',stat_cost:100,convert_cnt:6,cpa_bid:10}],'预警测试',{start:todayChina,end:todayChina});},{sample,todayChina});
+  assert.match(await page.locator('#compensationAlert').textContent(),/1 个计划/);
+  assert.equal(await page.locator('.compensation-badge').textContent(),'还差 1 个转化');
+  await page.locator('#compensationAlertFilter').click();assert.equal(await page.locator('#count').textContent(),'1 条');
+  await page.locator('.plan-detail-link').click();assert.match(await page.locator('#bidPlanDetail').textContent(),/还差 1 个转化/);await page.locator('#bidPlanDetail .dialog-close').click();
+  await page.locator('#compensationAlert').scrollIntoViewIfNeeded();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-compensation-alert-desktop.png')});
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.locator('#compensationAlert').scrollIntoViewIfNeeded();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-compensation-alert-mobile.png')});
+  await page.locator('#clearReportFilters').click();assert.equal(await page.locator('#count').textContent(),'2 条');
+  await page.evaluate(()=>{priorConversionStatus='error';render();});assert.match(await page.locator('#compensationAlert').textContent(),/读取失败/);assert.equal(await page.locator('.compensation-badge').count(),0);
+  await page.evaluate(()=>{priorConversionStatus='ready';priorConversionRows=[{...raw[0],conversions:1}];render();});assert.equal(await page.locator('#compensationAlert').isVisible(),false);assert.equal(await page.locator('.compensation-badge').count(),0);
+  assert.deepEqual(errors,[]);console.log('UI PASS: report views, history, filters, exports, mobile layout, conversion warning/filter/detail and cumulative-history readiness');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);process.exitCode=1});

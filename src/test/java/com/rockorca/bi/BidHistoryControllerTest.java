@@ -25,7 +25,12 @@ class BidHistoryControllerTest {
     assertEquals(1,controller.conversions(request,start.toString(),yesterday.toString()).get("count"));
     verify(history).readConversions(1,start,yesterday);
     verify(history,never()).readConversions(eq(2L),any(),any());
+    when(history.readEndedWarnings(1,yesterday.plusDays(1))).thenReturn(List.of(Map.of("promotion_id","expired","shortfall",2)));
+    assertEquals(1,controller.endedWarnings(request).get("count"));
+    verify(history).readEndedWarnings(1,yesterday.plusDays(1));
+    verify(history,never()).readEndedWarnings(eq(2L),any());
     when(users.canUseTool(member,"bidMonitor")).thenReturn(false);
+    assertThrows(org.springframework.web.server.ResponseStatusException.class,()->controller.endedWarnings(request));
     assertThrows(org.springframework.web.server.ResponseStatusException.class,()->controller.conversions(request,start.toString(),yesterday.toString()));
     when(users.canUseTool(member,"bidMonitor")).thenReturn(true);
     assertThrows(IllegalArgumentException.class,()->controller.get(request,start.minusDays(40).toString(),yesterday.toString()));

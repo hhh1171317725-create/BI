@@ -27,6 +27,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
    else if(url.pathname==='/api/bid-monitor/gap/revision')data={sourceRevision:dailyRevision};
    else if(url.pathname==='/api/bid-monitor/gap')data={sourceRevision:dailyRevision,anchor:'2026-09-08',start:'2026-09-05',end:'2026-09-07',basis:'测试口径',accounts:{111:{gap:gapFactor,validDays:3,days:[]}}};
    else if(url.pathname==='/api/bid-monitor/history')data={startDate:url.searchParams.get('startDate'),endDate:url.searchParams.get('endDate'),count:0,rows:[]};
+   else if(url.pathname==='/api/bid-monitor/history/ended-warnings')data={asOf:'2026-09-15',rows:[]};
    else{forbidden.push(url.pathname);return route.fulfill({status:403,json:{error:'member read-only'}});}
    return route.fulfill({json:data});
   });
@@ -86,6 +87,9 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   gapFactor=.5;dailyRevision='dhh-v3';
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(16)')?.textContent==='1.50');
   assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);
+  await page.locator('#openEndedWarnings').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 0 个计划'));
+  assert.match(await page.locator('#endedWarningsDialog tbody').textContent(),/没有符合条件/);await page.locator('#endedWarningsDialog .ended-close').click();
+  assert.deepEqual(forbidden,[]);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   fs.mkdirSync(path.resolve(__dirname,'../.runtime'),{recursive:true});

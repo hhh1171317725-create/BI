@@ -519,17 +519,17 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.setViewportSize({width:390,height:844});await verifyControls();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-mobile.png'),fullPage:true});
   const countBefore=await page.locator('#count').textContent();
   let endedFailure=false,endedRequests=0;
-  await page.route('**/api/bid-monitor/history/ended-warnings',route=>{endedRequests++;return route.fulfill(endedFailure?{status:500,json:{message:'archive unavailable'}}:{json:{asOf:'2026-09-15',rows:Array.from({length:51},(_,i)=>({...sample[i],promotion_id:'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',archive_complete:i!==0}))}});});
-  assert.equal(endedRequests,0);await page.locator('#openEndedWarnings').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个计划'));
-  assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),50);
-  assert.match(await page.locator('#endedWarningsDialog tbody tr').first().textContent(),/归档不完整，待核对/);
+  await page.route('**/api/bid-monitor/history/ended-warnings*',route=>{endedRequests++;if(endedRequests===1)return route.fulfill({json:{state:'running',rows:[]}});return route.fulfill(endedFailure?{status:500,json:{message:'archive unavailable'}}:{json:{state:'ready',checkedAt:'2026-09-17T02:00:00Z',checkedCount:51,unverifiedCount:1,asOf:'2026-09-17',rows:Array.from({length:51},(_,i)=>({...sample[i],promotion_id:'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',verified:true}))}});});
+  assert.equal(endedRequests,0);await page.locator('#openEndedWarnings').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));
+  assert.ok(endedRequests>=2);assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),50);
+  assert.match(await page.locator('#endedWarningsDialog tbody tr').first().textContent(),/接口累计已核验/);
   await page.locator('#endedWarningsDialog .ended-next').click();assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);
   await page.locator('#endedWarningsDialog input').fill('过期计划 0');assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);
   assert.match(await page.locator('#endedWarningsDialog tbody').textContent(),/还差 1 个/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-ended-warnings-mobile.png')});
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-ended-warnings-desktop.png')});
-  endedFailure=true;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('读取失败'));assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);
-  endedFailure=false;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个计划'));assert.equal(await page.locator('#endedWarningsDialog .ended-next').isDisabled(),true);
+  endedFailure=true;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('核验失败'));assert.doesNotMatch(await page.locator('#endedWarningsDialog tbody').textContent(),/过期计划 0/);
+  endedFailure=false;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));assert.equal(await page.locator('#endedWarningsDialog .ended-next').isDisabled(),true);
   await page.locator('#endedWarningsDialog .ended-close').click();assert.equal(await page.locator('#count').textContent(),countBefore);
   assert.deepEqual(errors,[]);console.log('UI PASS: report, console layout, saved filters, keyboard dimensions, responsive controls, active/expired warnings and history');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve))}

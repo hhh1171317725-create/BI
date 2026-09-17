@@ -25,8 +25,8 @@ final class BidEndedWarning {
     return result;
   }
 
-  private static double number(Object value){try{return Double.parseDouble(Objects.toString(value,""));}catch(NumberFormatException e){return Double.NaN;}}
-  private static LocalDate date(Object value){
+  static double number(Object value){try{return Double.parseDouble(Objects.toString(value,""));}catch(NumberFormatException e){return Double.NaN;}}
+  static LocalDate date(Object value){
     String text=Objects.toString(value,"").trim();
     try{
       if(text.matches("\\d{10}|\\d{13}"))return Instant.ofEpochMilli(Long.parseLong(text)*(text.length()==10?1000:1)).atZone(ReportService.BEIJING).toLocalDate();

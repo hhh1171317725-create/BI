@@ -54,33 +54,22 @@ public class BidHistoryStore {
     return read(owner,start,end,true);
   }
 
-  /** Aggregate in the database; never download every daily payload to build expired alerts. */
-  List<Map<String,Object>> readEndedWarnings(long owner,LocalDate today)throws Exception{
+  /** Archives discover plan identities only; old daily counters cannot establish current eligibility. */
+  List<Map<String,Object>> readEndedPlans(long owner,LocalDate today)throws Exception{
     initialize();
-    String cost="JSON_UNQUOTE(JSON_EXTRACT(payload,'$.stat_cost'))";
-    String conversions="JSON_UNQUOTE(JSON_EXTRACT(payload,'$.convert_cnt'))";
-    String valid="("+cost+" REGEXP '^[0-9]+([.][0-9]+)?$' AND "+conversions+" REGEXP '^[0-9]+([.][0-9]+)?$')";
-    String sql="SELECT h.payload,a.total_cost,a.total_conversions,a.first_date,a.last_date,a.days "
-        +"FROM (SELECT user_id,source_platform,media_account_id,promotion_id,"
-        +"SUM(CAST("+cost+" AS DECIMAL(24,6))) total_cost,"
-        +"SUM(CAST("+conversions+" AS DECIMAL(24,6))) total_conversions,"
-        +"MIN(report_date) first_date,MAX(report_date) last_date,COUNT(*) days "
-        +"FROM bid_monitor_history_rows WHERE user_id=? AND report_date<? "
-        +"GROUP BY user_id,source_platform,media_account_id,promotion_id "
-        +"HAVING MIN(COALESCE("+valid+",0))=1 AND total_conversions<6 AND total_cost>0) a "
-        +"JOIN bid_monitor_history_rows h ON h.user_id=a.user_id AND h.report_date=a.last_date "
-        +"AND h.source_platform=a.source_platform AND h.media_account_id=a.media_account_id AND h.promotion_id=a.promotion_id "
-        +"ORDER BY a.last_date DESC,a.total_cost DESC LIMIT "+(MAX_QUERY_ROWS+1);
+    String sql="SELECT h.payload FROM (SELECT user_id,source_platform,media_account_id,promotion_id,MAX(report_date) last_date "
+        +"FROM bid_monitor_history_rows WHERE user_id=? AND report_date<? GROUP BY user_id,source_platform,media_account_id,promotion_id) a "
+        +"JOIN bid_monitor_history_rows h ON h.user_id=a.user_id AND h.report_date=a.last_date AND h.source_platform=a.source_platform "
+        +"AND h.media_account_id=a.media_account_id AND h.promotion_id=a.promotion_id ORDER BY a.last_date DESC LIMIT "+(MAX_QUERY_ROWS+1);
     try(var connection=reports.openConnection();var query=connection.prepareStatement(sql)){
       query.setLong(1,owner);query.setString(2,today.toString());query.setFetchSize(Integer.MIN_VALUE);
       try(var result=query.executeQuery()){
         var rows=new ArrayList<Map<String,Object>>();int scanned=0;
         while(result.next()){
-          if(++scanned>MAX_QUERY_ROWS)throw new IllegalArgumentException("归档预警数量过多，请联系管理员处理");
+          if(++scanned>MAX_QUERY_ROWS)throw new IllegalArgumentException("历史计划数量过多，请联系管理员处理");
           var row=mapper.readValue(result.getString("payload"),new TypeReference<Map<String,Object>>(){});
-          var warning=BidEndedWarning.evaluate(row,today,result.getDouble("total_cost"),result.getDouble("total_conversions"),
-              result.getString("first_date"),result.getString("last_date"),result.getInt("days"));
-          if(warning!=null)rows.add(warning);
+          var created=BidEndedWarning.date(row.get("promotion_create_time"));
+          if(created!=null&&created.plusDays(3).isBefore(today))rows.add(row);
         }
         return rows;
       }

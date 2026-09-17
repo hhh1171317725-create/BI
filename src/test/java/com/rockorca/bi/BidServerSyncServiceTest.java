@@ -39,6 +39,34 @@ class BidServerSyncServiceTest {
     service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
   }
   @AfterEach void close(){service.close();}
+  @Test void expiredVerificationQueriesCreationThroughTodayInsteadOfSummingOldArchives()throws Exception{
+    var row=rows(0,1).getFirst();row.put("source_platform","byte");row.put("convert_cnt",9);
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(row)));
+    var result=service.collectPlanTotals(input(),"cookie",List.of(row),java.time.LocalDate.of(2026,9,17));
+    assertEquals(1,result.size());assertEquals(9.0,result.getFirst().get("convert_cnt"));assertFalse(result.getFirst().containsKey("provider_data"));
+    var query=org.mockito.ArgumentCaptor.forClass(Map.class);verify(upstream).page(query.capture());
+    assertEquals("2026-09-05",query.getValue().get("startDate"));assertEquals("2026-09-17",query.getValue().get("endDate"));
+    assertEquals("2026-09-05",query.getValue().get("createdStart"));assertEquals("2026-09-05",query.getValue().get("createdEnd"));
+    verifyNoInteractions(gdt);
+  }
+  @Test void longLifetimeQueriesUseDisjointWindowsAndMissingChunksStayUnverified()throws Exception{
+    var row=rows(0,1).getFirst();row.put("source_platform","byte");row.put("promotion_create_time","2026-06-01");
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(row)));
+    var result=service.collectPlanTotals(input(),"cookie",List.of(row),java.time.LocalDate.of(2026,9,17));
+    assertEquals(4.0,result.getFirst().get("convert_cnt"));assertEquals(2000.0,result.getFirst().get("stat_cost"));
+    var query=org.mockito.ArgumentCaptor.forClass(Map.class);verify(upstream,times(2)).page(query.capture());
+    var calls=query.getAllValues();assertEquals("2026-09-01",calls.get(0).get("endDate"));assertEquals("2026-09-02",calls.get(1).get("startDate"));
+    reset(upstream);when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(row)),Map.of("total",0,"rows",List.of()));
+    assertTrue(service.collectPlanTotals(input(),"cookie",List.of(row),java.time.LocalDate.of(2026,9,17)).isEmpty());
+  }
+  @Test void verificationDoesNotMixPlatformsOrTreatMissingConversionAsZero()throws Exception{
+    var byteRow=rows(0,1).getFirst();byteRow.put("source_platform","byte");byteRow.put("convert_cnt",8);
+    var gdtRow=new LinkedHashMap<>(byteRow);gdtRow.put("source_platform","gdt");gdtRow.put("convert_cnt",null);
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(byteRow)));
+    when(gdt.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(gdtRow)));
+    var result=service.collectPlanTotals(input(),"cookie",List.of(byteRow,gdtRow),java.time.LocalDate.of(2026,9,17));
+    assertEquals(1,result.size());assertEquals("byte",result.getFirst().get("source_platform"));assertEquals(8.0,result.getFirst().get("convert_cnt"));
+  }
   private Map<String,Object> input(){return new LinkedHashMap<>(Map.of("cookie","userId=123; chuangliang_session=private-test-cookie", "clientUser","123","mainUserId","456","minutes",10,"createdDays",7));}
   private List<Map<String,Object>> rows(int offset,int size){
     var rows=new ArrayList<Map<String,Object>>();

@@ -351,6 +351,44 @@ public class BidServerSyncService {
     return collectWindow(state,cookie,reportDate,runDate.minusDays(4),reportDate,(done,total)->{},true);
   }
 
+  /** Requery cumulative metrics, including conversion backfills and activity after the warning window. */
+  List<Map<String,Object>> collectPlanTotals(Map<String,Object> state,String cookie,List<Map<String,Object>> candidates,LocalDate today)throws Exception{
+    var groups=new TreeMap<String,List<Map<String,Object>>>();
+    for(var row:candidates){
+      var created=BidEndedWarning.date(row.get("promotion_create_time"));String platform=text(row,"source_platform");
+      if(created==null||!List.of("byte","gdt").contains(platform))continue;
+      groups.computeIfAbsent(platform+":"+created.toString().substring(0,7),key->new ArrayList<>()).add(row);
+    }
+    var output=new ArrayList<Map<String,Object>>();
+    for(var group:groups.values()){
+      String platform=text(group.getFirst(),"source_platform");
+      var first=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).min(LocalDate::compareTo).orElseThrow();
+      var last=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).max(LocalDate::compareTo).orElseThrow();
+      var totals=new LinkedHashMap<String,Map<String,Object>>();var invalid=new HashSet<String>();
+      for(LocalDate start=first;!start.isAfter(today);start=start.plusDays(93)){
+        LocalDate end=start.plusDays(92).isAfter(today)?today:start.plusDays(92);
+        var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),"mainUserId",state.get("mainUserId"),
+            "startDate",start.toString(),"endDate",end.toString(),"createdStart",first.toString(),"createdEnd",last.toString()));
+        var source=collectSource(input,platform,new HashSet<>(),0,0,(done,total)->{});
+        if(source.duplicates()>0)throw new IllegalArgumentException("核验分页存在重复计划，请重试");
+        var indexed=new HashMap<String,Map<String,Object>>();for(var row:source.rows())indexed.put(planKey(row),row);
+        for(var candidate:group){
+          String key=planKey(candidate);
+          if(BidEndedWarning.date(candidate.get("promotion_create_time")).isAfter(end))continue;
+          var row=indexed.get(key);
+          double cost=row==null?Double.NaN:BidEndedWarning.number(row.get("stat_cost")),conversions=row==null?Double.NaN:BidEndedWarning.number(row.get("convert_cnt"));
+          if(!Double.isFinite(cost)||cost<0||!Double.isFinite(conversions)||conversions<0){invalid.add(key);continue;}
+          var prior=totals.get(key);var total=new LinkedHashMap<String,Object>(row);total.remove("provider_data");
+          total.put("stat_cost",cost+(prior==null?0:((Number)prior.get("stat_cost")).doubleValue()));
+          total.put("convert_cnt",conversions+(prior==null?0:((Number)prior.get("convert_cnt")).doubleValue()));
+          totals.put(key,total);
+        }
+      }
+      totals.forEach((key,row)->{if(!invalid.contains(key))output.add(row);});
+    }
+    return output;
+  }
+
   private Map<String,Object> collectWindow(Map<String,Object> state,String cookie,LocalDate reportDate,
       LocalDate createdStart,LocalDate createdEnd,Progress progress,boolean allowEmpty)throws Exception{
     String start=createdStart.toString();

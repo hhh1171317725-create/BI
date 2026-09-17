@@ -14,9 +14,11 @@ public class BidHistoryController {
   private final UserService users;
   private final BidSharedReportController shared;
   private final BidHistoryStore history;
+  private final BidEndedWarningService warnings;
 
-  public BidHistoryController(SessionService sessions,UserService users,BidSharedReportController shared,BidHistoryStore history){
+  public BidHistoryController(SessionService sessions,UserService users,BidSharedReportController shared,BidHistoryStore history,BidEndedWarningService warnings){
     this.sessions=sessions;this.users=users;this.shared=shared;this.history=history;
+    this.warnings=warnings;
   }
 
   @GetMapping
@@ -30,15 +32,13 @@ public class BidHistoryController {
   }
 
   @GetMapping("/ended-warnings")
-  public Map<String,Object> endedWarnings(HttpServletRequest request)throws Exception{
+  public Map<String,Object> endedWarnings(HttpServletRequest request,@RequestParam(defaultValue="false") boolean refresh)throws Exception{
     var viewer=sessions.currentUser(request);
     if(viewer==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     if(!viewer.active()||!users.canUseTool(viewer,"bidMonitor"))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
     var owner=shared.source();
     if(!users.canUseTool(owner,"bidMonitor"))throw new ResponseStatusException(HttpStatus.CONFLICT,"共享来源暂不可用，请联系管理员");
-    var today=LocalDate.now(ReportService.BEIJING);
-    var rows=history.readEndedWarnings(owner.id(),today);
-    return Map.of("rows",rows,"count",rows.size(),"asOf",today.minusDays(1).toString());
+    return warnings.read(owner.id(),refresh);
   }
 
   private Map<String,Object> read(HttpServletRequest request,String startDate,String endDate,boolean conversionsOnly)throws Exception{

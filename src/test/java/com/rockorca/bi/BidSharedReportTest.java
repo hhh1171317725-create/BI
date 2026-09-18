@@ -15,7 +15,9 @@ class BidSharedReportTest {
     var admin=user(1,"admin");var member=user(2,"user");var request=new MockHttpServletRequest();
     when(sessions.currentUser(request)).thenReturn(member);when(accounts.list()).thenReturn(List.of(admin,member));
     when(users.canUseTool(any(),eq("bidMonitor"))).thenReturn(true);when(config.get("BID_SHARED_OWNER_ID","")).thenReturn("1");
-    when(snapshots.readOwned(1)).thenReturn(Map.of("updatedAt","time1","rows",List.of(Map.of("promotion_id","123"))));
+    when(accounts.findById(1)).thenReturn(Optional.of(admin));
+    when(snapshots.readOwnedSince(1,"")).thenReturn(new BidSnapshotController.SnapshotRead("1:time1",Map.of("updatedAt","time1","rows",List.of(Map.of("promotion_id","123")))));
+    when(snapshots.readOwnedSince(1,"1:time1")).thenReturn(new BidSnapshotController.SnapshotRead("1:time1",null));
     when(store.get(1)).thenReturn(Map.of("credential","secret-cookie","clientUser","secret-client", "dingCredential","secret-robot",
         "taskRules",List.of(Map.of("name","shared-task","price","2")),"pricingRevision","p1",
         "strategies",List.of(Map.of("id","s1","name","测试策略","note","放量测试","accounts",List.of())),"strategyRevision","s1"));
@@ -26,6 +28,9 @@ class BidSharedReportTest {
     assertNull(controller.get(request,"1:time1").get("snapshot"));
     verify(snapshots,never()).readOwned(2);verify(store,never()).get(2);
     when(sessions.currentUser(request)).thenReturn(admin);assertEquals(true,controller.get(request,"").get("canManage"));
+    verify(accounts,never()).list();verify(snapshots,never()).readOwned(1);
+    when(accounts.findById(1)).thenReturn(Optional.empty());
+    assertThrows(org.springframework.web.server.ResponseStatusException.class,()->controller.get(request,"1:time1"));
   }
   @Test void adoptsExistingAdminSnapshotOnceInsteadOfChoosingEmptyAccount()throws Exception{
     var sessions=mock(SessionService.class);var accounts=mock(UserRepository.class);var users=mock(UserService.class);

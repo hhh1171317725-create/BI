@@ -295,7 +295,7 @@ public class AdpfluxRepository {
   public String latestBalanceSyncTime() {
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement("""
-             SELECT DATE_FORMAT(MAX(synced_at), '%Y-%m-%dT%H:%i:%s')
+             SELECT DATE_FORMAT(MAX(synced_at), '%Y-%m-%dT%H:%i:%s.%f')
                FROM adpflux_advertiser_balance_current
              """);
          ResultSet result = statement.executeQuery()) {
@@ -308,7 +308,7 @@ public class AdpfluxRepository {
   public String latestSyncTime() {
     try (Connection connection = dataSource.getConnection();
          PreparedStatement statement = connection.prepareStatement("""
-             SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s')
+             SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s.%f')
                FROM adpflux_sync_runs
              """);
          ResultSet result = statement.executeQuery()) {

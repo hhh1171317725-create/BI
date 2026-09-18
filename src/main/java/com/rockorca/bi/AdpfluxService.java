@@ -24,6 +24,8 @@ public class AdpfluxService {
   private final AdpfluxBalanceService balances;
   private final RuntimeConfig config;
   private final AtomicBoolean syncRunning = new AtomicBoolean(false);
+  private record AnalysisKey(String start,String end,String query,String status,boolean spendingOnly,String revision,String balanceRevision) {}
+  private final QueryResultCache<AnalysisKey,Map<String,Object>> analysisCache=new QueryResultCache<>(12,120_000);
 
   public AdpfluxService(
       AdpfluxRepository repository,
@@ -57,13 +59,13 @@ public class AdpfluxService {
       case "enabled", "disabled" -> ReportService.text(status);
       default -> "all";
     };
-    List<Map<String, Object>> rows = repository.readRows(
-        start.toString(), end.toString(), query, normalizedStatus, spendingOnly);
-    rows = applyCurrentBalances(rows, repository.readCurrentBalances());
-    Map<String, Object> result = new LinkedHashMap<>(
-        buildAnalysis(rows, start.toString(), end.toString(), repository.latestSyncTime()));
-    result.put("balanceCachedAt", repository.latestBalanceSyncTime());
-    return result;
+    String revision=repository.latestSyncTime(),balanceRevision=repository.latestBalanceSyncTime();
+    var key=new AnalysisKey(start.toString(),end.toString(),ReportService.text(query),normalizedStatus,spendingOnly,revision,balanceRevision);
+    return analysisCache.get(key,()->{
+      var rows=applyCurrentBalances(repository.readRows(key.start(),key.end(),key.query(),key.status(),key.spendingOnly()),repository.readCurrentBalances());
+      var result=new LinkedHashMap<>(buildAnalysis(rows,key.start(),key.end(),revision));
+      result.put("balanceCachedAt",balanceRevision);return result;
+    });
   }
 
   public Map<String, Object> sync(
@@ -79,6 +81,7 @@ public class AdpfluxService {
           upstream.fetchRows(start, end, credentials.token(), credentials.companyId());
       config.saveAdpfluxCredentials(credentials.token(), credentials.companyId());
       repository.replaceRange(rows, start, end, "manual");
+      analysisCache.clear();
       String balanceSyncError = "";
       try {
         balances.syncNow();
@@ -139,6 +142,7 @@ public class AdpfluxService {
         List<Map<String, Object>> rows =
             upstream.fetchRows(date, date, credentials.token(), credentials.companyId());
         repository.replaceRange(rows, date, date, "scheduled");
+        analysisCache.clear();
         return null;
       });
       System.out.println("ADPFlux账户看板定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));

@@ -66,6 +66,10 @@ public class ReportRepository {
     hikari.setConnectionTimeout(10_000);
     hikari.setInitializationFailTimeout(-1);
     hikari.setPoolName("marketing-reports");
+    hikari.addDataSourceProperty("cachePrepStmts",true);
+    hikari.addDataSourceProperty("prepStmtCacheSize",128);
+    hikari.addDataSourceProperty("prepStmtCacheSqlLimit",4096);
+    hikari.addDataSourceProperty("useServerPrepStmts",true);
     dataSource = new HikariDataSource(hikari);
   }
 
@@ -693,7 +697,7 @@ public class ReportRepository {
 
   public String latestSyncTime(String reportType) {
     String sql = """
-        SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s') AS cachedAt
+        SELECT DATE_FORMAT(MAX(finished_at), '%Y-%m-%dT%H:%i:%s.%f') AS cachedAt
           FROM report_sync_runs
          WHERE status = 'success' AND report_type IN (?, 'all')
         """;

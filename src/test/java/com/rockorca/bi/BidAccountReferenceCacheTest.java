@@ -7,6 +7,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class BidAccountReferenceCacheTest {
+  @Test void differentDatesCanLoadConcurrently()throws Exception{
+    var repository=mock(ReportRepository.class);var reports=mock(ReportService.class);var store=mock(BidAccountReferenceStore.class);
+    var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
+    when(store.revision()).thenReturn("v1");
+    when(store.read(anyString(),eq("v1"))).thenAnswer(call->{entered.countDown();QueryResultCacheTest.await(release);return Map.of("anchor",call.getArgument(0));});
+    var service=new BidGapService(repository,reports,store);
+    try(var executor=Executors.newFixedThreadPool(2)){
+      var first=executor.submit(()->service.load("2026-09-10"));var second=executor.submit(()->service.load("2026-09-11"));
+      try{assertTrue(entered.await(2,TimeUnit.SECONDS),"different anchors should not queue behind a global lock");}finally{release.countDown();}
+      assertEquals("2026-09-10",first.get(2,TimeUnit.SECONDS).get("anchor"));assertEquals("2026-09-11",second.get(2,TimeUnit.SECONDS).get("anchor"));
+    }
+  }
   @Test void committedImportImmediatelyPreparesTodayAndRevisionCheckIsLightweight(){
     var repository=mock(ReportRepository.class);var reports=mock(ReportService.class);var store=mock(BidAccountReferenceStore.class);
     when(store.revision()).thenReturn("committed-v2");when(reports.buildDhhAccountRows(anyList())).thenReturn(List.of());

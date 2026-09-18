@@ -73,6 +73,22 @@ public class BidSnapshotController {
     }
   }
 
+  record SnapshotRead(String version,Map<String,Object> snapshot) {}
+  SnapshotRead readOwnedSince(long owner,String after)throws Exception{
+    initialize();
+    // Conditional projection in one statement avoids both a large transfer and a version/payload race.
+    String version="CONCAT(?,':',COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.updatedAt')),'null'),''))";
+    String sql="SELECT "+version+" AS version,CASE WHEN "+version+" = ? THEN NULL ELSE payload END AS snapshot_payload FROM bid_monitor_snapshots WHERE user_id=?";
+    try(var connection=reports.openConnection();var query=connection.prepareStatement(sql)){
+      query.setLong(1,owner);query.setLong(2,owner);query.setString(3,after);query.setLong(4,owner);
+      try(var result=query.executeQuery()){
+        if(!result.next())return new SnapshotRead(owner+":",(owner+":").equals(after)?null:Map.of());
+        String payload=result.getString("snapshot_payload");
+        return new SnapshotRead(result.getString("version"),payload==null?null:mapper.readValue(payload,new TypeReference<Map<String,Object>>(){}));
+      }
+    }
+  }
+
   @GetMapping("/identity")
   public Map<String, String> identity(HttpServletRequest request) {
     return Map.of("userId", String.valueOf(user(request)));

@@ -10,28 +10,30 @@ public class BidGapService {
   private final ReportRepository repository;
   private final ReportService reports;
   private final BidAccountReferenceStore references;
-  private final Map<String,Map<String,Object>> memory=new LinkedHashMap<>();
+  private final QueryResultCache<String,Map<String,Object>> memory=new QueryResultCache<>(8,3_600_000);
+  private static final class RevisionChanged extends RuntimeException {}
   public BidGapService(ReportRepository repository, ReportService reports) { this(repository,reports,null); }
   @org.springframework.beans.factory.annotation.Autowired
   public BidGapService(ReportRepository repository, ReportService reports,BidAccountReferenceStore references) { this.repository=repository; this.reports=reports; this.references=references; }
 
-  public synchronized Map<String,Object> load(String endDate) {
+  public Map<String,Object> load(String endDate) {
     LocalDate.parse(endDate);
     if(references==null)return compute(endDate);
     for(int attempt=0;attempt<3;attempt++){
       String revision=references.revision(),key=endDate+":"+revision;
-      if(memory.containsKey(key))return memory.get(key);
-      Map<String,Object> data=references.read(endDate,revision);
-      if(data==null){
-        data=compute(endDate);
-        if(!revision.equals(references.revision()))continue;
-        data.put("preparedAt",java.time.Instant.now().toString());
-        data.put("sourceRevision",revision);
-        references.save(endDate,revision,data);
-      }
-      memory.put(key,data);
-      while(memory.size()>8)memory.remove(memory.keySet().iterator().next());
-      return data;
+      try{
+        Map<String,Object> data=memory.get(key,()->{
+          Map<String,Object> prepared=references.read(endDate,revision);
+          if(prepared==null){
+            prepared=compute(endDate);
+            if(!revision.equals(references.revision()))throw new RevisionChanged();
+            prepared.put("preparedAt",java.time.Instant.now().toString());prepared.put("sourceRevision",revision);
+            references.save(endDate,revision,prepared);
+          }
+          return prepared;
+        });
+        if(revision.equals(references.revision()))return data;
+      }catch(RevisionChanged ignored){}
     }
     throw new IllegalStateException("日报正在更新，请稍后重试账户关联");
   }

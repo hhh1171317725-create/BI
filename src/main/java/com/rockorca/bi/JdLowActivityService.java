@@ -27,6 +27,8 @@ public class JdLowActivityService {
   private final JdLowActivityUpstreamService upstream;
   private final RuntimeConfig config;
   private final AtomicBoolean syncRunning = new AtomicBoolean(false);
+  private record AnalysisKey(String start,String end,String account,String task,String revision) {}
+  private final QueryResultCache<AnalysisKey,Map<String,Object>> analysisCache=new QueryResultCache<>(12,120_000);
 
   public JdLowActivityService(
       ReportRepository repository,
@@ -47,9 +49,9 @@ public class JdLowActivityService {
       String end,
       String accountQuery,
       String task) {
-    List<Map<String, Object>> rows =
-        repository.readJdLowActivityRows(start, end, accountQuery, task);
-    return buildAnalysis(rows, repository.latestSyncTime("jd_low_activity"));
+    String revision=repository.latestSyncTime("jd_low_activity");
+    var key=new AnalysisKey(ReportService.text(start),ReportService.text(end),ReportService.text(accountQuery),ReportService.text(task),revision);
+    return analysisCache.get(key,()->buildAnalysis(repository.readJdLowActivityRows(key.start(),key.end(),key.account(),key.task()),revision));
   }
 
   public Map<String, Object> sync(
@@ -65,6 +67,7 @@ public class JdLowActivityService {
           upstream.fetchRows(start, end, credentials.token(), credentials.sign());
       config.saveJdLowActivityCredentials(credentials.token(), credentials.sign());
       repository.replaceJdLowActivityRange(rows, start, end, "manual");
+      analysisCache.clear();
       return analyze(start, end, "", "");
     });
   }
@@ -93,6 +96,7 @@ public class JdLowActivityService {
         List<Map<String, Object>> rows =
             upstream.fetchRows(start, end, credentials.token(), credentials.sign());
         repository.replaceJdLowActivityRange(rows, start, end, "scheduled");
+        analysisCache.clear();
         return null;
       });
       System.out.println("京东低活定时更新成功：" + ZonedDateTime.now(ReportService.BEIJING));

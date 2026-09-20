@@ -1,0 +1,9 @@
+const fs=require('node:fs'),vm=require('node:vm'),{execFileSync}=require('node:child_process'),{performance}=require('node:perf_hooks');
+const B=require('../frontend/bid-monitor-core.js');
+const baseline={module:{exports:{}},Intl,Date};vm.runInNewContext(execFileSync('git',['show','f0a1ae7:frontend/bid-monitor-core.js'],{encoding:'utf8'}),baseline);const Old=baseline.module.exports;
+const rows=[],refs=new Map();for(let day=1;day<=15;day++){const date=`2026-09-${String(day).padStart(2,'0')}`;refs.set(date,{priceDate:date,accounts:{a:{taskName:'任务甲',gap:1.1,dailyPricesByTask:{'任务甲':{date,price:1.5}}}},tasks:{}});for(let plan=0;plan<400;plan++)rows.push(B.normalize({promotion_id:String(plan),advertiser_id:'a',platform_text:'广点通',advertiser_nick:'账户',report_date:date,stat_cost:50,convert_cnt:plan%5,active_register:20,cpa_bid:10}));}
+function oldHistory(){const prepared=Old.withOverallConversions(rows),groups=new Map(),output=[];prepared.forEach((row,index)=>{if(!groups.has(row.statDate))groups.set(row.statDate,[]);groups.get(row.statDate).push({row,index});});for(const [date,items] of groups){const indexes=new Set(items.map(i=>i.index)),prior=prepared.filter((_,i)=>!indexes.has(i)),ref=refs.get(date),result=Old.createAnalysisCache()(items.map(i=>i.row),[],false,ref.accounts,ref,prior);items.forEach((item,i)=>output[item.index]=result[i]);}return output;}
+const before=performance.now(),old=oldHistory(),oldMs=performance.now()-before;
+const after=performance.now(),updated=B.analyzeHistoricalRows(rows,[],refs),newMs=performance.now()-after;
+for(let i=0;i<rows.length;i++)for(const key of ['overallConversions','overallCost','basePrice','gap','commission','estimatedCompensation','estimatedRoi'])if(old[i][key]!==updated[i][key])throw Error('Mismatch '+i+' '+key);
+console.log(JSON.stringify({rows:rows.length,dates:refs.size,beforeMs:Math.round(oldMs),afterMs:Math.round(newMs),speedup:(oldMs/newMs).toFixed(2),metricsEqual:true}));

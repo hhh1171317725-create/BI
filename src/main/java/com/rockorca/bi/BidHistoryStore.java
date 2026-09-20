@@ -14,6 +14,11 @@ public class BidHistoryStore {
   private final ReportRepository reports;
   private final ObjectMapper mapper;
   private volatile boolean initialized;
+  private record ConversionKey(long owner,LocalDate start,LocalDate end) {}
+  private final QueryResultCache<ConversionKey,List<Map<String,Object>>> conversions=new QueryResultCache<>(2,15_000);
+  private static final class ReadFailure extends RuntimeException {
+    ReadFailure(Exception cause){super(cause);}
+  }
 
   public BidHistoryStore(ReportRepository reports,ObjectMapper mapper){this.reports=reports;this.mapper=mapper;}
 
@@ -51,8 +56,16 @@ public class BidHistoryStore {
   }
 
   List<Map<String,Object>> readConversions(long owner,LocalDate start,LocalDate end)throws Exception{
-    return read(owner,start,end,true);
+    try{
+      return conversions.get(new ConversionKey(owner,start,end),()->{
+        try{return read(owner,start,end,true);}catch(Exception error){throw new ReadFailure(error);}
+      });
+    }catch(ReadFailure error){throw (Exception)error.getCause();}
   }
+
+  // Call after the archive transaction commits so a concurrent reader cannot
+  // refill the cache with pre-commit data. Other server processes expire in 15s.
+  void archiveCommitted(){conversions.clear();}
 
   /** Archives discover plan identities only; old daily counters cannot establish current eligibility. */
   List<Map<String,Object>> readEndedPlans(long owner,LocalDate today)throws Exception{

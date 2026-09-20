@@ -112,7 +112,8 @@
     const best=candidates[0];if(!best||candidates[1]&&Math.abs(candidates[1].difference-best.difference)<=1e-6)return null;
     return{task:best.task,rule:best.rule||null,detail:{method:'bid-return-estimate',estimatedSettlementPrice:estimated,matchedActualPrice:best.actualPrice,difference:best.difference,returnRatio:ratio}};
   }
-  const beijingDate=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+  const beijingDateFormatter=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'});
+  const beijingDate=()=>beijingDateFormatter.format(new Date());
   function normalizedDate(value){
     const text=String(value??'').trim(),matched=text.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
     if(matched)return `${matched[1]}-${matched[2]}-${matched[3]}`;
@@ -235,6 +236,19 @@
     const missingReason=[basePrice===null?priceReason:'',gap===null?gapReason:''].filter(Boolean).join('；');
     return{taskResult,basePrice,gap,metadata:{priceSource,priceDate,gapSource,referenceTask:taskName,missingReason,priceReason,gapReason}};
   }
+  function analyzePreparedRows(prepared,rules,current,gaps,references){
+    const inferred=inferAccountTasks(prepared,rules,gaps,references),gapIndex=buildGapIndex(gaps);
+    return prepared.map(row=>{const account=gapFor(row,gapIndex),match=inferred.get(inferenceIdentity(row))||inferTaskFromBidReturn(row,rules,account,references),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+  }
+  function analyzeHistoricalRows(rows,rules,references){
+    const prepared=withOverallConversions(rows),groups=new Map(),output=new Array(rows.length);
+    prepared.forEach((row,index)=>{const date=row.statDate||'';if(!groups.has(date))groups.set(date,[]);groups.get(date).push({row,index});});
+    for(const [date,items] of groups){
+      const daily=references.get(date),result=analyzePreparedRows(items.map(item=>item.row),rules,false,daily?.accounts,daily);
+      items.forEach((item,index)=>output[item.index]=result[index]);
+    }
+    return output;
+  }
   function createAnalysisCache(){
     let previousRows,previousRules,previousCurrent,previousGaps,previousReferences,result;
     let previousPrior;
@@ -242,8 +256,7 @@
       // Pricing edits mutate rules in place; compare their small serialized value.
       const ruleKey=JSON.stringify(rules);
       if(rows!==previousRows||ruleKey!==previousRules||current!==previousCurrent||gaps!==previousGaps||references!==previousReferences||priorRows!==previousPrior){
-        const prepared=withOverallConversions(rows,priorRows),inferred=inferAccountTasks(prepared,rules,gaps,references),gapIndex=buildGapIndex(gaps);
-        result=prepared.map(row=>{const account=gapFor(row,gapIndex),match=inferred.get(inferenceIdentity(row))||inferTaskFromBidReturn(row,rules,account,references),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+        result=analyzePreparedRows(withOverallConversions(rows,priorRows),rules,current,gaps,references);
         previousRows=rows;previousRules=ruleKey;previousCurrent=current;previousGaps=gaps;previousReferences=references;
         previousPrior=priorRows;
       }
@@ -285,5 +298,5 @@
   const aggregateOptimizers=(rows,date)=>aggregateGroups(rows,['optimizer'],date);
   const aggregateTasks=(rows,date)=>aggregateGroups(rows,['task'],date);
   const aggregateOptimizerTasks=(rows,date)=>aggregateGroups(rows,['optimizer','task'],date);
-  const api={normalize,normalizeGapPayload,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,warningCreationEligible,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
+  const api={normalize,normalizeGapPayload,analyze,taskFor,inferAccountTasks,inferTaskFromBidReturn,inferenceIdentity,analyzeTask,cashMetrics,summarizeCash,planIdentity,withOverallConversions,mergePlanRows,warningCreationEligible,analyzeHistoricalRows,createAnalysisCache,accountIdentity,aggregateGroups,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks};if(typeof module!=='undefined')module.exports=api;else root.BidMonitor=api;
 })(globalThis);

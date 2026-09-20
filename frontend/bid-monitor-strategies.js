@@ -163,6 +163,12 @@
     if(historyRaw!==expected)return false;
     historyReferences=refs;drawDetail();refreshDataStatus();return Boolean(refs.complete);
   };
-  document.addEventListener('bid:rendered',()=>{if(byId('strategyDataSource').value==='current')drawDetail();});
+  let lastReportRows=null,lastReportRange=null;
+  document.addEventListener('bid:rendered',()=>{
+    if(byId('strategyDataSource').value!=='current')return;
+    const data=window.getBidStrategyData();
+    if(lastReportRows===data.rows&&lastReportRange===data.range)return;
+    lastReportRows=data.rows;lastReportRange=data.range;drawDetail();
+  });
   applyBundle(window.bidStrategyBundle);
 })();

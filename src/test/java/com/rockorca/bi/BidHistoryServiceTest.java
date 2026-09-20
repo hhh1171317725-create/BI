@@ -47,6 +47,7 @@ class BidHistoryServiceTest {
     service.capture(7,LocalDate.of(2026,9,11));
     verify(raw).replace(eq(store.connection),eq(7L),eq("2026-09-10"),anyList());
     verify(history).replace(eq(store.connection),eq(7L),eq(LocalDate.of(2026,9,10)),anyList());
+    verify(history).archiveCommitted();
     assertEquals("2026-09-10",store.get(7).get("historyLastDate"));assertEquals("ready",store.get(7).get("historyState"));
     service.capture(7,LocalDate.of(2026,9,11));verify(sync,times(1)).collectHistory(anyMap(),anyString(),any());
   }

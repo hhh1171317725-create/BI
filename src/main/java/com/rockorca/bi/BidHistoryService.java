@@ -65,6 +65,7 @@ public class BidHistoryService {
         current.put("historyState","ready");current.put("historyError","");current.remove("historyToken");
         current.put("historyRetryAt",nextCaptureAt(runDate));
       });
+      history.archiveCommitted();
     }catch(Exception error){
       try{
         store.update(owner,(connection,current)->{

@@ -10,6 +10,19 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 class BidHistoryReadTest {
+  @Test void repeatedConversionsReuseRowsAndCommittedArchivesInvalidateThem()throws Exception{
+    var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
+    var statement=mock(PreparedStatement.class);var result=mock(ResultSet.class);
+    when(reports.openConnection()).thenReturn(connection);when(connection.prepareStatement(anyString())).thenReturn(statement);
+    when(statement.executeQuery()).thenReturn(result);when(result.next()).thenReturn(false);
+    var store=new BidHistoryStore(reports,new ObjectMapper());ReflectionTestUtils.setField(store,"initialized",true);
+    var start=LocalDate.parse("2026-09-10");var end=LocalDate.parse("2026-09-13");
+    var first=store.readConversions(7,start,end);
+    assertSame(first,store.readConversions(7,start,end));verify(reports,times(1)).openConnection();
+    assertNotSame(first,store.readConversions(8,start,end));verify(reports,times(2)).openConnection();
+    store.archiveCommitted();assertNotSame(first,store.readConversions(7,start,end));verify(reports,times(3)).openConnection();
+    store.readConversions(7,start.plusDays(1),end);verify(reports,times(4)).openConnection();
+  }
   @Test void endedPlansOnlyDiscoverIdentitiesWithoutFilteringOnStaleMetrics()throws Exception{
     var reports=mock(ReportRepository.class);var connection=mock(Connection.class);
     var statement=mock(PreparedStatement.class);var result=mock(ResultSet.class);

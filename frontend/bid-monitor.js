@@ -17,8 +17,7 @@ window.analyzeBidStrategyRows=(rows,references=null)=>{
   if(!references)return strategyAnalysisCache(rows,taskRules,false,null,null);
   if(references instanceof Map){
     const ruleKey=JSON.stringify(taskRules);if(rows===historicalAnalysisRows&&references===historicalAnalysisReferences&&ruleKey===historicalAnalysisRules)return historicalAnalysisResult;
-    const prepared=B.withOverallConversions(rows),groups=new Map();prepared.forEach((row,index)=>{const date=row.statDate||'';if(!groups.has(date))groups.set(date,[]);groups.get(date).push({row,index});});const output=new Array(rows.length);
-    for(const [date,items] of groups){const group=items.map(item=>item.row),indexes=new Set(items.map(item=>item.index)),prior=prepared.filter((_,index)=>!indexes.has(index)),daily=references.get(date),analyzer=B.createAnalysisCache(),result=daily?analyzer(group,taskRules,false,daily.accounts,daily,prior):analyzer(group,taskRules,false,null,null,prior);items.forEach((item,index)=>output[item.index]=result[index]);}
+    const output=B.analyzeHistoricalRows(rows,taskRules,references);
     historicalAnalysisRows=rows;historicalAnalysisReferences=references;historicalAnalysisRules=ruleKey;historicalAnalysisResult=output;return output;
   }
   rows=B.withOverallConversions(rows);const accounts=references.accounts||{},inferred=B.inferAccountTasks(rows,taskRules,accounts,references),canonical=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
@@ -48,6 +47,20 @@ function aggregateCell(row,key){
 const cachedAnalysis=B.createAnalysisCache();
 let mergedAnalysisSource=null,mergedAnalysis=[];
 let valueFilterRows=null,taskFilterRules='',filteredAnalysis=null,filteredKey='',filteredRows=[],groupCache=new Map();
+let sortedRowsSource=null,sortedRowsKey='',sortedRowsResult=[];
+let searchIndexSource=null,searchIndex=new Map();
+function reportSearchIndex(rows){
+  if(searchIndexSource!==rows){
+    searchIndexSource=rows;searchIndex=new Map(rows.map(row=>[row,[row.id,row.name,row.account,row.accountId,row.optimizer,row.task,...optionalTextKeys.map(key=>row[key]),row.deepCpaBid].join(' ').toLowerCase()]));
+  }
+  return searchIndex;
+}
+function sortedReportRows(rows){
+  const key=sortKey+':'+sortDirection;
+  if(sortedRowsSource!==rows||sortedRowsKey!==key){sortedRowsSource=rows;sortedRowsKey=key;sortedRowsResult=sortRows([...rows]);}
+  return sortedRowsResult;
+}
+const reportTextCollator=new Intl.Collator('zh-CN',{numeric:true});
 async function loadGap(){
   if(!range||historyMode)return;
   const generation=++gapGeneration,anchor=range.end;
@@ -119,7 +132,7 @@ const viewDimensions=view=>({
   platforms:['platform'],accounts:['account','accountId'],optimizers:['optimizer'],tasks:['task'],optimizerTasks:['optimizer','task'],conversionTargets:['externalAction','deepExternalAction','appType']
 }[view]||['optimizer']);
 function sortHeader(label,key){const state=key===sortKey?sortDirection:'none',aria=state==='asc'?'ascending':state==='desc'?'descending':'none',description=state==='asc'?'当前升序':state==='desc'?'当前降序':'点击排序';return `<th aria-sort="${aria}"><button class="sort-header" type="button" data-sort-key="${key}" data-sort-state="${state}" aria-label="按${label}排序，${description}">${label}</button></th>`;}
-function sortRows(rows){return rows.sort((a,b)=>{const left=a[sortKey],right=b[sortKey],leftMissing=left===null||left===undefined||Number.isNaN(left),rightMissing=right===null||right===undefined||Number.isNaN(right);if(leftMissing||rightMissing)return leftMissing===rightMissing?0:leftMissing?1:-1;const result=typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right),'zh-CN',{numeric:true});return sortDirection==='asc'?result:-result;});}
+function sortRows(rows){return rows.sort((a,b)=>{const left=a[sortKey],right=b[sortKey],leftMissing=left===null||left===undefined||Number.isNaN(left),rightMissing=right===null||right===undefined||Number.isNaN(right);if(leftMissing||rightMissing)return leftMissing===rightMissing?0:leftMissing?1:-1;const result=typeof left==='number'&&typeof right==='number'?left-right:reportTextCollator.compare(String(left),String(right));return sortDirection==='asc'?result:-result;});}
 function message(text,bad=false){$('#message').textContent=text;$('#message').className=bad?'error':'';}
 async function api(path,options={}){
   const response=await fetch(path,options);if(response.status===401){location.replace('/login');throw Error('请先登录');}
@@ -226,6 +239,7 @@ function render(){
   const searchParts=q.split(/[\s,，;；]+/).filter(Boolean);
   // Keep IDs as strings: advertising IDs may exceed Number.MAX_SAFE_INTEGER.
   const batchIds=searchParts.length>1&&searchParts.every(value=>/^\d+$/.test(value))?new Set(searchParts):null;
+  const searchable=q&&!batchIds?reportSearchIndex(analyzed):null;
   const filterId=key=>key==='planStatus'?'statusFilter':key+'Filter';
   const textFilters=optionalTextKeys.map(key=>[key,$('#'+filterId(key)).value]);
   const activeTextFilters=textFilters.filter(([,value])=>value!=='');
@@ -236,7 +250,7 @@ function render(){
   const selectedTasks=new Set(selected.map(value=>value.startsWith('task:')?taskRules[Number(value.slice(5))]?.name:value.startsWith('auto:')?decodeURIComponent(value.slice(5)):'').filter(Boolean));
   filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected.length||(selected.includes('__unmatched')&&!r.task)||selectedTasks.has(r.task))&&
     (!selectedOptimizers.size||selectedOptimizers.has(r.optimizer||'未填写'))&&
-    (!q||(batchIds?batchIds.has(String(r.id))||batchIds.has(String(r.accountId)):[r.id,r.name,r.account,r.accountId,r.optimizer,r.task,...optionalTextKeys.map(key=>r[key]),r.deepCpaBid].join(' ').toLowerCase().includes(q)))&&
+    (!q||(batchIds?batchIds.has(String(r.id))||batchIds.has(String(r.accountId)):searchable.get(r).includes(q)))&&
     activeTextFilters.every(([key,value])=>r[key]===value)&&
     (minBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=minBid)&&
     (maxBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=maxBid));
@@ -248,7 +262,7 @@ function render(){
     if(compensationOnly)filteredRows=compensationCandidates;
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
   }
-  visible=[...filteredRows];
+  visible=filteredRows;
   const summary=B.summarizeCash(visible.filter(row=>row.price!==null));
   $('#metrics').innerHTML=[['出价利润率',fmtPercent(summary.bidProfitRate)],['预估 ROI',fmtRoi(summary.estimatedRoi)]]
     .map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
@@ -257,7 +271,7 @@ function render(){
   $('#pricingCoverage').textContent=historyMode?(historyFinancialReady?`历史汇总已按每日任务、单价与 gap 计算；${analyzed.length-unpriced} / ${analyzed.length} ${isTimeView(viewMode)?'条计划日数据':'个计划'}可计算收益。`:'历史投放指标已显示，正在按每个数据日期关联任务、单价与 gap…'):raw.length?`${analyzed.length-unpriced} / ${analyzed.length} 条计划可计算（手动单价 ${manualCount}，日报单价 ${dailyCount}${taskGapCount?`，同任务参考 gap ${taskGapCount}`:''}${estimateCount?`，出价回传估算任务 ${estimateCount}`:''}）${unpriced?'；其余计划可将鼠标停在“--”上查看缺失原因':''}`:'';
   const groupKey=viewMode+':'+today();
   if(aggregateMode&&!groupCache.has(groupKey))groupCache.set(groupKey,B.aggregateGroups(filteredRows,dimensions,today()));
-  aggregateRows=aggregateMode?sortRows([...groupCache.get(groupKey)]):[];if(!aggregateMode)sortRows(visible);
+  aggregateRows=aggregateMode?sortedReportRows(groupCache.get(groupKey)):[];if(!aggregateMode)visible=sortedReportRows(filteredRows);
   const displayRows=aggregateMode?aggregateRows:visible,size=Number($('#pageSize').value),pages=Math.max(1,Math.ceil(displayRows.length/size));page=Math.min(page,pages);
   if(aggregateMode){
     const dimensionHeaders=dimensions.map(d=>sortHeader(dimensionLabels[d],d)).join('');
@@ -409,10 +423,16 @@ $('#export').onclick=()=>{
 $('#gapReload').onclick=()=>void loadGap();
 
 // Only report fields are exposed to the assistant; configuration credentials stay out.
+let reportTotalsSource=null,reportTotalsDate='',reportTotals=null;
 window.getPetReportContext=(summaryOnly=false)=>{
   const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
-  const totals=B.aggregateGroups(visible,[],today())[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};
+  const totalsDate=today();
+  if(reportTotalsSource!==filteredRows||reportTotalsDate!==totalsDate){
+    reportTotalsSource=filteredRows;reportTotalsDate=totalsDate;
+    reportTotals=B.aggregateGroups(filteredRows,[],totalsDate)[0]||{plans:0,accounts:0,cost:0,conversions:0,registrations:0,priced:0};
+  }
+  const totals=reportTotals;
   if(summaryOnly===true)return {summary:pick(totals)};
   const ranked=[...visible].sort((a,b)=>(b.cost||0)-(a.cost||0));
   const filters=Object.fromEntries(['search','taskFilter','optimizerFilter','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'].map(id=>[id,$('#'+id).multiple?[...$('#'+id).selectedOptions].map(option=>option.value):$('#'+id).value]));

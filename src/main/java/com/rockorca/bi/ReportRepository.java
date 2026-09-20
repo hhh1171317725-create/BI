@@ -95,9 +95,13 @@ public class ReportRepository {
     hikari.setPassword(config.get("MYSQL_PASSWORD", ""));
     hikari.setMaximumPoolSize(poolSize);
     hikari.setMinimumIdle(Math.min(poolSize, Math.max(0, requestedMinimumIdle)));
-    long connectionTimeout = Math.max(2_000, config.getInt("MYSQL_CONNECTION_TIMEOUT_MS", 10_000));
+    long connectionTimeout = Math.max(2_000, config.getInt("MYSQL_CONNECTION_TIMEOUT_MS", 25_000));
     hikari.setConnectionTimeout(connectionTimeout);
     hikari.setValidationTimeout(Math.min(3_000, connectionTimeout - 250));
+    int queryTimeoutMs = Math.max(1_000, config.getInt("MYSQL_QUERY_TIMEOUT_MS", 20_000));
+    int lockTimeoutSeconds = Math.max(1, config.getInt("MYSQL_LOCK_TIMEOUT_SECONDS", 10));
+    hikari.setConnectionInitSql("SET SESSION max_execution_time = " + queryTimeoutMs
+        + ", SESSION innodb_lock_wait_timeout = " + lockTimeoutSeconds);
     hikari.setInitializationFailTimeout(-1);
     hikari.setPoolName(poolName);
     int leakDetectionMs = config.getInt("MYSQL_LEAK_DETECTION_MS", 30_000);
@@ -106,6 +110,9 @@ public class ReportRepository {
     hikari.addDataSourceProperty("prepStmtCacheSize", 128);
     hikari.addDataSourceProperty("prepStmtCacheSqlLimit", 4096);
     hikari.addDataSourceProperty("useServerPrepStmts", true);
+    hikari.addDataSourceProperty("connectTimeout", 5_000);
+    hikari.addDataSourceProperty("socketTimeout", 120_000);
+    hikari.addDataSourceProperty("tcpKeepAlive", true);
   }
 
   public void ping() {

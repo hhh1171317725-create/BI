@@ -1,10 +1,14 @@
 package com.rockorca.bi;
 
+import jakarta.annotation.PreDestroy;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,6 +25,9 @@ public class UserService {
   private final Map<Long, Timed<UserRepository.UserAccount>> userCache = new ConcurrentHashMap<>();
   private final Map<Long, Timed<Map<String, Boolean>>> reportVisibilityCache = new ConcurrentHashMap<>();
   private final Map<Long, Timed<Map<String, Boolean>>> toolVisibilityCache = new ConcurrentHashMap<>();
+  private final ExecutorService loginAuditExecutor = Executors.newSingleThreadExecutor(
+      Thread.ofVirtual().name("login-audit-", 0).factory());
+  private final AtomicBoolean loginAuditPending = new AtomicBoolean();
   private volatile boolean initialized;
   private record Timed<T>(T value, long expiresAt) {}
 
@@ -44,9 +51,27 @@ public class UserService {
     if (user == null || !user.active() || !passwords.matches(password, user.passwordHash())) {
       return null;
     }
-    users.markLogin(user.id());
-    UserRepository.UserAccount refreshed = users.findById(user.id()).orElse(user);
-    cacheUser(refreshed);return refreshed;
+    cacheUser(user);
+    recordLoginWithoutBlocking(user.id());
+    return user;
+  }
+
+  private void recordLoginWithoutBlocking(long userId) {
+    if (!loginAuditPending.compareAndSet(false, true)) return;
+    loginAuditExecutor.execute(() -> {
+      try {
+        users.markLogin(userId);
+      } catch (RuntimeException ignored) {
+        // 最近登录时间只是审计信息，数据库繁忙时不能阻断已经通过的身份校验。
+      } finally {
+        loginAuditPending.set(false);
+      }
+    });
+  }
+
+  @PreDestroy
+  void close() {
+    loginAuditExecutor.shutdownNow();
   }
 
   public UserRepository.UserAccount findById(long id) {

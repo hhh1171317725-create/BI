@@ -3,8 +3,10 @@ package com.rockorca.bi;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -46,7 +48,17 @@ class UserServiceTest {
 
     assertEquals(admin, service.authenticate("hhh", "123456"));
     verify(repository).initialize("hhh", "bootstrap-hash");
-    verify(repository).markLogin(1L);
+    verify(repository, timeout(1_000)).markLogin(1L);
+  }
+
+  @Test
+  void loginAuditFailureDoesNotFailSuccessfulAuthentication() {
+    when(repository.findByUsername("hhh")).thenReturn(Optional.of(admin));
+    when(passwords.matches("123456", "admin-hash")).thenReturn(true);
+    doThrow(new IllegalStateException("database busy")).when(repository).markLogin(1L);
+
+    assertEquals(admin, service.authenticate("hhh", "123456"));
+    verify(repository, timeout(1_000)).markLogin(1L);
   }
 
   @Test

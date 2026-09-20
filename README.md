@@ -100,6 +100,8 @@ sh scripts/deploy-server.sh
 
 脚本会自动查找宝塔或系统中的 Java 21 JDK，设置当前终端的 `JAVA_HOME`，拉取主分支，构建成功后再重启服务。`systemctl` 服务中配置的环境变量只对服务进程生效，不会自动出现在 SSH 终端中。
 
+部署前会删除可重新生成的 `target` 构建目录，并检查磁盘至少有 1 GB 可用空间；可通过 `BI_MIN_FREE_MB` 调整阈值。磁盘不足时脚本会在拉取和构建前停止，可运行 `sh scripts/check-disk-space.sh` 查看文件系统、inode、MySQL、日志、Maven 缓存及项目大文件占用。
+
 构建产物为 `target/marketing-reports-1.0.0.jar`。也可以在宝塔“Java 项目”中直接选择该 JAR，端口设为 `8765`，启动命令使用：
 
 ```bash

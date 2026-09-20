@@ -7,7 +7,7 @@ const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creati
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 let raw=[],dailyAnalyzed=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
 let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,historyFinancialReady=false,priorConversionGeneration=0;
-let compensationOnly=false,compensationCandidates=[];
+let compensationOnly=false,compensationCandidates=[],compensationAutoFocus=false;
 let priorConversionStatus='ready';
 const compensationWarningsReady=()=>historyMode||priorConversionStatus==='ready';
 window.getBidStrategyData=()=>({rows:dailyAnalyzed,range,source});
@@ -174,6 +174,9 @@ function receive(rows,label,datesValue,live=false,historical=false){
   if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);for(const row of next)if(!row.statDate)row.statDate=datesValue?.end||'';
   if(!next.some(r=>r.cost!==null&&r.registrations!==null&&r.conversions!==null&&r.bid!==null))throw Error('未识别到消耗、转化数、注册数和出价四个字段，请核对报表');
   raw=next;range=datesValue;source=label;followSync=live;historyMode=historical;historyFinancialReady=false;priorConversionRows=[];page=1;const conversionGeneration=++priorConversionGeneration;
+  // A live refresh should surface actionable plans as soon as the cumulative
+  // conversion history is ready. The user can always return to all plans.
+  compensationOnly=false;compensationAutoFocus=live&&!historical;
   priorConversionStatus=live&&!historical&&datesValue?.end===today()?'loading':'ready';
   if(historical){++gapGeneration;gapData=null;render();message(`已读取 ${raw.length} 条计划日数据，正在按日期关联任务、单价与 gap…`);return Promise.resolve();}
   if(live&&datesValue?.end===today())void loadPriorPlanConversions(datesValue.end,next,conversionGeneration);
@@ -228,7 +231,7 @@ function render(){
   const activeTextFilters=textFilters.filter(([,value])=>value!=='');
   const minValue=$('#deepCpaBidMin').value,maxValue=$('#deepCpaBidMax').value;
   const minBid=minValue===''?null:Number(minValue),maxBid=maxValue===''?null:Number(maxValue);
-  const filterKey=JSON.stringify([selectedAccount?.key,selected,[...selectedOptimizers],q,...textFilters.map(([,value])=>value),minValue,maxValue,compensationOnly,compensationWarningsReady()]);
+  const filterKey=JSON.stringify([selectedAccount?.key,selected,[...selectedOptimizers],q,...textFilters.map(([,value])=>value),minValue,maxValue,compensationOnly,compensationAutoFocus,compensationWarningsReady()]);
   if(filteredAnalysis!==analyzed||filteredKey!==filterKey){
   const selectedTasks=new Set(selected.map(value=>value.startsWith('task:')?taskRules[Number(value.slice(5))]?.name:value.startsWith('auto:')?decodeURIComponent(value.slice(5)):'').filter(Boolean));
   filteredRows=analyzed.filter(r=>(!selectedAccount||B.accountIdentity(r)===selectedAccount.key)&&(!selected.length||(selected.includes('__unmatched')&&!r.task)||selectedTasks.has(r.task))&&
@@ -238,6 +241,10 @@ function render(){
     (minBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid>=minBid)&&
     (maxBid===null||Number.isFinite(r.deepCpaBid)&&r.deepCpaBid<=maxBid));
     compensationCandidates=compensationWarningsReady()?filteredRows.filter(row=>row.compensationShortfall>0):[];
+    if(compensationAutoFocus&&compensationWarningsReady()){
+      compensationAutoFocus=false;
+      compensationOnly=compensationCandidates.length>0;
+    }
     if(compensationOnly)filteredRows=compensationCandidates;
     filteredAnalysis=analyzed;filteredKey=filterKey;groupCache.clear();
   }

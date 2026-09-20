@@ -12,9 +12,14 @@
     alertFilter.hidden=false;
     const count=new Set(compensationCandidates.map(B.planIdentity)).size;
     alert.hidden=!count&&!compensationOnly;
-    alertText.textContent=count?`转化门槛预警：${count} 个计划（三天前创建）累计消耗已高于出价 × 7.2，累计转化不足 6 个。`:'当前筛选下没有转化门槛预警。';
+    alert.classList.toggle('is-filtered',compensationOnly);
+    alertText.textContent=count
+      ?compensationOnly
+        ?`正在展示 ${count} 个转化门槛预警计划：三天前创建，累计消耗高于出价 × 7.2，累计转化不足 6 个。`
+        :`发现 ${count} 个转化门槛预警计划；当前表格展示全部计划。`
+      :'当前筛选下没有转化门槛预警。';
     alert.title='只判断创建日期恰好为今天往前第3天的计划：累计消耗 > 当前出价 × 7.2，且累计转化 < 6；其他创建日期不预警。';
-    alertFilter.textContent=compensationOnly?'取消预警筛选':'只看预警计划';alertFilter.setAttribute('aria-pressed',String(compensationOnly));
+    alertFilter.textContent=compensationOnly?'返回全部计划':`查看 ${count} 个预警计划`;alertFilter.setAttribute('aria-pressed',String(compensationOnly));
   }
   document.addEventListener('bid:rendered',drawCompensationAlert);drawCompensationAlert();
   const cards=$('#summaryCards');

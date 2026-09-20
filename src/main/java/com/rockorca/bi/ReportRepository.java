@@ -51,23 +51,35 @@ public class ReportRepository {
   private final HikariDataSource controlDataSource;
   private final ObjectMapper objectMapper;
 
+  record PoolSizes(int reports, int control) {}
+
   public ReportRepository(RuntimeConfig config, ObjectMapper objectMapper) {
     this.objectMapper = objectMapper;
-    HikariConfig hikari = new HikariConfig();
     String host = config.get("MYSQL_HOST", "127.0.0.1");
     int port = config.getInt("MYSQL_PORT", 3306);
     String database = config.get("MYSQL_DATABASE", "BI");
     String jdbcUrl = "jdbc:mysql://" + host + ":" + port + "/" + database
         + "?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
         + "&useSSL=false&allowPublicKeyRetrieval=true";
+    PoolSizes sizes = poolSizes(
+        config.getInt("MYSQL_CONNECTION_LIMIT", 8),
+        config.getInt("MYSQL_CONTROL_CONNECTION_LIMIT", 2));
+
+    HikariConfig hikari = new HikariConfig();
     configurePool(hikari, config, jdbcUrl, "marketing-reports",
-        config.getInt("MYSQL_CONNECTION_LIMIT", 8), 0);
+        sizes.reports(), 0);
     dataSource = new HikariDataSource(hikari);
 
     HikariConfig control = new HikariConfig();
     configurePool(control, config, jdbcUrl, "marketing-control",
-        config.getInt("MYSQL_CONTROL_CONNECTION_LIMIT", 3), 1);
+        sizes.control(), 1);
     controlDataSource = new HikariDataSource(control);
+  }
+
+  static PoolSizes poolSizes(int requestedTotal, int requestedControl) {
+    int total = Math.max(3, requestedTotal);
+    int control = Math.max(1, Math.min(requestedControl, total - 1));
+    return new PoolSizes(total - control, control);
   }
 
   private static void configurePool(

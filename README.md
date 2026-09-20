@@ -118,8 +118,13 @@ MYSQL_PORT=3306
 MYSQL_DATABASE=BI
 MYSQL_USER=BI
 MYSQL_PASSWORD=你的数据库强密码
-MYSQL_CONNECTION_LIMIT=5
+MYSQL_CONNECTION_LIMIT=8
+MYSQL_CONTROL_CONNECTION_LIMIT=3
+MYSQL_CONNECTION_TIMEOUT_MS=10000
+MYSQL_LEAK_DETECTION_MS=30000
 ```
+
+报表查询与登录鉴权使用独立连接池，避免同步任务或慢报表占满连接后无法登录。`MYSQL_CONNECTION_LIMIT` 控制报表池，`MYSQL_CONTROL_CONNECTION_LIMIT` 控制登录和用户权限池；连接占用超过 `MYSQL_LEAK_DETECTION_MS` 时会在服务日志中记录获取连接的位置，便于定位异常慢查询。
 
 可复制 [`database/mysql.env.example`](database/mysql.env.example) 后修改。更新 systemd 服务文件并执行 `systemctl daemon-reload && systemctl restart dahanghai-analysis`。
 

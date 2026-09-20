@@ -42,7 +42,7 @@ public class UserRepository {
 
   public synchronized void initialize(String bootstrapUsername, String bootstrapPasswordHash) {
     if (initialized) return;
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          Statement statement = connection.createStatement()) {
       statement.execute("""
           CREATE TABLE IF NOT EXISTS report_users (
@@ -114,7 +114,7 @@ public class UserRepository {
 
   public List<UserAccount> list() {
     List<UserAccount> users = new ArrayList<>();
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement(
              "SELECT " + USER_COLUMNS + " FROM report_users ORDER BY id ASC");
          ResultSet result = statement.executeQuery()) {
@@ -126,7 +126,8 @@ public class UserRepository {
   }
 
   public UserAccount create(String username, String passwordHash, String role) {
-    try (Connection connection = reports.openConnection();
+    long createdId;
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              INSERT INTO report_users (username, password_hash, role, active)
              VALUES (?, ?, ?, 1)
@@ -137,7 +138,7 @@ public class UserRepository {
       statement.executeUpdate();
       try (ResultSet keys = statement.getGeneratedKeys()) {
         if (!keys.next()) throw new IllegalStateException("创建用户后未返回用户 ID");
-        return findById(keys.getLong(1)).orElseThrow();
+        createdId = keys.getLong(1);
       }
     } catch (SQLException error) {
       if ("23000".equals(error.getSQLState())) {
@@ -145,10 +146,11 @@ public class UserRepository {
       }
       throw databaseError(error);
     }
+    return findById(createdId).orElseThrow();
   }
 
   public UserAccount updatePassword(long id, String passwordHash) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              UPDATE report_users
              SET password_hash = ?, session_version = session_version + 1
@@ -157,14 +159,14 @@ public class UserRepository {
       statement.setString(1, passwordHash);
       statement.setLong(2, id);
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("用户不存在");
-      return findById(id).orElseThrow();
     } catch (SQLException error) {
       throw databaseError(error);
     }
+    return findById(id).orElseThrow();
   }
 
   public UserAccount setActive(long id, boolean active) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              UPDATE report_users
              SET active = ?, session_version = session_version + 1
@@ -173,15 +175,15 @@ public class UserRepository {
       statement.setBoolean(1, active);
       statement.setLong(2, id);
       if (statement.executeUpdate() != 1) throw new IllegalArgumentException("用户不存在");
-      return findById(id).orElseThrow();
     } catch (SQLException error) {
       throw databaseError(error);
     }
+    return findById(id).orElseThrow();
   }
 
   public Map<String, Boolean> reportVisibility(long userId) {
     Map<String, Boolean> visibility = defaultReportVisibility();
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              SELECT dhh_visible, jd_visible, jd_low_activity_visible, adpflux_visible
              FROM report_user_visibility
@@ -203,7 +205,7 @@ public class UserRepository {
 
   public Map<String, Boolean> saveReportVisibility(
       long userId, boolean dhh, boolean jd, boolean jdLowActivity, boolean adpflux) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              INSERT INTO report_user_visibility
                (user_id, dhh_visible, jd_visible, jd_low_activity_visible, adpflux_visible)
@@ -220,15 +222,15 @@ public class UserRepository {
       statement.setBoolean(4, jdLowActivity);
       statement.setBoolean(5, adpflux);
       statement.executeUpdate();
-      return reportVisibility(userId);
     } catch (SQLException error) {
       throw databaseError(error);
     }
+    return reportVisibility(userId);
   }
 
   public Map<String, Boolean> toolVisibility(long userId) {
     Map<String, Boolean> visibility = defaultToolVisibility();
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              SELECT tool_key, visible
              FROM report_user_tool_visibility
@@ -249,7 +251,7 @@ public class UserRepository {
 
   public Map<String, Boolean> saveToolVisibility(
       long userId, Map<String, Boolean> visibility) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement("""
              INSERT INTO report_user_tool_visibility (user_id, tool_key, visible)
              VALUES (?, ?, ?)
@@ -262,14 +264,14 @@ public class UserRepository {
         statement.addBatch();
       }
       statement.executeBatch();
-      return toolVisibility(userId);
     } catch (SQLException error) {
       throw databaseError(error);
     }
+    return toolVisibility(userId);
   }
 
   public void markLogin(long id) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement(
              "UPDATE report_users SET last_login_at = CURRENT_TIMESTAMP(3) WHERE id = ?")) {
       statement.setLong(1, id);
@@ -280,7 +282,7 @@ public class UserRepository {
   }
 
   private Optional<UserAccount> findOne(String sql, Object value) {
-    try (Connection connection = reports.openConnection();
+    try (Connection connection = reports.openControlConnection();
          PreparedStatement statement = connection.prepareStatement(sql)) {
       if (value instanceof Number number) {
         statement.setLong(1, number.longValue());

@@ -48,6 +48,7 @@ public class ReportRepository {
       "customer_agent", "remark", "raw_json", "row_hash");
 
   private final HikariDataSource dataSource;
+  private final HikariDataSource controlDataSource;
   private final ObjectMapper objectMapper;
 
   public ReportRepository(RuntimeConfig config, ObjectMapper objectMapper) {
@@ -56,21 +57,43 @@ public class ReportRepository {
     String host = config.get("MYSQL_HOST", "127.0.0.1");
     int port = config.getInt("MYSQL_PORT", 3306);
     String database = config.get("MYSQL_DATABASE", "BI");
-    hikari.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database
+    String jdbcUrl = "jdbc:mysql://" + host + ":" + port + "/" + database
         + "?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
-        + "&useSSL=false&allowPublicKeyRetrieval=true");
+        + "&useSSL=false&allowPublicKeyRetrieval=true";
+    configurePool(hikari, config, jdbcUrl, "marketing-reports",
+        config.getInt("MYSQL_CONNECTION_LIMIT", 8), 0);
+    dataSource = new HikariDataSource(hikari);
+
+    HikariConfig control = new HikariConfig();
+    configurePool(control, config, jdbcUrl, "marketing-control",
+        config.getInt("MYSQL_CONTROL_CONNECTION_LIMIT", 3), 1);
+    controlDataSource = new HikariDataSource(control);
+  }
+
+  private static void configurePool(
+      HikariConfig hikari,
+      RuntimeConfig config,
+      String jdbcUrl,
+      String poolName,
+      int requestedSize,
+      int requestedMinimumIdle) {
+    int poolSize = Math.max(1, requestedSize);
+    hikari.setJdbcUrl(jdbcUrl);
     hikari.setUsername(config.get("MYSQL_USER", "BI"));
     hikari.setPassword(config.get("MYSQL_PASSWORD", ""));
-    hikari.setMaximumPoolSize(config.getInt("MYSQL_CONNECTION_LIMIT", 5));
-    hikari.setMinimumIdle(0);
-    hikari.setConnectionTimeout(10_000);
+    hikari.setMaximumPoolSize(poolSize);
+    hikari.setMinimumIdle(Math.min(poolSize, Math.max(0, requestedMinimumIdle)));
+    long connectionTimeout = Math.max(2_000, config.getInt("MYSQL_CONNECTION_TIMEOUT_MS", 10_000));
+    hikari.setConnectionTimeout(connectionTimeout);
+    hikari.setValidationTimeout(Math.min(3_000, connectionTimeout - 250));
     hikari.setInitializationFailTimeout(-1);
-    hikari.setPoolName("marketing-reports");
-    hikari.addDataSourceProperty("cachePrepStmts",true);
-    hikari.addDataSourceProperty("prepStmtCacheSize",128);
-    hikari.addDataSourceProperty("prepStmtCacheSqlLimit",4096);
-    hikari.addDataSourceProperty("useServerPrepStmts",true);
-    dataSource = new HikariDataSource(hikari);
+    hikari.setPoolName(poolName);
+    int leakDetectionMs = config.getInt("MYSQL_LEAK_DETECTION_MS", 30_000);
+    if (leakDetectionMs >= 2_000) hikari.setLeakDetectionThreshold(leakDetectionMs);
+    hikari.addDataSourceProperty("cachePrepStmts", true);
+    hikari.addDataSourceProperty("prepStmtCacheSize", 128);
+    hikari.addDataSourceProperty("prepStmtCacheSqlLimit", 4096);
+    hikari.addDataSourceProperty("useServerPrepStmts", true);
   }
 
   public void ping() {
@@ -161,6 +184,10 @@ public class ReportRepository {
 
   Connection openConnection() throws SQLException {
     return dataSource.getConnection();
+  }
+
+  Connection openControlConnection() throws SQLException {
+    return controlDataSource.getConnection();
   }
 
   public void replaceOne(String reportType, List<Map<String, Object>> rows, String triggerType) {
@@ -906,6 +933,7 @@ public class ReportRepository {
 
   @PreDestroy
   void close() {
+    controlDataSource.close();
     dataSource.close();
   }
 }

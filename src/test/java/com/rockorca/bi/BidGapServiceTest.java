@@ -19,6 +19,16 @@ class BidGapServiceTest {
     var noRegistrations=BidGapService.calculate(List.of(current,prior),LocalDate.of(2026,9,10));
     assertNull(((Map<?,?>)((Map<?,?>)((Map<?,?>)noRegistrations.get("accounts")).get("123")).get("dailyPrice")).get("price"));
   }
+  @Test void missingTargetDayUsesLatestEarlierValidPriceForAccountAndTask(){
+    var prior=new LinkedHashMap<String,Object>(pricedRow("2026-09-06",60,20,100));prior.put("任务名","任务甲");
+    var result=BidGapService.calculate(List.of(prior),LocalDate.of(2026,9,10));
+    var account=(Map<?,?>)((Map<?,?>)result.get("accounts")).get("123");
+    var task=(Map<?,?>)((Map<?,?>)result.get("tasks")).get("任务甲");
+    for(Object value:List.of(account.get("dailyPrice"),((Map<?,?>)account.get("dailyPricesByTask")).get("任务甲"),task.get("dailyPrice"))){
+      var price=(Map<?,?>)value;assertEquals(3d,price.get("price"));assertEquals("2026-09-06",price.get("date"));assertEquals("2026-09-08",price.get("fallbackFrom"));
+      assertTrue(price.get("fallbackReason").toString().contains("无日报数据"));
+    }
+  }
   @Test void loadQueriesThirtyPriorDaysForTaskPriceAndKeepsGapWindow(){
     var repository=org.mockito.Mockito.mock(ReportRepository.class);
     var reports=org.mockito.Mockito.mock(ReportService.class);

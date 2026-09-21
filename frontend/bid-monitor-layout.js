@@ -19,7 +19,7 @@
     refresh.setAttribute('aria-busy', 'true');
     refresh.textContent = '正在刷新…';
     try {
-      await syncLoad(true);
+      if(historyMode)await loadHistory();else await syncLoad(true);
     } catch (error) {
       document.getElementById('message').textContent = error.message;
     } finally {

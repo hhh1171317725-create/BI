@@ -39,7 +39,7 @@
  for(const button of [multiSelectVisible,multiClearVisible])button.type='button';
  multiTools.append(multiSelectVisible,multiClearVisible,multiCount);
  const multiEmpty=make('p','column-no-results','没有匹配项，请更换关键词。');multiEmpty.hidden=true;
- const multiFoot=make('div','multi-filter-footer'),multiReset=make('button','dialog-reset','清空全部'),multiDone=make('button','primary multi-filter-done','确定');for(const button of [multiReset,multiDone])button.type='button';multiFoot.append(multiReset,multiDone);
+ const multiFoot=make('div','multi-filter-footer'),multiReset=make('button','dialog-reset','清空全部'),multiCancel=make('button','','取消'),multiDone=make('button','primary multi-filter-done','确定');for(const button of [multiReset,multiCancel,multiDone])button.type='button';multiFoot.append(multiReset,multiCancel,multiDone);
  multi.append(multiHead,multiSearch,multiTools,multiList,multiEmpty,multiFoot);document.body.append(multi);
  let multiTarget=null,multiButton=null;
  function closeMulti(focus=false){if(multi.hidden)return;multi.hidden=true;multiButton?.setAttribute('aria-expanded','false');if(focus)multiButton?.focus();multiTarget=null;multiButton=null;}
@@ -50,11 +50,18 @@
   multiSelectVisible.disabled=!shown.some(box=>!box.checked);multiClearVisible.disabled=!shown.some(box=>box.checked);
   multiEmpty.hidden=shown.length>0;positionMulti();
  }
- function applyMulti(){const selected=new Set([...multiList.querySelectorAll('input:checked')].map(box=>box.value));for(const option of multiTarget.options)option.selected=selected.has(option.value);multiTarget.dispatchEvent(new Event('input',{bubbles:true}));refreshMulti();}
+ function applyMulti(){
+  if(!multiTarget)return;
+  const target=multiTarget,selected=new Set([...multiList.querySelectorAll('input:checked')].map(box=>box.value));
+  const changed=[...target.options].some(option=>option.selected!==selected.has(option.value));
+  for(const option of target.options)option.selected=selected.has(option.value);
+  closeMulti(true);
+  if(changed)target.dispatchEvent(new Event('input',{bubbles:true}));
+ }
  function openMulti(id,title,button){
   if(!multi.hidden&&multiTarget?.id===id){closeMulti();return;}
   closeMulti();multiTarget=document.getElementById(id);multiButton=button;multiTitle.textContent='选择'+title;multiList.replaceChildren();multiSearch.value='';multiSearch.placeholder='搜索'+title;multiSearch.setAttribute('aria-label','搜索'+title);
-  for(const option of multiTarget.options){const label=make('label','column-choice'),box=make('input');box.type='checkbox';box.value=option.value;box.checked=option.selected;box.setAttribute('role','option');box.setAttribute('aria-selected',String(box.checked));box.onchange=()=>{box.setAttribute('aria-selected',String(box.checked));applyMulti();};label.append(box,document.createTextNode(option.textContent));label.dataset.search=option.textContent.toLowerCase();multiList.append(label);}
+  for(const option of multiTarget.options){const label=make('label','column-choice'),box=make('input');box.type='checkbox';box.value=option.value;box.checked=option.selected;box.setAttribute('role','option');box.setAttribute('aria-selected',String(box.checked));box.onchange=()=>{box.setAttribute('aria-selected',String(box.checked));refreshMulti();};label.append(box,document.createTextNode(option.textContent));label.dataset.search=option.textContent.toLowerCase();multiList.append(label);}
   multi.hidden=false;multiButton.setAttribute('aria-expanded','true');refreshMulti();multiSearch.focus();
  }
  const taskFilterButton=document.getElementById('taskFilterButton'),optimizerFilterButton=document.getElementById('optimizerFilterButton');
@@ -62,12 +69,12 @@
  taskFilterButton.onclick=()=>openMulti('taskFilter','任务',taskFilterButton);
  optimizerFilterButton.onclick=()=>openMulti('optimizerFilter','优化师',optimizerFilterButton);
  multiSearch.oninput=()=>{const term=multiSearch.value.trim().toLowerCase();for(const label of multiList.children)label.hidden=!!term&&!label.dataset.search.includes(term);refreshMulti();};
- function selectShown(checked){for(const label of multiList.children){if(label.hidden)continue;const box=label.querySelector('input');box.checked=checked;box.setAttribute('aria-selected',String(checked));}applyMulti();}
+ function selectShown(checked){for(const label of multiList.children){if(label.hidden)continue;const box=label.querySelector('input');box.checked=checked;box.setAttribute('aria-selected',String(checked));}refreshMulti();}
  multiSelectVisible.onclick=()=>selectShown(true);multiClearVisible.onclick=()=>selectShown(false);
- multiReset.onclick=()=>{multiList.querySelectorAll('input[type="checkbox"]').forEach(box=>{box.checked=false;box.setAttribute('aria-selected','false');});applyMulti();};
- multiDone.onclick=()=>closeMulti(true);multiClose.onclick=()=>closeMulti(true);
+ multiReset.onclick=()=>{multiList.querySelectorAll('input[type="checkbox"]').forEach(box=>{box.checked=false;box.setAttribute('aria-selected','false');});refreshMulti();};
+ multiDone.onclick=applyMulti;multiCancel.onclick=multiClose.onclick=()=>closeMulti(true);
  document.addEventListener('pointerdown',event=>{if(!multi.hidden&&!multi.contains(event.target)&&!multiButton?.contains(event.target))closeMulti();});
- document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!multi.hidden){event.preventDefault();closeMulti(true);}});
+ document.addEventListener('keydown',event=>{if(multi.hidden)return;if(event.key==='Escape'){event.preventDefault();closeMulti(true);}else if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();applyMulti();}});
  window.addEventListener('resize',positionMulti);window.addEventListener('scroll',positionMulti,true);
  const chooser=dialog('bidColumnsDialog','自定义列','按当前统计维度保存。左侧选择字段，右侧调整顺序；基础维度列固定保留。');
  chooser.body.classList.add('column-layout');

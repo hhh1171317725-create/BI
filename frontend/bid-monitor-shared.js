@@ -1,5 +1,5 @@
 'use strict';
-let bidCanManage=false,bidSharedVersion='',bidSharedUser='',bidSharedLoading=false,bidSharedPricing='';
+let bidCanManage=false,bidSharedVersion='',bidSharedUser='',bidSharedLoading=false,bidSharedPricing=null,bidSharedStrategies=null;
 function bidSharedAccess(data){
   if(!data.userId||typeof data.canManage!=='boolean')throw Error('共享报表接口未就绪，请确认后端已更新');
   if(bidSharedUser&&bidSharedUser!==data.userId){location.replace('/login');throw Error('登录账户已变化，请重新登录');}
@@ -9,15 +9,22 @@ function bidSharedAccess(data){
   const label=document.getElementById('sharedReportNotice');
   label.textContent=`共享报表 · 由 ${data.sharedOwnerName||'管理员'} 维护。${bidCanManage?'你可以管理同步、任务价格和推送。':'你可以查看、筛选和导出，无需配置。'}`;
 }
-async function bidApplyShared(data){
+async function bidApplyShared(data,force=false){
   bidSharedAccess(data);
-  window.bidStrategyBundle={userId:data.userId,canManage:data.canManage,strategies:Array.isArray(data.strategies)?data.strategies:[],revision:data.strategyRevision||''};
-  document.dispatchEvent(new CustomEvent('bid:strategies-shared',{detail:window.bidStrategyBundle}));
+  const strategies=Array.isArray(data.strategies)?data.strategies:[];
+  const strategyKey=JSON.stringify([data.userId,data.canManage,data.strategyRevision||strategies]);
+  if(bidSharedStrategies!==strategyKey){
+    bidSharedStrategies=strategyKey;
+    window.bidStrategyBundle={userId:data.userId,canManage:data.canManage,strategies,revision:data.strategyRevision||''};
+    document.dispatchEvent(new CustomEvent('bid:strategies-shared',{detail:window.bidStrategyBundle}));
+  }
   if(bidCanManage)return;
-  if(bidSharedPricing!==data.pricingRevision)for(const option of document.getElementById('taskFilter').options)option.selected=false;
-  bidSharedPricing=data.pricingRevision||'';
-  taskRules=Array.isArray(data.rules)?data.rules:[];
-  if(data.snapshot){
+  const rules=Array.isArray(data.rules)?data.rules:[],pricingKey=data.pricingRevision||JSON.stringify(rules),pricingChanged=bidSharedPricing!==pricingKey;
+  if(pricingChanged){
+    for(const option of document.getElementById('taskFilter').options)option.selected=false;
+    bidSharedPricing=pricingKey;taskRules=rules;
+  }
+  if(data.snapshot&&(force||followSync)){
     const snapshot=data.snapshot;
     if(Array.isArray(snapshot.rows)&&snapshot.rows.length){
       await receive(snapshot.rows,`管理员共享快照 ${new Date(snapshot.updatedAt).toLocaleString('zh-CN')}`,
@@ -26,7 +33,7 @@ async function bidApplyShared(data){
       ++gapGeneration;gapData=null;raw=[];range=null;source='';render();
       message('管理员尚未同步共享数据，请联系管理员开启同步。');
     }
-  }else render();
+  }else if(pricingChanged)render();
   bidSharedVersion=data.version||'';
 }
 async function bidRefreshShared(force=false){
@@ -34,7 +41,7 @@ async function bidRefreshShared(force=false){
   bidSharedLoading=true;
   try{
     const data=await api('/api/bid-monitor/shared-report?after='+encodeURIComponent(force?'':bidSharedVersion),{signal:AbortSignal.timeout(20000)});
-    await bidApplyShared(data);
+    await bidApplyShared(data,force);
     return true;
   }catch(error){message(error.message,true);return false;}finally{bidSharedLoading=false;}
 }

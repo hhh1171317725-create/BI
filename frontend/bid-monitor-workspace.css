@@ -30,7 +30,11 @@ body[data-page="bid-monitor"] .credential-details:not([open])>summary{margin:0}
 .table-guidance{margin-right:auto;font-size:12px;color:#75869a}
 .table-tools button{min-height:32px;font-size:12px}
 .table-tools button[aria-pressed="true"]{background:#edf5ff;color:#15579d;border-color:#a6c6ec}
-.bid-multi-dropdown{max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box}
+.bid-multi-dropdown{display:flex;flex-direction:column;max-height:calc(100dvh - 24px);overflow:hidden;box-sizing:border-box}
+.bid-multi-dropdown[hidden]{display:none}
+.bid-multi-dropdown>.multi-filter-list{min-height:0;flex:1 1 auto;overscroll-behavior:contain}
+.bid-multi-dropdown>:not(.multi-filter-list){flex-shrink:0}
+.bid-multi-dropdown .column-choice:focus-within{outline:2px solid #93b9f7;outline-offset:-2px}
 .multi-filter-tools{display:flex;align-items:center;gap:4px;margin:0;padding:0 14px 8px;border-bottom:1px solid #edf1f5}
 .multi-filter-tools button{min-height:26px;padding:3px 5px;border:0;background:transparent;color:#2563a8;font-size:11px;box-shadow:none}
 .multi-filter-count{margin-left:auto;font-size:11px;color:#718198}

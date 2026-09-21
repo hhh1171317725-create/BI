@@ -73,7 +73,7 @@ async function loadGap(){
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
     gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 有效日结算数合计 ÷ 注册数合计 · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
     $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
-  }catch(error){if(generation!==gapGeneration)return;gapData=null;render();$('#gapStatus').textContent='gap读取失败：'+error.message+'；相关收益指标暂不计算，请重试。';}
+  }catch(error){if(generation!==gapGeneration)return;render();$('#gapStatus').textContent='gap读取失败：'+error.message+(gapData?'；当前保留上次关联结果，请重试更新。':'；相关收益指标暂不计算，请重试。');}
   finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='重算关联';}}
 }
 let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
@@ -367,7 +367,8 @@ async function loadHistory(){
     await receive(data.rows,sourceLabel,{start:data.startDate,end:data.endDate},false,true);
     const todayNote=data.includesToday?` · 含今日实时 ${data.liveCount} 条` : '';
     $('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote}`;
-    void window.loadBidHistoricalReferences(raw).then(references=>{if(historyMode&&range?.end===data.endDate){historyTaskReferences=references;historyFinancialReady=Boolean(references.complete);render();const coverage=`${references.size} / ${references.totalDates} 个数据日期`;$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote} · ${coverage} 已关联任务、单价与 gap`;message(historyFinancialReady?(data.includesToday?'历史归档、今日实时数据及逐日收益计算已完成':'历史数据及逐日收益计算已完成'):'历史投放数据已读取，部分日期的收益关联失败',!historyFinancialReady);}});
+    const expectedRows=raw;
+    void window.loadBidHistoricalReferences(expectedRows).then(references=>{if(historyMode&&raw===expectedRows){historyTaskReferences=references;historyFinancialReady=Boolean(references.complete);render();const coverage=`${references.size} / ${references.totalDates} 个数据日期`;$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote} · ${coverage} 已关联任务、单价与 gap`;message(historyFinancialReady?(data.includesToday?'历史归档、今日实时数据及逐日收益计算已完成':'历史数据及逐日收益计算已完成'):'历史投放数据已读取，部分日期的收益关联失败',!historyFinancialReady);}});
   }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);}
   finally{busy=false;button.disabled=false;}
 }

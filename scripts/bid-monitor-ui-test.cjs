@@ -494,8 +494,13 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.setViewportSize({width:1440,height:1000});
   await selectView('plans');
-  await page.evaluate(async ({sample,todayChina,warningCreationDate})=>{document.getElementById('clearReportFilters').click();await receive([{...sample[0],promotion_id:'warning-1',promotion_name:'转化门槛测试',promotion_create_time:warningCreationDate+' 08:00:00',stat_cost:100,convert_cnt:5,cpa_bid:10},{...sample[1],promotion_id:'ready-1',promotion_create_time:warningCreationDate+' 08:00:00',stat_cost:100,convert_cnt:6,cpa_bid:10}],'预警测试',{start:todayChina,end:todayChina});},{sample,todayChina,warningCreationDate});
-  await page.evaluate(()=>{compensationAutoFocus=true;priorConversionStatus='ready';render();});
+  await page.route('**/api/bid-monitor/history/conversions?**',route=>route.fulfill({json:{rows:[]}}));
+  await page.evaluate(async ({sample,todayChina,warningCreationDate})=>{document.getElementById('clearReportFilters').click();await receive([{...sample[0],promotion_id:'warning-1',promotion_name:'转化门槛测试',promotion_create_time:warningCreationDate+' 08:00:00',stat_cost:100,convert_cnt:5,cpa_bid:10},{...sample[1],promotion_id:'ready-1',promotion_create_time:warningCreationDate+' 08:00:00',stat_cost:100,convert_cnt:6,cpa_bid:10}],'预警测试',{start:todayChina,end:todayChina},true);},{sample,todayChina,warningCreationDate});
+  await page.waitForFunction(()=>priorConversionStatus==='ready');
+  assert.equal(await page.locator('#count').textContent(),'2 条','Live data must show all plans even after warning calculations finish');
+  assert.match(await page.locator('#compensationAlert').textContent(),/当前表格展示全部计划/);
+  assert.equal(await page.locator('#compensationAlertFilter').textContent(),'查看 1 个预警计划');
+  await page.locator('#compensationAlertFilter').click();
   assert.match(await page.locator('#compensationAlert').textContent(),/正在展示 1 个转化门槛预警计划/);
   assert.equal(await page.locator('#compensationAlertFilter').textContent(),'返回全部计划');
   assert.equal(await page.locator('#count').textContent(),'1 条');

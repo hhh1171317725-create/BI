@@ -1,32 +1,32 @@
 /* One console layout: overview, dimensions/date, filters, then the table. */
-body.bid-console{--ocean-blue:#1664ff;--ocean-blue-hover:#0e52db;background:#f4f5f7}
+body.bid-console{--ocean-blue:#1664ff;--ocean-blue-hover:#0e52db;background:#f5f6f8;color:#1d2939;font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif}
 body.bid-console main{max-width:none;padding-inline:24px}
 body.bid-console .section-nav{margin-inline:-24px;padding-inline:24px}
-body.bid-console .ocean-overview-card{padding:16px 20px;border-radius:6px;box-shadow:none}
+body.bid-console .ocean-overview-card{padding:14px 20px;border-radius:8px;box-shadow:none;border-color:#e4e7ec}
 body.bid-console .report-heading{gap:16px;min-height:0;padding-bottom:0;border-bottom:0}
-body.bid-console .report-heading>div:first-child{flex:1;min-width:0}
+body.bid-console .report-heading>div:first-child{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 14px}
 body.bid-console .page-eyebrow{display:none}
 body.bid-console .report-heading #source{font-size:11px}
 body.bid-console #metrics{display:none}
 body.bid-console #toggleBidOverview{flex:none;min-height:30px;padding:4px 10px;font-size:12px;color:#64748b;border-color:transparent;background:transparent}
-body.bid-console .quality-heading{margin:12px 0 7px}
-body.bid-console .data-quality-cards{gap:0;border:1px solid #e8edf3;border-radius:4px;background:#fff}
-body.bid-console .quality-card{min-height:82px;border:0;border-right:1px solid #e8edf3;background:transparent;border-radius:0;padding:10px 18px}
-body.bid-console .quality-card:last-child{border-right:0}
-body.bid-console .quality-card strong{font-size:24px;color:#172b4d;letter-spacing:0}
+body.bid-console .quality-heading{display:none}
+body.bid-console .data-quality-cards{gap:12px;margin-top:12px;border:0;border-radius:6px;background:#fff}
+body.bid-console .quality-card{min-height:88px;border:1px solid #edf0f4;background:#f8fafc;border-radius:6px;padding:12px 16px}
+body.bid-console .quality-card:last-child{border-right:1px solid #edf0f4}
+body.bid-console .quality-card strong{font-size:26px;color:#172b4d;letter-spacing:-.4px;line-height:1.2}
 body.bid-console .console-explanation{margin-top:10px;color:#64748b;font-size:11px}
-body.bid-console .console-explanation>summary{font-size:11px;font-weight:400;min-height:20px;padding:0;color:#64748b}
+body.bid-console .console-explanation>summary{font-size:11px;font-weight:400;min-height:20px;padding:0;color:#64748b;list-style-position:inside}
 body.bid-console .console-explanation :is(#source,#summaryCoverage){margin:8px 0;font-size:11px}
-body.bid-console #message{padding-top:0;font-size:11px;color:#64748b}
+body.bid-console #message{padding:0;margin:0;font-size:12px;color:#667085}
 body.bid-console #message.error{color:#b42318}
 body.bid-console .console-overview-collapsed>:not(.report-heading):not(#message){display:none!important}
-body.bid-console .ocean-list-card{margin-top:12px;border-radius:6px;box-shadow:none}
+body.bid-console .ocean-list-card{margin-top:16px;border-radius:8px;box-shadow:none;border-color:#e4e7ec}
 body.bid-console .ocean-level-bar{padding:8px 16px;gap:12px;flex-wrap:wrap;min-height:54px}
 body.bid-console .ocean-level-title{display:none}
-body.bid-console .ocean-level-tabs{align-self:center;gap:4px}
+body.bid-console .ocean-level-tabs{align-self:center;gap:2px;padding:3px;background:#f2f4f7;border-radius:6px}
 body.bid-console .ocean-level-tab{min-width:60px;min-height:34px;height:34px;border-radius:4px;padding:0 14px;color:#475569}
 body.bid-console .ocean-level-tab::after{display:none}
-body.bid-console .ocean-level-tab.is-active{background:#edf3ff;color:#1664ff}
+body.bid-console .ocean-level-tab.is-active{background:#fff;color:#1664ff;box-shadow:0 1px 3px #10182814!important}
 body.bid-console .console-dimension{flex:0 1 200px;min-width:0!important}
 body.bid-console .ocean-level-bar>.ocean-range-field{margin-left:auto;min-width:270px;width:290px}
 body.bid-console .report-toolbar{display:grid;grid-template-columns:minmax(230px,2fr) repeat(3,minmax(140px,1fr));gap:10px;padding:14px 16px 10px;align-items:start}
@@ -39,7 +39,7 @@ body.bid-console .console-presets :is(button,select){height:34px;min-height:34px
 body.bid-console .console-preset-status{flex-basis:100%;font-size:11px;color:#64748b;line-height:1.5}
 body.bid-console .console-preset-status:empty{display:none}
 body.bid-console .workspace-field :is(input,select,button){background:#fff;border-color:#dce2eb}
-body.bid-console .filter-summary{padding:4px 16px 8px;min-height:28px}
+body.bid-console .filter-summary{padding:0 16px 8px;min-height:24px}
 body.bid-console #historyStatus{font-size:11px;padding-bottom:8px}
 body.bid-console .gap-strip{padding-block:7px;background:#fbfcfe}
 body.bid-console .table-tools{padding-block:7px}
@@ -54,6 +54,34 @@ body.bid-console .console-save-dialog{width:min(440px,calc(100vw - 24px))}
 body.bid-console .console-save-dialog form{margin:0}
 body.bid-console .console-save-dialog input{width:100%}
 .console-save-error{color:#b42318;font-size:12px}
+body.bid-console #sharedReportNotice{margin:6px 0;font-size:11px;color:#667085}
+body.bid-console .section-nav a{min-height:44px;padding-block:11px 10px}
+body.bid-console .report-actions>button{height:36px;min-height:36px;border-radius:6px}
+body.bid-console #export{background:#fff;color:#344054;border-color:#d0d5dd}
+body.bid-console #reportRefresh{background:#1664ff;color:#fff;border-color:#1664ff}
+body.bid-console .ocean-table-summary{color:#667085;background:#f9fafb;border-block:1px solid #edf0f4}
+body.bid-console #report .table-wrap{box-shadow:none;border:0;border-radius:0;scrollbar-gutter:stable}
+body.bid-console #report .table-wrap th{height:42px;background:#f9fafb;color:#475467;font-size:12px;border-bottom:1px solid #e4e7ec}
+body.bid-console #report .table-wrap td{border-bottom-color:#eef1f5;font-size:13px}
+body.bid-console #report .table-wrap tr:hover td{background:#f0f6ff}
+body.bid-console #report .table-wrap td small{color:#7b8798;font-size:11px}
+body.bid-console #report .pager{margin:0;padding:14px 16px;border-top:1px solid #edf0f4;background:#fff}
+.console-data-status{padding:0 16px;border-top:1px solid #eef1f5;background:#fff}
+.console-data-status>summary{display:flex;align-items:center;gap:8px;min-height:36px;cursor:pointer;list-style:none;color:#667085;font-size:12px;font-weight:400}
+.console-data-status>summary::-webkit-details-marker{display:none}
+.console-data-status>summary::before{content:'›';font-size:16px;transform:rotate(0deg)}
+.console-data-status[open]>summary::before{transform:rotate(90deg)}
+.console-status-indicator{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11px}
+.console-status-indicator::before{content:'';width:6px;height:6px;border-radius:50%;background:#98a2b3}
+.console-data-status[data-state="loading"] .console-status-indicator::before{background:#1664ff}
+.console-data-status[data-state="error"] .console-status-indicator{color:#b42318}
+.console-data-status[data-state="error"] .console-status-indicator::before{background:#d92d20}
+body.bid-console .console-data-status #historyStatus{margin:0;padding:4px 0;font-size:12px}
+body.bid-console .console-data-status .gap-strip{border:0;padding:6px 0 12px;background:transparent}
+.column-presets{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0 24px 14px;color:#667085;font-size:12px}
+.column-presets button{min-height:30px;padding:4px 10px;font-size:12px;border-radius:5px;background:#f9fafb;box-shadow:none!important}
+.column-presets button:hover{color:#1664ff;background:#eff5ff;border-color:#b2ccff}
+@media(max-width:760px){body.bid-console .data-quality-cards{gap:8px}.console-data-status{padding-inline:10px}.column-presets{padding-inline:16px;gap:6px}.column-presets>span{width:100%}body.bid-console #report .pager{padding:10px}body.bid-console .report-heading #message{font-size:11px}}
 @media(max-width:760px){body.bid-console>header{height:auto;padding:10px 14px;gap:8px}body.bid-console>header nav{height:auto;width:100%;flex-wrap:wrap;gap:0}body.bid-console>header nav a{height:30px;padding:4px 10px}body.bid-console .report-heading{display:flex!important;flex-wrap:nowrap!important}body.bid-console .report-heading>div:first-child{flex:1!important}body.bid-console #toggleBidOverview{font-size:11px;padding-inline:5px}}
 @media(max-width:1100px){body.bid-console .ocean-level-bar>.ocean-range-field{width:260px;min-width:240px}body.bid-console .console-dimension{flex-basis:160px}body.bid-console .report-toolbar{grid-template-columns:repeat(3,minmax(0,1fr))}body.bid-console .report-toolbar>.workspace-search{grid-column:1/-1}body.bid-console .report-toolbar>.console-presets{grid-column:1/-1}body.bid-console .report-toolbar>.report-actions{grid-column:1/-1;justify-content:flex-end}}
 @media(max-width:760px){body.bid-console main{padding-inline:10px}body.bid-console .section-nav{margin-inline:-10px;padding-inline:10px}body.bid-console .ocean-overview-card{padding:12px}body.bid-console .report-heading{flex-direction:row;align-items:flex-start}body.bid-console .report-heading h2{font-size:17px!important}body.bid-console .quality-card{padding:10px;min-height:80px}body.bid-console .quality-card:nth-child(2){border-right:0}body.bid-console .quality-card:nth-child(-n+2){border-bottom:1px solid #e8edf3}body.bid-console .quality-card strong{font-size:21px}body.bid-console .quality-heading small{display:none}body.bid-console .ocean-level-bar{flex-direction:row;padding:10px;gap:8px}body.bid-console .ocean-level-tabs{width:100%;flex-basis:100%}body.bid-console .ocean-level-tab{flex:1;padding-inline:6px;min-width:0}body.bid-console .console-dimension{flex:1 1 100%}body.bid-console .ocean-level-bar>.ocean-range-field{width:100%;flex-basis:100%;min-width:0}body.bid-console .report-toolbar{grid-template-columns:1fr 1fr;padding:10px;gap:8px}body.bid-console .report-toolbar>.workspace-field:last-of-type{grid-column:1/-1}body.bid-console .report-toolbar>.report-actions{display:flex;flex-wrap:wrap}body.bid-console .console-presets select{flex:1;width:130px}body.bid-console .console-presets button{padding-inline:7px}body.bid-console .table-guidance{font-size:11px}body.bid-console .gap-strip{align-items:flex-start}body.bid-console #report .table-wrap{min-height:260px}}

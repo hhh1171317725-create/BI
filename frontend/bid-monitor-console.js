@@ -37,10 +37,28 @@
   remove.onclick=()=>{if(select.value==='')return;const index=Number(select.value);if(persist(saved.filter((_,i)=>i!==index)))status.textContent='已删除方案，当前筛选仍保留';};
   draw();
   const overview=report.querySelector('.ocean-overview-card'),heading=overview.querySelector('.report-heading');
+  heading.firstElementChild.append(document.getElementById('message'));
   const explanation=make('details','console-explanation'),explanationTitle=make('summary','','数据说明与计算范围');
   explanation.append(explanationTitle);for(const id of ['source','lag','summaryCoverage']){const el=document.getElementById(id);if(el)explanation.append(el);}overview.append(explanation);
   const fold=button('收起汇总','toggleBidOverview');fold.setAttribute('aria-expanded','true');heading.append(fold);
   fold.onclick=()=>{const collapsed=overview.classList.toggle('console-overview-collapsed');fold.textContent=collapsed?'展开汇总':'收起汇总';fold.setAttribute('aria-expanded',String(!collapsed));};
+  const dataStatus=make('details','console-data-status');dataStatus.id='bidDataStatus';
+  const statusSummary=make('summary'),statusTitle=make('span','','数据状态与计算口径'),statusIndicator=make('span','console-status-indicator');
+  statusIndicator.setAttribute('role','status');statusIndicator.setAttribute('aria-live','polite');
+  statusSummary.append(statusTitle,statusIndicator);dataStatus.append(statusSummary);
+  const historyStatus=document.getElementById('historyStatus'),gapStatus=document.getElementById('gapStatus');
+  const gapStrip=gapStatus.closest('.gap-strip');gapStrip.before(dataStatus);dataStatus.append(historyStatus,gapStrip);
+  let lastFailure=false;
+  function updateDataStatus(){
+    const text=historyStatus.textContent+' '+gapStatus.textContent,failed=/失败|异常/.test(text),loading=/正在|读取中|更新中/.test(text);
+    const label=failed?'需要处理':loading?'更新中':raw.length?'已加载':'等待数据';
+    if(statusIndicator.textContent!==label)statusIndicator.textContent=label;
+    dataStatus.dataset.state=failed?'error':loading?'loading':'ready';
+    if(failed&&!lastFailure)dataStatus.open=true;lastFailure=failed;
+  }
+  const statusObserver=new MutationObserver(updateDataStatus);
+  for(const element of [historyStatus,gapStatus])statusObserver.observe(element,{childList:true,subtree:true,characterData:true});
+  updateDataStatus();
   const tabs=level.querySelector('.ocean-level-tabs');
   tabs.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const buttons=[...tabs.querySelectorAll('button')],index=buttons.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});
   const search=document.getElementById('search');search.type='search';

@@ -159,6 +159,15 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await setFilters({deepCpaBidMin:'',statusFilter:''});
   await resetColumns();
   assert.equal(await page.locator('#tableHead th').count(),17);
+  await page.locator('#openBidColumns').click();
+  await page.locator('#bidColumnsDialog .column-presets').getByRole('button',{name:'收益分析',exact:true}).click();
+  assert.equal(await page.locator('#bidColumnsDialog [data-column-key="estimatedRoi"]').isChecked(),true);
+  assert.equal(await page.locator('#bidColumnsDialog [data-column-key="ecpm"]').isChecked(),false);
+  await page.locator('#bidColumnsDialog').screenshot({path:path.resolve(__dirname,'../.runtime/bid-column-presets.png')});
+  await page.locator('#bidColumnsDialog .primary').click();
+  assert.equal(await page.locator('#tableHead [data-sort-key="estimatedRoi"]').count(),1);
+  assert.equal(await page.locator('#tableHead [data-sort-key="ecpm"]').count(),0);
+  await resetColumns();
   await page.locator('#search').fill('测试计划 104');
   assert.equal(await page.locator('#rows tr td').nth(13).textContent(),'-42.33%');
   assert.equal(await page.locator('#rows tr td').nth(13).getAttribute('title'),'盈亏线出价：143.33');
@@ -310,8 +319,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.section-nav [aria-current="location"]').count(),1);
   assert.equal(await page.locator('.report-actions').count(),1);assert.equal(await page.locator('.table-tools #oceanWatch').count(),0);assert.equal(await page.locator('#viewMode').isVisible(),true);assert.equal(await page.locator('#viewMode optgroup[label="时间组合维度"]').isHidden(),true);
   await page.getByRole('button',{name:'刷新全部数据',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条');
+  await page.waitForFunction(()=>document.querySelector('#count').textContent==='450 条'&&!document.querySelector('#reportRefresh').disabled&&document.querySelector('#gapStatus').textContent.startsWith('gap区间'));
   assert.match(await page.locator('#syncStatus').textContent(),/已读取/);assert.match(await page.locator('#gapStatus').textContent(),/^gap区间/);assert.equal(await page.locator('#reportRefresh').isEnabled(),true);
+  if(!await page.locator('#bidDataStatus').evaluate(el=>el.open))await page.locator('#bidDataStatus>summary').click();
   gapFactor=.5;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)').textContent==='0.500');
   assert.equal(await page.locator('#rows tr td').nth(15).textContent(),'10.75');
@@ -321,6 +331,14 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'--');
   gapFactor=1;await page.locator('#gapReload').click();
   await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(15)').textContent==='1.000');
+  await page.locator('#bidDataStatus>summary').click();
+  await page.route('**/api/bid-monitor/gap?**',route=>route.fulfill({status:503,json:{message:'temporary unavailable'}}),{times:1});
+  await page.evaluate(()=>loadGap());
+  await page.waitForFunction(()=>document.querySelector('#bidDataStatus').open&&document.querySelector('#bidDataStatus').dataset.state==='error');
+  assert.match(await page.locator('#bidDataStatus>summary').textContent(),/需要处理/);
+  assert.match(await page.locator('#gapStatus').textContent(),/保留上次关联结果/);
+  await page.locator('#gapReload').click();
+  await page.waitForFunction(()=>document.querySelector('#bidDataStatus').dataset.state==='ready');
   await page.locator('#search').fill('不存在的计划');
   assert.equal(await page.locator('#count').textContent(),'0 条');
   assert.equal(await page.getByRole('button',{name:'清除关键词筛选',exact:true}).count(),1);
@@ -486,6 +504,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#historyRangeButton').click();await page.locator('#historyRangePicker .ocean-range-preset').filter({hasText:'今天'}).click();await page.locator('#historyRangeApply').click();
   await page.waitForFunction(()=>document.querySelector('#historyStatus').textContent.startsWith('未选择日期'));
   assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');assert.match(await page.locator('#historyRangeButton').textContent(),new RegExp(todayChina+'.*实时'));
+  assert.equal(await page.locator('#bidDataStatus').isVisible(),true);
+  if(!await page.locator('#bidDataStatus').evaluate(el=>el.open))await page.locator('#bidDataStatus>summary').click();
   assert.equal(await page.locator('#gapReload').isVisible(),true);
   await page.locator('#search').fill('无匹配词');assert.match(await card('cost').textContent(),/0.00.*0 条计划/);
   await page.getByRole('button',{name:'清除筛选，查看结果',exact:true}).click();
@@ -539,7 +559,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.evaluate(()=>window.scrollTo(0,0));
   const controlIds=['search','taskFilterButton','optimizerFilterButton','platformFilter','historyRangeButton','savedBidFilters','export','reportRefresh'];
   async function verifyControls(){const boxes=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {id,x:r.x,y:r.y,right:r.right,bottom:r.bottom};}),controlIds);for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];assert.equal(a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y,false,`${a.id} overlaps ${b.id}`);}assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
-  await verifyControls();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-desktop.png')});
+  if(await page.locator('#bidDataStatus').evaluate(el=>el.open))await page.locator('#bidDataStatus>summary').click();
+  await verifyControls();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-desktop.png')});
   await page.setViewportSize({width:1024,height:900});await verifyControls();
   await page.setViewportSize({width:390,height:844});await verifyControls();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-console-mobile.png'),fullPage:true});
   const countBefore=await page.locator('#count').textContent();

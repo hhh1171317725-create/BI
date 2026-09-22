@@ -84,8 +84,19 @@
  available.append(search,choices);chosen.append(selectedTitle,selectedList);chooser.body.append(available,chosen);
  const open=make('button','column-config','☷ 选择列');open.type='button';open.id='openBidColumns';report.querySelector('.table-tools').append(open);
  let view,catalog=[],fixed=[],selection=[],defaults=[],useDefaults=false;
+ const columnPresets=make('div','column-presets');columnPresets.setAttribute('role','group');columnPresets.setAttribute('aria-label','快捷选择指标');
+ columnPresets.append(make('span','','快捷选择'));
+ for(const [title,keys] of [
+  ['投放表现',['account','optimizer','task','plans','accounts','cost','conversions','registrations','ratio','bid','ecpm']],
+  ['收益分析',['account','task','basePrice','priceSource','cost','registrations','commission','profit','estimatedRoi','breakEvenBid','bidProfitRate','gap','price']],
+  ['投放设置',['account','optimizer','task','platform','appType','deepBidType','deepCpaBid','deepExternalAction','externalAction','planStatus']]
+ ]){
+  const preset=make('button','',title);preset.type='button';preset.dataset.plansOnly=String(title==='投放设置');preset.onclick=()=>{useDefaults=false;selection=[...new Set([...fixed,...keys.filter(key=>catalog.some(column=>column[1]===key))])];search.value='';draw();};columnPresets.append(preset);
+ }
+ chooser.body.before(columnPresets);
  const currentPlan=()=>activePlanColumns().map(([,key])=>key);
  function draw(){
+  for(const preset of columnPresets.querySelectorAll('button'))preset.hidden=preset.dataset.plansOnly==='true'&&view!=='plans';
   choices.replaceChildren();selectedList.replaceChildren();selectedTitle.textContent=`已选 ${selection.length} 列`;
   const term=search.value.trim().toLowerCase(),visible=catalog.filter(([label])=>label.toLowerCase().includes(term));
   const groups=[['基础信息',([,key])=>fixed.includes(key)||textSortKeys.has(key)],['投放指标',([,key])=>['plans','todayPlans','spendingPlans','accounts','cost','conversions','registrations','ratio','bid','deepCpaBid'].includes(key)],['收益与成本',()=>true]];

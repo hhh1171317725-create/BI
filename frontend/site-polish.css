@@ -1,19 +1,19 @@
 /* Opt-in visual system for the directory and two daily reports. */
 body.site-polished{--polish-accent:#2466d4;--polish-soft:#eef4ff;background:#f3f6fa;color:#20344f;font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif}
 body.site-polished[data-report-style="jd"]{--polish-accent:#bd352f;--polish-soft:#fff3f1}
-.site-polished>header{padding:24px 32px;background:#fff;border-bottom:1px solid #e1e8f0;box-shadow:0 2px 12px #1c365208}
+.site-polished>header{padding:16px 24px;background:#fff;border-bottom:1px solid #e4e7ec;box-shadow:none}
 .site-polished .header-row{max-width:1696px;margin-inline:auto}
 .site-polished .brand{gap:12px}.site-polished .brand :is(.mark,.brand-mark){width:38px;height:38px;border-radius:11px;background:var(--polish-accent);box-shadow:0 4px 10px #20344f14}
-.site-polished header h1{font-size:23px;letter-spacing:-.5px}.site-polished header p{font-size:12px;color:#748397;max-width:740px;margin-top:9px}
+.site-polished header h1{font-size:21px;letter-spacing:-.3px}.site-polished header p{font-size:12px;color:#667085;max-width:740px;margin-top:6px}
 .site-polished :is(.header-actions,.nav){gap:6px;flex-wrap:wrap}
 .site-polished :is(.report-link,.nav a,.nav button){border-color:transparent;border-radius:7px;background:transparent;color:#52657c;font-size:12px;box-shadow:none!important}
 .site-polished :is(.report-link,.nav a,.nav button):hover{border-color:#dde7f4;background:var(--polish-soft);color:var(--polish-accent);transform:none}
 .site-polished :is(.header-actions,.nav) #logout{border-left:1px solid #e4eaf2;border-radius:0;color:#7c8798}
-.site-polished :is(button,input,select){border-radius:7px}
+.site-polished :is(button,input,select){border-radius:6px}
 .site-polished :is(input,select){background-color:#fff}
 .site-polished button:focus-visible,.site-polished a:focus-visible,.site-polished summary:focus-visible{outline:2px solid var(--polish-accent);outline-offset:3px}
 /* Daily reports: preserve error/profit colors and mobile data-card behavior. */
-.site-polished[data-report-style]>.panel{margin-block:16px;background:#fff;border-radius:10px;border-color:#e0e7f0;box-shadow:0 3px 14px #20344f05}
+.site-polished[data-report-style]>.panel{margin-block:12px;background:#fff;border-radius:8px;border-color:#e4e7ec;box-shadow:none}
 .site-polished[data-report-style]>.panel.admin-only{background:#f8fafd}
 .panel-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 15px;padding-bottom:12px;border-bottom:1px solid #e8eef5}
 .panel-heading h2{font-size:14px;color:#304c6c;margin:0;font-weight:650}
@@ -21,14 +21,14 @@ body.site-polished[data-report-style="jd"]{--polish-accent:#bd352f;--polish-soft
 .site-polished[data-report-style] label{font-size:12px;color:#596f88}
 .site-polished[data-report-style] :is(.controls,.filters){gap:12px;align-items:end}
 .site-polished[data-report-style] :is(.controls,.filters) :is(input,select,button){min-height:40px}
-.site-polished[data-report-style] .cards{gap:12px;margin-block:18px}
+.site-polished[data-report-style] .cards{gap:12px;margin-block:14px}
 .site-polished[data-report-style] :is(.card .v,td,.pager){font-variant-numeric:tabular-nums}
 .site-polished[data-report-style] :is(.controls,.filters)>*{min-width:0}
 .site-polished[data-report-style] :is(.controls,.filters) :is(input,select){max-width:100%}
 .site-polished[data-report-style] .table-wrap{scrollbar-gutter:stable}
 .site-polished[data-report-style] .tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
 .site-polished[data-report-style] .tab{flex-shrink:0;white-space:nowrap}
-.site-polished[data-report-style] .card{position:relative;padding:16px 18px;min-height:98px;border-radius:10px;border:1px solid #e0e7f0;background:#fff;box-shadow:0 3px 14px #20344f04}
+.site-polished[data-report-style] .card{position:relative;padding:14px 16px;min-height:88px;border-radius:8px;border:1px solid #e4e7ec;background:#fff;box-shadow:none}
 .site-polished[data-report-style] .card:before{content:'';position:absolute;left:18px;top:0;width:24px;height:3px;border-radius:0 0 3px 3px;background:var(--polish-accent);opacity:.55}
 .site-polished[data-report-style] .card .k{font-size:12px;color:#738297}
 .site-polished[data-report-style] .card .v{font-size:23px;font-weight:700;letter-spacing:-.4px;margin-top:12px;line-height:1.3}

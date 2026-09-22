@@ -141,10 +141,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('.ocean-level-tab[data-view="plans"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'plans');assert.match(await page.locator('#historyRangeButton').textContent(),new RegExp(todayChina+'.*实时'));
   assert.match(await page.locator('.ocean-table-summary').textContent(),/105 条计划.*消耗.*15,960\.00/);await page.locator('#batchSelect').click();assert.equal(await page.locator('#tableHead .ocean-select-cell').count(),1);await page.locator('#rows .ocean-row-select').first().check();assert.match(await page.locator('.ocean-batch-bar').textContent(),/已选择 1 条/);const batchDownload=page.waitForEvent('download');await page.locator('.ocean-batch-bar button').filter({hasText:'导出已选'}).click();const batchCsv=fs.readFileSync(await(await batchDownload).path(),'utf8');assert.match(batchCsv,/测试计划 104/);assert.doesNotMatch(batchCsv,/测试计划 103/);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-batch-select-desktop.png')});await page.locator('#batchSelect').click();
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
-  await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),18);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'预估 eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
+  await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),19);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'预估 eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
   await page.locator('#next').click();assert.match(await page.locator('#pageLabel').textContent(),/2/);
   await page.locator('#search').fill('测试计划 104');assert.equal(await page.locator('#rows tr').count(),1);
-  assert.equal(await page.locator('#rows tr td').count(),17);assert.equal(await page.locator('#rows tr td').nth(16).textContent(),'204.00');
+  assert.equal(await page.locator('#rows tr td').count(),18);assert.equal(await page.locator('#rows tr td').nth(16).textContent(),'204.00');
+  assert.equal(await page.locator('#tableHead th').nth(17).textContent(),'注册成本');assert.equal(await page.locator('#rows tr td').nth(17).textContent(),'1.02');
   assert.equal(await page.locator('#rows tr td').nth(11).textContent(),'21.078');
   assert.equal(await page.locator('#rows tr td').nth(12).textContent(),'143.33');
   assert.equal(await page.locator('.table-wrap:not(.pricing-table) th').nth(11).textContent(),'预估 ROI');
@@ -153,12 +154,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#rows tr td').nth(1).locator('small').textContent(),'1866402186668232');
   await page.locator('#search').fill('李四');assert.equal(await page.locator('#count').textContent(),'52 条');
   await columns({deepCpaBid:true,planStatus:true});
-  assert.equal(await page.locator('#tableHead th').count(),19);assert.equal(await page.locator('#tableHead th').nth(17).textContent(),'深度 CPA 出价');assert.equal(await page.locator('#tableHead th').nth(18).textContent(),'计划状态');
+  assert.equal(await page.locator('#tableHead th').count(),20);assert.equal(await page.locator('#tableHead th').nth(18).textContent(),'深度 CPA 出价');assert.equal(await page.locator('#tableHead th').nth(19).textContent(),'计划状态');
   await setFilters({statusFilter:'投放中'});assert.equal(await page.locator('#count').textContent(),'52 条');
   await setFilters({deepCpaBidMin:'150'});assert.equal(await page.locator('#count').textContent(),'2 条');
   await setFilters({deepCpaBidMin:'',statusFilter:''});
   await resetColumns();
-  assert.equal(await page.locator('#tableHead th').count(),17);
+  assert.equal(await page.locator('#tableHead th').count(),18);
   await page.locator('#openBidColumns').click();
   await page.locator('#bidColumnsDialog .column-presets').getByRole('button',{name:'收益分析',exact:true}).click();
   assert.equal(await page.locator('#bidColumnsDialog [data-column-key="estimatedRoi"]').isChecked(),true);
@@ -207,7 +208,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#count').textContent(),'105 条');
   await page.locator('#clearReportFilters').click();
   assert.equal(await page.locator('#metrics .metric').count(),2);assert.match(await page.locator('main').textContent(),/预估 ROI/);
-  assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|注册成本|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
+  assert.doesNotMatch(await page.locator('main').textContent(),/预估利润|理论保本价|目标出价上限|实际消耗利润|目标毛利率/);
   await selectView('accounts');
   assert.match(await page.locator('#count').textContent(),/^2 个账户（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'账户名称');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'账户ID');
@@ -226,7 +227,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await selectView('optimizers');
   assert.match(await page.locator('#count').textContent(),/^2 名优化师（105 条计划）$/);
   assert.equal(await page.locator('#tableHead th').first().textContent(),'优化师');
-  assert.equal(await page.locator('#tableHead .sort-header').count(),16);
+  assert.equal(await page.locator('#tableHead .sort-header').count(),17);
   await page.locator('#tableHead .sort-header[data-sort-key="todayPlans"]').click();assert.equal(await page.locator('#tableHead th').nth(2).getAttribute('aria-sort'),'descending');
   await page.locator('#tableHead .sort-header[data-sort-key="todayPlans"]').click();assert.equal(await page.locator('#tableHead th').nth(2).getAttribute('aria-sort'),'ascending');
   const optimizerRow=page.locator('#rows tr').filter({hasText:'张三'});assert.equal(await optimizerRow.locator('td').nth(1).textContent(),'53');
@@ -240,9 +241,9 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('#tableHead th').nth(0).textContent(),'转化目标');assert.equal(await page.locator('#tableHead th').nth(1).textContent(),'深度转化目标');assert.equal(await page.locator('#tableHead th').nth(2).textContent(),'应用类型');
   const targetRow=page.locator('#rows tr').filter({hasText:'注册'});assert.equal(await targetRow.locator('td').nth(3).textContent(),'53');assert.equal(await targetRow.locator('td').nth(6).textContent(),'1');
   await selectView('plans');
-  assert.equal(await page.locator('#tableHead .sort-header').count(),17);
+  assert.equal(await page.locator('#tableHead .sort-header').count(),18);
   const download=page.waitForEvent('download');await page.locator('#export').click();const exported=await download;assert.match(exported.suggestedFilename(),/出价监测/);
-  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.doesNotMatch(csv,/预估利润|注册成本|理论保本价/);
+  const csv=fs.readFileSync(await exported.path(),'utf8');assert.match(csv,/1866402186668232/);assert.doesNotMatch(csv,/"900"/);assert.match(csv,/优化师/);assert.match(csv,/张三/);assert.match(csv,/预估ROI/);assert.match(csv,/预估赔付金额/);assert.match(csv,/出价利润率/);assert.match(csv,/现金消耗/);assert.match(csv,/注册成本/);assert.doesNotMatch(csv,/预估利润|理论保本价/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-desktop.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-monitor-mobile.png'),fullPage:true});
   assert.equal(await page.locator('#syncDetect').count(),0);

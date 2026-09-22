@@ -87,8 +87,8 @@
  const columnPresets=make('div','column-presets');columnPresets.setAttribute('role','group');columnPresets.setAttribute('aria-label','快捷选择指标');
  columnPresets.append(make('span','','快捷选择'));
  for(const [title,keys] of [
-  ['投放表现',['account','optimizer','task','plans','accounts','cost','conversions','registrations','ratio','bid','ecpm']],
-  ['收益分析',['account','task','basePrice','priceSource','cost','registrations','commission','profit','estimatedRoi','breakEvenBid','bidProfitRate','gap','price']],
+  ['投放表现',['account','optimizer','task','plans','accounts','cost','conversions','registrations','cpa','ratio','bid','ecpm']],
+  ['收益分析',['account','task','basePrice','priceSource','cost','registrations','cpa','commission','profit','estimatedRoi','breakEvenBid','bidProfitRate','gap','price']],
   ['投放设置',['account','optimizer','task','platform','appType','deepBidType','deepCpaBid','deepExternalAction','externalAction','planStatus']]
  ]){
   const preset=make('button','',title);preset.type='button';preset.dataset.plansOnly=String(title==='投放设置');preset.onclick=()=>{useDefaults=false;selection=[...new Set([...fixed,...keys.filter(key=>catalog.some(column=>column[1]===key))])];search.value='';draw();};columnPresets.append(preset);
@@ -99,7 +99,7 @@
   for(const preset of columnPresets.querySelectorAll('button'))preset.hidden=preset.dataset.plansOnly==='true'&&view!=='plans';
   choices.replaceChildren();selectedList.replaceChildren();selectedTitle.textContent=`已选 ${selection.length} 列`;
   const term=search.value.trim().toLowerCase(),visible=catalog.filter(([label])=>label.toLowerCase().includes(term));
-  const groups=[['基础信息',([,key])=>fixed.includes(key)||textSortKeys.has(key)],['投放指标',([,key])=>['plans','todayPlans','spendingPlans','accounts','cost','conversions','registrations','ratio','bid','deepCpaBid'].includes(key)],['收益与成本',()=>true]];
+  const groups=[['基础信息',([,key])=>fixed.includes(key)||textSortKeys.has(key)],['投放指标',([,key])=>['plans','todayPlans','spendingPlans','accounts','cost','conversions','registrations','cpa','ratio','bid','deepCpaBid'].includes(key)],['收益与成本',()=>true]];
   const used=new Set();
   for(const [title,predicate] of groups){const items=visible.filter(column=>!used.has(column[1])&&predicate(column));if(!items.length)continue;choices.append(make('h3','',title));
    for(const [label,key] of items){used.add(key);const row=make('label','column-choice'),box=make('input');box.type='checkbox';box.dataset.columnKey=key;box.checked=selection.includes(key);box.disabled=fixed.includes(key);row.append(box,document.createTextNode(label+(box.disabled?'（固定）':'')));choices.append(row);

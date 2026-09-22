@@ -185,7 +185,7 @@
       const warningTolerance=Number.EPSILON*Math.max(Math.abs(overallCost||0),Math.abs(compensationWarningThreshold||0))*8;
       const warningDate=latest.warningReferenceDate||beijingDate();
       const compensationShortfall=warningCreationEligible(latest.createdAt,warningDate)&&latest.bid>0&&overallConversions<6&&overallCost-compensationWarningThreshold>warningTolerance?Math.ceil(6-overallConversions):0;
-      return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions,overallCost,ratio,cpa:registrations>0&&cost!==null?cost/registrations:null,
+      return{...latest,cost,conversions,registrations,impressions,impressionsEstimated:allEstimated,overallConversions,overallCost,ratio,cpa:registrations>0&&items.every(row=>Number.isFinite(row.cost)&&Number.isFinite(row.registrations))?cost/registrations:null,
         mediaCpm:cost!==null&&impressions>0?cost/impressions*1000:null,ecpm:Number.isFinite(latest.bid)&&conversions!==null&&impressions>0?latest.bid*conversions/impressions*1000:null,
         commission,revenue:commission,basePrice,price,gap,priceSource:'range-total',priceDate:`${rangeStart} ~ ${rangeEnd}`,gapSource:'range-total',
         breakEven:breakEvenBid,breakEvenBid,actualRoi:commission!==null&&cost>0?commission/cost:null,roi:commission!==null&&cashCost>0?commission/cashCost:null,
@@ -289,6 +289,7 @@
         spendingPlans:items.filter(row=>Number.isFinite(row.cost)&&row.cost>0).length,
         accounts:new Set(items.map(row=>row.accountId||row.account).filter(Boolean)).size,
         cost,conversions,registrations,ratio:registrations>0?conversions/registrations:null,
+        cpa:registrations>0&&items.every(row=>Number.isFinite(row.cost)&&Number.isFinite(row.registrations))?cost/registrations:null,
         priced:pricedItems.length,commission,
         estimatedCompensation:allCompensation,cashCost:allCashCost,pricedCashCost,
         estimatedRoi:cash.estimatedRoi,bidProfitRate:cash.bidProfitRate};

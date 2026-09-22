@@ -3,6 +3,21 @@ const assert=require('node:assert/strict');
 const {analyze,normalize,normalizeGapPayload,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache,mergePlanRows}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
+test('registration cost uses total spend over registrations without depending on task pricing',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const make=(cost,registrations,statDate)=>B.analyzeTask({...B.normalize({promotion_id:'1',stat_cost:cost,active_register:registrations,convert_cnt:2,cpa_bid:10}),statDate},[],0,1,false,null);
+ const rows=[make(100,10,'2026-09-20'),make(900,30,'2026-09-21')];
+ assert.equal(rows[0].price,null);assert.equal(rows[0].cpa,10);
+ assert.equal(B.aggregateGroups(rows,['optimizer'],'2026-09-21')[0].cpa,25);
+ assert.equal(B.mergePlanRows(rows)[0].cpa,25);
+ assert.equal(make(0,10,'2026-09-21').cpa,0);
+ for(const [cost,registrations] of [[100,0],[100,null],[null,10]]){
+  const incomplete=make(cost,registrations,'2026-09-21');assert.equal(incomplete.cpa,null);
+  assert.equal(B.aggregateGroups([incomplete],['optimizer'],'2026-09-21')[0].cpa,null);
+ }
+ assert.equal(B.aggregateGroups([rows[0],make(null,10,'2026-09-21')],['optimizer'],'2026-09-21')[0].cpa,null);
+ assert.equal(B.mergePlanRows([rows[0],make(null,10,'2026-09-21')])[0].cpa,null);
+});
 test('conversion warning uses strict cost boundary and overall conversions without granting compensation',()=>{
  const B=require('../frontend/bid-monitor-core.js');
  const base={cost:73,conversions:5,bid:10,registrations:10,createdAt:'2026-09-12 08:00:00',warningReferenceDate:'2026-09-15'};

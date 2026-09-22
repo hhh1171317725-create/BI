@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../frontend/bid-monitor.js'),'utf8');
-const loader=source.slice(source.indexOf('async function fetchHistoryRange('),source.indexOf('window.loadBidHistoryRange='));
+const loader=source.slice(source.indexOf('const historyRangePending='),source.indexOf('window.loadBidHistoryRange='));
 
 test('history and live snapshot start together and safely merge 200000 archived rows',async()=>{
   const requests=[];
@@ -30,6 +30,23 @@ test('stale realtime snapshot rejects the combined range instead of returning pa
   const context=vm.createContext({Date,AbortSignal,today:()=> '2026-09-14',api:async path=>path.includes('/history?')?{rows:[]}:{snapshot:{date:'2026-09-13',updatedAt:'2026-09-13T00:00:00Z',rows:[]}}});
   vm.runInContext(loader,context);
   await assert.rejects(context.fetchHistoryRange('2026-09-01','2026-09-14'),/今日.*尚未生成/);
+});
+
+test('concurrent range consumers share requests, but later refreshes and retries fetch again',async()=>{
+  const requests=[];
+  const context=vm.createContext({Date,AbortSignal,today:()=> '2026-09-14',api:path=>new Promise((resolve,reject)=>requests.push({path,resolve,reject}))});
+  vm.runInContext(loader,context);
+  const first=context.fetchHistoryRange('2026-09-01','2026-09-13');
+  const second=context.fetchHistoryRange('2026-09-01','2026-09-13');
+  const other=context.fetchHistoryRange('2026-09-02','2026-09-13');
+  assert.equal(requests.length,2,'Only identical ranges share their in-flight request');
+  requests[0].resolve({rows:[{promotion_id:'1'}]});requests[1].resolve({rows:[]});
+  assert.equal(await first,await second);await other;
+  const refresh=context.fetchHistoryRange('2026-09-01','2026-09-13');
+  assert.equal(requests.length,3,'Completed responses must not be cached');
+  requests[2].reject(Error('temporary failure'));await assert.rejects(refresh,/temporary failure/);
+  const retry=context.fetchHistoryRange('2026-09-01','2026-09-13');
+  assert.equal(requests.length,4);requests[3].resolve({rows:[]});await retry;
 });
 
 test('lightweight prior conversions preserve platform/account identity and the six-conversion threshold',async()=>{

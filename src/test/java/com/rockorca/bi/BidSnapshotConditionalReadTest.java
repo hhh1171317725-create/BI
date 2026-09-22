@@ -10,6 +10,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class BidSnapshotConditionalReadTest {
+  @Test void connectionIsReleasedBeforeDecodingFullOrConditionalSnapshots()throws Exception{
+    for(boolean conditional:List.of(false,true)){
+      var reports=mock(ReportRepository.class);var connection=mock(Connection.class);var query=mock(PreparedStatement.class);var result=mock(ResultSet.class);
+      var mapper=spy(new ObjectMapper());
+      when(reports.openConnection()).thenReturn(connection);when(connection.prepareStatement(anyString())).thenReturn(query);when(query.executeQuery()).thenReturn(result);
+      when(result.next()).thenReturn(true);when(result.getString(1)).thenReturn("{\"rows\":[]}");
+      when(result.getString("snapshot_payload")).thenReturn("{\"rows\":[]}");when(result.getString("version")).thenReturn("7:v1");
+      var snapshots=new BidSnapshotController(null,reports,mapper);ReflectionTestUtils.setField(snapshots,"initialized",true);
+      if(conditional)snapshots.readOwnedSince(7,"");else snapshots.readOwned(7);
+      var order=inOrder(result,query,connection,mapper);
+      order.verify(result).close();order.verify(query).close();order.verify(connection).close();
+      order.verify(mapper).readValue(eq("{\"rows\":[]}"),org.mockito.ArgumentMatchers.<tools.jackson.core.type.TypeReference<Map<String,Object>>>any());
+    }
+  }
   @Test void unchangedSnapshotSkipsJsonDecodeAndNewVersionReadsMatchingPayloadInOneStatement()throws Exception{
     var reports=mock(ReportRepository.class);var connection=mock(Connection.class);var query=mock(PreparedStatement.class);var result=mock(ResultSet.class);
     var mapper=spy(new ObjectMapper());

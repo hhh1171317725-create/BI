@@ -39,25 +39,37 @@ async function syncPrepareQuery(signal){
     if(failure)syncText(failure.message,true);
   }
 }
+let syncLoadPending=null;
 async function syncLoad(manual=false){
   if(!bidCanManage){
     const loaded=await bidRefreshShared(manual);
     syncText(loaded?'已读取管理员共享报表':'共享报表正在读取或读取失败，请查看页面提示',!loaded);
     return loaded;
   }
-  if(busy)return;
+  if(busy||(!manual&&!followSync))return false;
+  if(syncLoadPending){
+    syncLoadPending.manual ||= manual;
+    return syncLoadPending.promise;
+  }
+  const job={manual,rows:raw,revision:syncRevision};
+  syncLoadPending=job;
+  job.promise=syncReadSnapshot(job);
+  try{return await job.promise;}finally{if(syncLoadPending===job)syncLoadPending=null;}
+}
+async function syncReadSnapshot(job){
   const response=await api('/api/bid-monitor/snapshot',{signal:AbortSignal.timeout(15000)});
-  if(busy)return;
+  // A later query or configuration change takes precedence over an older response.
+  if(busy||raw!==job.rows||syncRevision!==job.revision)return false;
   syncIdentity(response.userId);
   const snapshot=response.snapshot;
-  if(!snapshot?.updatedAt){if(manual)syncText('当前网站账户还没有成功同步的数据');return false;}
-  if(!manual&&(snapshot.updatedAt===syncStamp||(raw.length&&!followSync)))return false;
+  if(!snapshot?.updatedAt){if(job.manual)syncText('当前网站账户还没有成功同步的数据');return false;}
+  if(!job.manual&&(snapshot.updatedAt===syncStamp||!followSync))return false;
   await receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
     (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
   syncStamp=snapshot.updatedAt;
-  if(manual)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
+  if(job.manual&&followSync)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
   return true;
 }
 window.loadBidRealtime=()=>syncLoad(true);

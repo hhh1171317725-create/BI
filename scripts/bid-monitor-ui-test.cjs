@@ -135,6 +135,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#strategyAccountList .strategy-account-choice').filter({hasText:'1866402186668232'}).locator('input').check();await page.locator('#strategySave').click();
   await page.waitForFunction(()=>document.querySelector('#strategyStatus').textContent.includes('策略已保存'));
   assert.equal(savedStrategies.length,1);assert.match(await page.locator('#strategyDetail').textContent(),/低价放量测试/);assert.match(await page.locator('#strategyDetail').textContent(),/8,056\.00/);
+  assert.match(await page.locator('#strategyDetail thead').textContent(),/注册成本/);
+  assert.match(await page.locator('#strategyDetail .strategy-metrics').textContent(),/注册成本 [\d,.]+ 元/);
   await page.locator('.section-nav a[href="#all"]').click();
   assert.equal(await page.locator('.ocean-level-tab').count(),5);assert.equal(await page.locator('.ocean-level-tab.is-active').textContent(),'计划');
   await page.locator('.ocean-level-tab[data-view="accounts"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'accounts');assert.equal(await page.locator('#tableHead th').first().textContent(),'账户名称');
@@ -418,6 +420,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await card('grant').textContent(),/预估赠款0.00.*3 \/ 3 条计划可计算/);
   await page.locator('#search').fill('estimated-task');assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('.plan-detail-link').click();
+  assert.match(await page.locator('#bidPlanDetail').textContent(),/注册成本 = 总消耗 ÷ 注册数/);
   const detailLayout=await page.evaluate(()=>{const rect=id=>document.querySelector(id).getBoundingClientRect(),dialog=rect('#bidPlanDetail'),range=document.querySelector('#bidPlanDetail .plan-detail-range'),start=rect('#planDetailStart'),end=rect('#planDetailEnd'),button=rect('#planDetailLoad');return{display:getComputedStyle(range).display,dialogWidth:dialog.width,startTop:start.top,endTop:end.top,buttonTop:button.top,startLeft:start.left,endLeft:end.left,buttonLeft:button.left};});
   assert.equal(detailLayout.display,'grid');assert.ok(detailLayout.dialogWidth<=902);assert.ok(Math.abs(detailLayout.startTop-detailLayout.endTop)<2&&Math.abs(detailLayout.startTop-detailLayout.buttonTop)<2);assert.ok(detailLayout.startLeft<detailLayout.endLeft&&detailLayout.endLeft<detailLayout.buttonLeft);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/不是日报直接确认的归属/);

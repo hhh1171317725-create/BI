@@ -64,13 +64,16 @@ public class BidSnapshotController {
 
   Map<String, Object> readOwned(long owner) throws Exception {
     initialize();
+    String payload;
     try (var connection = reports.openConnection();
          var statement = connection.prepareStatement("SELECT payload FROM bid_monitor_snapshots WHERE user_id=?")) {
       statement.setLong(1, owner);
       try (var result = statement.executeQuery()) {
-        return result.next()?mapper.readValue(result.getString(1), new TypeReference<Map<String, Object>>() {}):Map.of();
+        payload=result.next()?result.getString(1):null;
       }
     }
+    // Release the pooled connection before decoding a potentially large snapshot.
+    return payload==null?Map.of():mapper.readValue(payload,new TypeReference<Map<String,Object>>(){});
   }
 
   record SnapshotRead(String version,Map<String,Object> snapshot) {}
@@ -79,14 +82,16 @@ public class BidSnapshotController {
     // Conditional projection in one statement avoids both a large transfer and a version/payload race.
     String version="CONCAT(?,':',COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.updatedAt')),'null'),''))";
     String sql="SELECT "+version+" AS version,CASE WHEN "+version+" = ? THEN NULL ELSE payload END AS snapshot_payload FROM bid_monitor_snapshots WHERE user_id=?";
+    String payload,snapshotVersion;
     try(var connection=reports.openConnection();var query=connection.prepareStatement(sql)){
       query.setLong(1,owner);query.setLong(2,owner);query.setString(3,after);query.setLong(4,owner);
       try(var result=query.executeQuery()){
         if(!result.next())return new SnapshotRead(owner+":",(owner+":").equals(after)?null:Map.of());
-        String payload=result.getString("snapshot_payload");
-        return new SnapshotRead(result.getString("version"),payload==null?null:mapper.readValue(payload,new TypeReference<Map<String,Object>>(){}));
+        payload=result.getString("snapshot_payload");
+        snapshotVersion=result.getString("version");
       }
     }
+    return new SnapshotRead(snapshotVersion,payload==null?null:mapper.readValue(payload,new TypeReference<Map<String,Object>>(){}));
   }
 
   @GetMapping("/identity")

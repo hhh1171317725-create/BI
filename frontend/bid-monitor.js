@@ -334,8 +334,17 @@ $('#fetch').onclick=async()=>{
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
+const historyRangePending=new Map();
 async function fetchHistoryRange(start,end){
   const current=today();if(!start||!end||start>end||end>current)throw Error('请选择不晚于今天的有效日期范围');
+  const key=[current,start,end].join(':');
+  if(historyRangePending.has(key))return historyRangePending.get(key);
+  const pending=readHistoryRange(start,end,current);
+  historyRangePending.set(key,pending);
+  // Share concurrent reads only; the next refresh must still read fresh data.
+  try{return await pending;}finally{historyRangePending.delete(key);}
+}
+async function readHistoryRange(start,end,current){
   const rows=[];let archivedCount=0,liveCount=0;
   const archiveEnd=end===current?new Date(new Date(current+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10):end;
   // Independent sources load together; merge only after both have succeeded.

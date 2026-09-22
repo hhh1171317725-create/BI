@@ -353,15 +353,19 @@ public class BidServerSyncService {
 
   /** Requery cumulative metrics, including conversion backfills and activity after the warning window. */
   List<Map<String,Object>> collectPlanTotals(Map<String,Object> state,String cookie,List<Map<String,Object>> candidates,LocalDate today)throws Exception{
+    return collectPlanTotals(state,cookie,candidates,today,message->{});
+  }
+  List<Map<String,Object>> collectPlanTotals(Map<String,Object> state,String cookie,List<Map<String,Object>> candidates,LocalDate today,java.util.function.Consumer<String> progress)throws Exception{
     var groups=new TreeMap<String,List<Map<String,Object>>>();
     for(var row:candidates){
       var created=BidEndedWarning.date(row.get("promotion_create_time"));String platform=text(row,"source_platform");
       if(created==null||!List.of("byte","gdt").contains(platform))continue;
       groups.computeIfAbsent(platform+":"+created.toString().substring(0,7),key->new ArrayList<>()).add(row);
     }
-    var output=new ArrayList<Map<String,Object>>();
+    var output=new ArrayList<Map<String,Object>>();int groupIndex=0;
     for(var group:groups.values()){
       String platform=text(group.getFirst(),"source_platform");
+      String groupLabel=("gdt".equals(platform)?"广点通":"字节")+" · 第 "+(++groupIndex)+" / "+groups.size()+" 组";
       var first=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).min(LocalDate::compareTo).orElseThrow();
       var last=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).max(LocalDate::compareTo).orElseThrow();
       var totals=new LinkedHashMap<String,Map<String,Object>>();var invalid=new HashSet<String>();
@@ -369,7 +373,9 @@ public class BidServerSyncService {
         LocalDate end=start.plusDays(92).isAfter(today)?today:start.plusDays(92);
         var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),"mainUserId",state.get("mainUserId"),
             "startDate",start.toString(),"endDate",end.toString(),"createdStart",first.toString(),"createdEnd",last.toString()));
-        var source=collectSource(input,platform,new HashSet<>(),0,0,(done,total)->{});
+        String queryLabel=groupLabel+" · 累计区间 "+start+" 至 "+end;
+        progress.accept(queryLabel+" · 正在查询接口…");
+        var source=collectSource(input,platform,new HashSet<>(),0,0,(done,total)->progress.accept(queryLabel+" · 已读取 "+done+" / "+total+" 条"));
         if(source.duplicates()>0)throw new IllegalArgumentException("核验分页存在重复计划，请重试");
         var indexed=new HashMap<String,Map<String,Object>>();for(var row:source.rows())indexed.put(planKey(row),row);
         for(var candidate:group){

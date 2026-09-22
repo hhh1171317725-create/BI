@@ -42,7 +42,9 @@ class BidServerSyncServiceTest {
   @Test void expiredVerificationQueriesCreationThroughTodayInsteadOfSummingOldArchives()throws Exception{
     var row=rows(0,1).getFirst();row.put("source_platform","byte");row.put("convert_cnt",9);
     when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(row)));
-    var result=service.collectPlanTotals(input(),"cookie",List.of(row),java.time.LocalDate.of(2026,9,17));
+    var progress=new ArrayList<String>();
+    var result=service.collectPlanTotals(input(),"cookie",List.of(row),java.time.LocalDate.of(2026,9,17),progress::add);
+    assertTrue(progress.getFirst().contains("第 1 / 1 组"));assertTrue(progress.getLast().contains("已读取 1 / 1 条"));
     assertEquals(1,result.size());assertEquals(9.0,result.getFirst().get("convert_cnt"));assertFalse(result.getFirst().containsKey("provider_data"));
     var query=org.mockito.ArgumentCaptor.forClass(Map.class);verify(upstream).page(query.capture());
     assertEquals("2026-09-05",query.getValue().get("startDate"));assertEquals("2026-09-17",query.getValue().get("endDate"));

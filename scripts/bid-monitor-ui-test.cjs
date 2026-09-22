@@ -545,8 +545,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   const countBefore=await page.locator('#count').textContent();
   await page.evaluate(()=>{taskRules=[];window.loadBidStrategyReferences=async()=>({accounts:{'1866402186668232':{taskName:'任务甲',taskDate:'2026-09-16'},'1870049327502852':{taskName:'任务乙',taskDate:'2026-09-16'}},tasks:{}});});
   let endedFailure=false,endedRequests=0;
-  await page.route('**/api/bid-monitor/history/ended-warnings*',route=>{endedRequests++;if(endedRequests===1)return route.fulfill({json:{state:'running',rows:[]}});return route.fulfill(endedFailure?{status:500,json:{message:'archive unavailable'}}:{json:{state:'ready',checkedAt:'2026-09-17T02:00:00Z',checkedCount:51,unverifiedCount:1,asOf:'2026-09-17',rows:Array.from({length:51},(_,i)=>({...sample[i],cpa_bid:10,created_date:i%2?'2026-09-13':'2026-09-12',promotion_id:'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',verified:true}))}});});
-  assert.equal(endedRequests,0);await page.locator('#openEndedWarnings').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));
+  await page.route('**/api/bid-monitor/history/ended-warnings*',route=>{endedRequests++;if(endedRequests===1)return route.fulfill({json:{state:'running',rows:[],startedAt:new Date(Date.now()-360000).toISOString(),progress:'字节 · 第 1 / 2 组 · 已读取 100 / 500 条'}});return route.fulfill(endedFailure?{status:500,json:{message:'archive unavailable'}}:{json:{state:'ready',checkedAt:'2026-09-17T02:00:00Z',checkedCount:51,unverifiedCount:1,asOf:'2026-09-17',rows:Array.from({length:51},(_,i)=>({...sample[i],cpa_bid:10,created_date:i%2?'2026-09-13':'2026-09-12',promotion_id:'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',verified:true}))}});});
+  assert.equal(endedRequests,0);await page.locator('#openEndedWarnings').click();
+  await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('100 / 500'));
+  assert.match(await page.locator('#endedWarningsDialog [role=status]').textContent(),/已用时 6分/);
+  assert.match(await page.locator('#endedWarningsDialog tbody').textContent(),/后台会继续查询/);
+  await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));
   assert.ok(endedRequests>=2);assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),50);
   assert.match(await page.locator('#endedWarningsDialog tbody tr').first().textContent(),/接口累计已核验/);
   await page.locator('#endedWarningsDialog .ended-next').click();assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);
@@ -555,6 +559,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-ended-warnings-mobile.png')});
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-ended-warnings-desktop.png')});
   endedFailure=true;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('核验失败'));assert.doesNotMatch(await page.locator('#endedWarningsDialog tbody').textContent(),/过期计划 0/);
+  assert.match(await page.locator('#endedWarningsDialog tbody').textContent(),/核验未完成/);
+  assert.equal(await page.locator('#endedWarningsDialog .ended-reload').isEnabled(),true);
   endedFailure=false;await page.locator('#endedWarningsDialog .ended-reload').click();await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));assert.equal(await page.locator('#endedWarningsDialog .ended-next').isDisabled(),true);
   await page.locator('#endedWarningsDialog .ended-clear').click();
   await page.locator('#endedCreatedStart').fill('2026-09-12');await page.locator('#endedCreatedEnd').fill('2026-09-12');

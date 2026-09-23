@@ -69,8 +69,9 @@
     const countText=recordCount===null?'当前报表数据':`${recordCount} 条计划日数据已合并为 1 条`;
     note.textContent=`统计区间 ${detailRange.start} 至 ${detailRange.end} · ${countText}`;
     const detailGap=row.gapSource==='range-total'?`${row.rangeStart} 至 ${row.rangeEnd} 按各日任务、单价与 gap 计算后合并`:gapTitle(row.accountId,row);
+    const destination=B.platformAdLink(row),platformLink=destination?` · <a class="plan-source-link" href="${esc(destination.url)}" target="_blank" rel="noopener noreferrer" title="${destination.exact?'直达创量广点通广告':'打开创量字节广告列表，需按广告 ID 搜索'}">${destination.exact?'直达创量广告↗':'打开创量列表↗'}</a>`:'';
     body.innerHTML=`
-      <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
+      <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}${platformLink}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
       ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>该计划创建于 ${esc(String(row.createdAt||'').slice(0,10))}，符合三天前创建的预警范围。累计消耗 ${fmt(row.overallCost)} 元，高于最低消耗 ${fmt(row.compensationWarningThreshold)} 元（当前出价 × 7.2）；累计转化 ${fmt(row.overallConversions)} 个。</p></div>`:''}
       ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}

@@ -3,6 +3,17 @@ const assert=require('node:assert/strict');
 const {analyze,normalize,normalizeGapPayload,analyzeTask}=require('../frontend/bid-monitor-core.js');
 const {cashMetrics,summarizeCash,aggregateOptimizers,aggregateTasks,aggregateOptimizerTasks,createAnalysisCache,mergePlanRows}=require('../frontend/bid-monitor-core.js');
 const row={cost:2000,registrations:1000,conversions:150,bid:130};
+test('ad links only claim exact navigation when the platform supports an ID filter',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const gdt=B.platformAdLink({platform:'广点通',id:'13380136082',accountId:'1870049327502852'});
+ assert.equal(gdt.exact,true);assert.equal(new URL(gdt.url).pathname,'/promotion/ad/gdt_upgrade/ad');
+ assert.equal(new URL(gdt.url).searchParams.get('adgroup_id'),'13380136082');
+ assert.equal(new URL(gdt.url).searchParams.get('advertiser_id'),'1870049327502852');
+ const byte=B.platformAdLink({platform:'字节',id:'768357419220939578'});
+ assert.equal(byte.exact,false);assert.equal(new URL(byte.url).pathname,'/promotion/ad/toutiaoupgrade/ad');
+ assert.equal(B.platformAdLink({platform:'广点通',id:'not-a-real-id',accountId:'123'}),null);
+ assert.equal(B.platformAdLink({platform:'未知',id:'123'}),null);
+});
 test('registration cost uses total spend over registrations without depending on task pricing',()=>{
  const B=require('../frontend/bid-monitor-core.js');
  const make=(cost,registrations,statDate)=>B.analyzeTask({...B.normalize({promotion_id:'1',stat_cost:cost,active_register:registrations,convert_cnt:2,cpa_bid:10}),statDate},[],0,1,false,null);

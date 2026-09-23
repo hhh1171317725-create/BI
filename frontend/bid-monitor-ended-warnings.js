@@ -35,11 +35,7 @@
   function draw(){
     const selected=matches();
     const pages=Math.max(1,Math.ceil(selected.length/50));pageIndex=Math.min(pageIndex,pages-1);
-    body.innerHTML=selected.slice(pageIndex*50,pageIndex*50+50).map(r=>{
-      const destination=B.platformAdLink(r);
-      const idLink=destination?`<a href="${esc(destination.url)}" target="_blank" rel="noopener noreferrer"${destination.exact?'':` data-copy-ad-id="${esc(r.id)}"`} title="${destination.exact?'直达创量广点通广告':'打开创量字节广告列表并复制广告 ID，需在列表搜索'}">${esc(r.id)}</a>`:esc(r.id);
-      return `<tr><td><strong>${esc(r.name||r.id)}</strong><small>任务：${esc(r.task||'未匹配任务')}</small><small>${esc(r.platform)} · 计划 ${idLink}${destination&&!destination.exact?'（列表中搜索）':''}</small><small>${esc(r.account||r.accountId)} · ${esc(r.optimizer||'未返回优化师')}</small></td><td>${esc(r.period_end)}<small>创建于 ${esc(r.created_date||'--')}</small></td><td title="接口累计消耗：${esc(r.overall_cost)}">${fmt(r.overall_cost)}<small>超过门槛 ${fmt(r.overall_cost-r.warning_threshold)}</small></td><td title="判断使用接口字段 cpa_bid：${esc(r.bid)}；门槛：${esc(r.warning_threshold)}">${fmt(r.warning_threshold)}<small>出价 ${fmt(r.bid)} × 7.2</small></td><td>${fmt(r.overall_conversions)}</td><td><span class="compensation-badge">还差 ${esc(r.shortfall)} 个</span></td><td>接口累计已核验<small>${esc(r.first_date)} 至 ${esc(r.last_date)}（含今日）</small></td></tr>`;
-    }).join('');
+    body.innerHTML=selected.slice(pageIndex*50,pageIndex*50+50).map(r=>`<tr><td><strong>${esc(r.name||r.id)}</strong><small>任务：${esc(r.task||'未匹配任务')}</small><small>${esc(r.platform)} · 计划 ${esc(r.id)}</small><small>${esc(r.account||r.accountId)} · ${esc(r.optimizer||'未返回优化师')}</small></td><td>${esc(r.period_end)}<small>创建于 ${esc(r.created_date||'--')}</small></td><td title="接口累计消耗：${esc(r.overall_cost)}">${fmt(r.overall_cost)}<small>超过门槛 ${fmt(r.overall_cost-r.warning_threshold)}</small></td><td title="判断使用接口字段 cpa_bid：${esc(r.bid)}；门槛：${esc(r.warning_threshold)}">${fmt(r.warning_threshold)}<small>出价 ${fmt(r.bid)} × 7.2</small></td><td>${fmt(r.overall_conversions)}</td><td><span class="compensation-badge">还差 ${esc(r.shortfall)} 个</span></td><td>接口累计已核验<small>${esc(r.first_date)} 至 ${esc(r.last_date)}（含今日）</small></td></tr>`).join('');
     if(!selected.length)body.innerHTML='<tr><td colspan="7">'+(loadError?'核验未完成，请点击“重新核验接口数据”重试':loaded?'已核验数据中没有符合条件的计划':'正在核验累计数据，完成后展示符合条件的计划；可以关闭窗口，后台会继续查询')+'</td></tr>';
     if(loaded)status.textContent=`共 ${rows.length} 个预警计划，当前匹配 ${selected.length} 个 · 已核验 ${checked} 个已归档计划，截至 ${asOf}；核验时间 ${checkedAt}。${unverified?`${unverified} 个计划未取得完整接口数据，未参与判断。`:''}未曾归档的计划不在本次范围。`;
     if(loaded)status.textContent+=' 创建日期筛选包含起止当天；任务沿用当前日报关联。'+taskWarning;
@@ -47,7 +43,6 @@
     if(createdStart.value&&createdEnd.value&&createdStart.value>createdEnd.value)status.textContent='创建开始日期不能晚于结束日期，请调整日期范围。';
     dialog.querySelector('.ended-page').textContent=`第 ${pageIndex+1} / ${pages} 页`;prev.disabled=pageIndex===0;next.disabled=pageIndex>=pages-1;
   }
-  body.addEventListener('click',event=>{const link=event.target.closest('[data-copy-ad-id]');if(link)navigator.clipboard?.writeText(link.dataset.copyAdId).catch(()=>{});});
   function normalizeWarnings(data){
     if(!Array.isArray(data.rows)||data.rows.some(r=>r.verified!==true))throw Error('核验响应无效，请确认后端已更新');
     return data.rows.map(r=>{const normalized=B.normalize(r);return {...r,...normalized,search:[normalized.name,normalized.id,normalized.account,normalized.accountId,normalized.optimizer].join(' ').toLowerCase()};});

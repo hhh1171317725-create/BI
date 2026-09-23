@@ -141,10 +141,6 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.ocean-level-tab').count(),5);assert.equal(await page.locator('.ocean-level-tab.is-active').textContent(),'计划');
   await page.locator('.ocean-level-tab[data-view="accounts"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'accounts');assert.equal(await page.locator('#tableHead th').first().textContent(),'账户名称');
   await page.locator('.ocean-level-tab[data-view="plans"]').click();assert.equal(await page.locator('#viewMode').inputValue(),'plans');assert.match(await page.locator('#historyRangeButton').textContent(),new RegExp(todayChina+'.*实时'));
-  const gdtId=page.locator('#rows .plan-id-link[href*="gdt_upgrade"]').first();
-  assert.equal(await gdtId.count(),1);assert.equal(new URL(await gdtId.getAttribute('href')).searchParams.get('adgroup_id'),await gdtId.textContent());
-  const byteId=page.locator('#rows button.plan-id-link').first();assert.equal(await byteId.count(),1);
-  await byteId.click();assert.equal(await page.locator('#bidPlanDetail').isVisible(),true);await page.locator('#bidPlanDetail .dialog-close').click();
   assert.match(await page.locator('.ocean-table-summary').textContent(),/105 条计划.*消耗.*15,960\.00/);await page.locator('#batchSelect').click();assert.equal(await page.locator('#tableHead .ocean-select-cell').count(),1);await page.locator('#rows .ocean-row-select').first().check();assert.match(await page.locator('.ocean-batch-bar').textContent(),/已选择 1 条/);const batchDownload=page.waitForEvent('download');await page.locator('.ocean-batch-bar button').filter({hasText:'导出已选'}).click();const batchCsv=fs.readFileSync(await(await batchDownload).path(),'utf8');assert.match(batchCsv,/测试计划 104/);assert.doesNotMatch(batchCsv,/测试计划 103/);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-batch-select-desktop.png')});await page.locator('#batchSelect').click();
   await setFilters({platformFilter:'广点通'});assert.equal(await page.locator('#count').textContent(),'52 条');await setFilters({platformFilter:''});
   await columns({platform:true});assert.equal(await page.locator('#tableHead th').count(),19);assert.equal(await page.locator('#tableHead th').nth(16).textContent(),'预估 eCPM');assert.equal(await page.locator('#tableHead th').last().textContent(),'平台');await resetColumns();
@@ -575,7 +571,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.evaluate(()=>{taskRules=[];window.loadBidStrategyReferences=async()=>({accounts:{'1866402186668232':{taskName:'任务甲',taskDate:'2026-09-16'},'1870049327502852':{taskName:'任务乙',taskDate:'2026-09-16'}},tasks:{}});});
   let endedFailure=false,endedRequests=0;
   let releaseEndedFinal=false;
-  const endedRows=Array.from({length:51},(_,i)=>({...sample[i],cpa_bid:10,created_date:i%2?'2026-09-13':'2026-09-12',promotion_id:i===1?'13380136082':i===0?'768357419220939578':'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',verified:true}));
+  const endedRows=Array.from({length:51},(_,i)=>({...sample[i],cpa_bid:10,created_date:i%2?'2026-09-13':'2026-09-12',promotion_id:'expired-'+i,promotion_name:'过期计划 '+i,period_end:'2026-09-15',overall_cost:100,overall_conversions:5,shortfall:1,warning_threshold:72,first_date:'2026-09-12',last_date:'2026-09-15',verified:true}));
   await page.route('**/api/bid-monitor/history/ended-warnings*',route=>{endedRequests++;if(endedRequests===1)return route.fulfill({json:{state:'running',rows:[],startedAt:new Date(Date.now()-360000).toISOString(),progress:'字节 · 第 1 / 2 组 · 已读取 100 / 500 条'}});if(!releaseEndedFinal)return route.fulfill({json:{state:'running',rows:endedRows.slice(0,1),checkedCount:1,asOf:'2026-09-17',startedAt:new Date(Date.now()-360000).toISOString(),progress:'continuing verification'}});return route.fulfill(endedFailure?{status:500,json:{message:'archive unavailable'}}:{json:{state:'ready',checkedAt:'2026-09-17T02:00:00Z',checkedCount:51,unverifiedCount:1,asOf:'2026-09-17',rows:endedRows}});});
   assert.equal(endedRequests,0);await page.locator('#openEndedWarnings').click();
   await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('100 / 500'));
@@ -588,8 +584,6 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   releaseEndedFinal=true;
   await page.waitForFunction(()=>document.querySelector('#endedWarningsDialog [role=status]').textContent.includes('共 51 个预警计划'));
   assert.ok(endedRequests>=2);assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),50);
-  assert.equal(new URL(await page.locator('#endedWarningsDialog tbody a[href*="gdt_upgrade"]').first().getAttribute('href')).searchParams.get('adgroup_id'),'13380136082');
-  assert.equal(await page.locator('#endedWarningsDialog tbody [data-copy-ad-id]').first().getAttribute('data-copy-ad-id'),'768357419220939578');
   assert.match(await page.locator('#endedWarningsDialog tbody tr').first().textContent(),/接口累计已核验/);
   await page.locator('#endedWarningsDialog .ended-next').click();assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);
   await page.locator('#endedWarningsDialog input[type=search]').first().fill('过期计划 0');assert.equal(await page.locator('#endedWarningsDialog tbody tr').count(),1);

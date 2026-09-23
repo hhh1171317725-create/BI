@@ -11,6 +11,15 @@ import tools.jackson.databind.ObjectMapper;
 
 class BidMonitorApiControllerTest {
   private final BidMonitorApiController controller = new BidMonitorApiController(new ObjectMapper());
+  @Test void warningVerificationUsesNarrowMetricsWithoutChangingNormalSnapshots(){
+    var day=java.time.LocalDate.parse("2026-09-22");
+    var body=controller.requestBody(Map.of("verificationOnly",true,"accountIds",List.of("7680747160631230500")),day,day,1);
+    assertEquals(List.of("stat_cost","convert_cnt","cpa_bid","promotion_create_time","account_info"),body.get("select_kpi_fields"));
+    var conditions=new ObjectMapper().readValue(body.get("conditions").toString(),Map.class);
+    assertEquals(List.of("7680747160631230500"),conditions.get("media_account_id"));
+    assertTrue(((List<?>)controller.requestBody(Map.of(),day,day,1).get("select_kpi_fields")).contains("active_register"));
+    assertThrows(IllegalArgumentException.class,()->BidMonitorApiController.accountIds(Map.of("accountIds",List.of(123.0))));
+  }
 
   @Test void requestIdMatchesSuccessfulUpstreamFormat() {
     assertTrue(BidMonitorApiController.requestId().matches("[0-9]{14}[0-9a-f]{32}ff"));

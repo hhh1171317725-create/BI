@@ -356,6 +356,10 @@ public class BidServerSyncService {
     return collectPlanTotals(state,cookie,candidates,today,message->{});
   }
   List<Map<String,Object>> collectPlanTotals(Map<String,Object> state,String cookie,List<Map<String,Object>> candidates,LocalDate today,java.util.function.Consumer<String> progress)throws Exception{
+    return collectPlanTotals(state,cookie,candidates,today,progress,rows->{});
+  }
+  List<Map<String,Object>> collectPlanTotals(Map<String,Object> state,String cookie,List<Map<String,Object>> candidates,LocalDate today,
+      java.util.function.Consumer<String> progress,java.util.function.Consumer<List<Map<String,Object>>> verified)throws Exception{
     var groups=new TreeMap<String,List<Map<String,Object>>>();
     for(var row:candidates){
       var created=BidEndedWarning.date(row.get("promotion_create_time"));String platform=text(row,"source_platform");
@@ -368,14 +372,22 @@ public class BidServerSyncService {
       String groupLabel=("gdt".equals(platform)?"广点通":"字节")+" · 第 "+(++groupIndex)+" / "+groups.size()+" 组";
       var first=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).min(LocalDate::compareTo).orElseThrow();
       var last=group.stream().map(r->BidEndedWarning.date(r.get("promotion_create_time"))).max(LocalDate::compareTo).orElseThrow();
+      String accountField="gdt".equals(platform)?"advertiser_id":"media_account_id";
+      var accounts=group.stream().map(r->text(r,accountField)).distinct().toList();
+      var wanted=new HashSet<String>();for(var candidate:group)wanted.add(planKey(candidate));
       var totals=new LinkedHashMap<String,Map<String,Object>>();var invalid=new HashSet<String>();
+      boolean singleWindow=!first.plusDays(92).isBefore(today);
       for(LocalDate start=first;!start.isAfter(today);start=start.plusDays(93)){
         LocalDate end=start.plusDays(92).isAfter(today)?today:start.plusDays(92);
         var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),"mainUserId",state.get("mainUserId"),
             "startDate",start.toString(),"endDate",end.toString(),"createdStart",first.toString(),"createdEnd",last.toString()));
+        input.put("verificationOnly",true);
+        // Do not exclude legacy candidates with missing account IDs from verification.
+        if(accounts.stream().allMatch(id->id.matches("[0-9]+")))input.put("accountIds",accounts);
         String queryLabel=groupLabel+" · 累计区间 "+start+" 至 "+end;
         progress.accept(queryLabel+" · 正在查询接口…");
-        var source=collectSource(input,platform,new HashSet<>(),0,0,(done,total)->progress.accept(queryLabel+" · 已读取 "+done+" / "+total+" 条"));
+        var source=collectVerificationSource(input,platform,wanted,(done,total)->progress.accept(queryLabel+" · 已读取 "+done+" / "+total+" 条"),
+            rows->{if(singleWindow)verified.accept(rows);});
         if(source.duplicates()>0)throw new IllegalArgumentException("核验分页存在重复计划，请重试");
         var indexed=new HashMap<String,Map<String,Object>>();for(var row:source.rows())indexed.put(planKey(row),row);
         for(var candidate:group){
@@ -390,9 +402,45 @@ public class BidServerSyncService {
           totals.put(key,total);
         }
       }
-      totals.forEach((key,row)->{if(!invalid.contains(key))output.add(row);});
+      var complete=new ArrayList<Map<String,Object>>();totals.forEach((key,row)->{if(!invalid.contains(key))complete.add(row);});
+      output.addAll(complete);if(!singleWindow)verified.accept(complete);
     }
     return output;
+  }
+
+  /** Only warning verification may finish early; daily snapshots still read every page. */
+  private SourceRows collectVerificationSource(Map<String,Object> input,String platform,Set<String> wanted,Progress progress,
+      java.util.function.Consumer<List<Map<String,Object>>> verified)throws Exception{
+    var rows=new ArrayList<Map<String,Object>>();var found=new HashSet<String>();
+    PageChunk chunk=fetchPage(input,platform,1,-1);long total=chunk.total(),received=0,duplicates=0;
+    int pages=(int)((total+BidMonitorApiController.PAGE_SIZE-1)/BidMonitorApiController.PAGE_SIZE),nextPage=2;
+    try(var executor=Executors.newVirtualThreadPerTaskExecutor()){
+      var completed=new ExecutorCompletionService<PageChunk>(executor);
+      var pending=new HashSet<Future<PageChunk>>();
+      try{
+        while(true){
+          var batch=new ArrayList<Map<String,Object>>();
+          for(var row:chunk.rows())if(wanted.contains(planKey(row))){
+            if(found.add(planKey(row))){row.remove("provider_data");rows.add(row);batch.add(row);}else duplicates++;
+          }
+          received+=chunk.rows().size();progress.update((int)received,total);
+          if(duplicates==0&&!batch.isEmpty())verified.accept(List.copyOf(batch));
+          if(found.size()==wanted.size()||duplicates>0)break;
+          // Refill each free slot immediately; one slow page cannot stall the next batch.
+          while(nextPage<=pages&&pending.size()<PAGE_CONCURRENCY){
+            int page=nextPage++;pending.add(completed.submit(()->fetchPage(input,platform,page,total)));
+          }
+          if(pending.isEmpty())break;
+          var future=completed.take();pending.remove(future);
+          try{chunk=future.get();}
+          catch(ExecutionException error){
+            if(error.getCause() instanceof Exception cause)throw cause;
+            throw new IllegalStateException("分页查询失败",error.getCause());
+          }
+        }
+      }finally{for(var future:pending)future.cancel(true);}
+    }
+    return new SourceRows(total,duplicates,rows);
   }
 
   private Map<String,Object> collectWindow(Map<String,Object> state,String cookie,LocalDate reportDate,

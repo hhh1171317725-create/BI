@@ -21,8 +21,19 @@ public class BidEndedWarningService {
   private static final class Job {
     final LocalDate day;final String revision;final long started;volatile long completed;
     volatile Map<String,Object> result=Map.of("state","running","rows",List.of());
+    final List<Map<String,Object>> partialWarnings=new ArrayList<>();int checked;String message="";
     Job(LocalDate day,String revision,long started){this.day=day;this.revision=revision;this.started=started;}
-    void progress(String message){result=Map.of("state","running","rows",List.of(),"progress",message,"startedAt",Instant.ofEpochMilli(started).toString());}
+    void progress(String message){this.message=message;publish();}
+    void accept(List<Map<String,Object>> rows){
+      for(var row:rows){
+        if(!valid(row))continue;checked++;
+        var warning=warning(row,day);if(warning!=null)partialWarnings.add(warning);
+      }
+      partialWarnings.sort(Comparator.comparingDouble((Map<String,Object> r)->((Number)r.get("overall_cost")).doubleValue()).reversed());
+      publish();
+    }
+    void publish(){result=Map.of("state","running","rows",List.copyOf(partialWarnings),"progress",message,
+        "startedAt",Instant.ofEpochMilli(started).toString(),"checkedCount",checked,"asOf",day.toString());}
   }
   @Autowired
   public BidEndedWarningService(BidHistoryStore history,BidServerSyncStore store,BidCredentialCipher cipher,BidServerSyncService sync){
@@ -48,18 +59,14 @@ public class BidEndedWarningService {
       if(!candidates.isEmpty()){
         if(!state.containsKey("credential"))throw new IllegalStateException("credential");
         String cookie=cipher.decrypt(owner,Objects.toString(state.get("credential"),""));
-        latest=sync.collectPlanTotals(state,cookie,candidates,job.day,job::progress);
+        latest=sync.collectPlanTotals(state,cookie,candidates,job.day,job::progress,job::accept);
       }
       if(!sync.allowed(owner)||!job.revision.equals(Objects.toString(store.get(owner).get("credentialRevision"),"")))throw new IllegalStateException("credential");
       var warnings=new ArrayList<Map<String,Object>>();int valid=0;
       for(var row:latest){
-        var created=BidEndedWarning.date(row.get("promotion_create_time"));double bid=BidEndedWarning.number(row.get("cpa_bid"));
-        if(created==null||!Double.isFinite(bid)||bid<=0)continue;
-        double cost=BidEndedWarning.number(row.get("stat_cost")),conversions=BidEndedWarning.number(row.get("convert_cnt"));
-        if(!Double.isFinite(cost)||cost<0||!Double.isFinite(conversions)||conversions<0)continue;
+        if(!valid(row))continue;
         valid++;
-        var warning=BidEndedWarning.evaluate(row,job.day,cost,conversions,created.toString(),job.day.toString(),0);
-        if(warning!=null){warning.remove("archive_complete");warning.put("verified",true);warnings.add(warning);}
+        var warning=warning(row,job.day);if(warning!=null)warnings.add(warning);
       }
       warnings.sort(Comparator.comparingDouble((Map<String,Object> r)->((Number)r.get("overall_cost")).doubleValue()).reversed());
       job.completed=clock.getAsLong();
@@ -69,6 +76,16 @@ public class BidEndedWarningService {
       job.completed=clock.getAsLong();
       job.result=Map.of("state","error","rows",List.of(),"error","接口累计数据核验失败，请确认共享同步凭据有效后重试；未使用旧归档判断预警");
     }
+  }
+  private static boolean valid(Map<String,Object> row){
+    double bid=BidEndedWarning.number(row.get("cpa_bid")),cost=BidEndedWarning.number(row.get("stat_cost")),conversions=BidEndedWarning.number(row.get("convert_cnt"));
+    return BidEndedWarning.date(row.get("promotion_create_time"))!=null&&Double.isFinite(bid)&&bid>0
+        &&Double.isFinite(cost)&&cost>=0&&Double.isFinite(conversions)&&conversions>=0;
+  }
+  private static Map<String,Object> warning(Map<String,Object> row,LocalDate day){
+    var warning=BidEndedWarning.evaluate(row,day,BidEndedWarning.number(row.get("stat_cost")),BidEndedWarning.number(row.get("convert_cnt")),
+        BidEndedWarning.date(row.get("promotion_create_time")).toString(),day.toString(),0);
+    if(warning!=null){warning.remove("archive_complete");warning.put("verified",true);}return warning;
   }
   @PreDestroy public void close(){worker.shutdownNow();}
 }

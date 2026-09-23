@@ -65,7 +65,7 @@ public class GdtBidMonitorClient {
     if(!createdStart.isBlank()&&!createdEnd.isBlank()&&createdStart.compareTo(createdEnd)>0)
       throw new IllegalArgumentException("计划创建开始日期不能晚于结束日期");
     Map<String,Object> conditions=new LinkedHashMap<>();
-    conditions.put("company",List.of());conditions.put("owner_user_id",List.of());conditions.put("advertiser_id",List.of());
+    conditions.put("company",List.of());conditions.put("owner_user_id",List.of());conditions.put("advertiser_id",BidMonitorApiController.accountIds(input));
     conditions.put("media_project_id",List.of());conditions.put("configured_status","");conditions.put("smart_delivery_platform","");
     conditions.put("system_status",List.of());conditions.put("auto_acquisition_status",List.of());conditions.put("smart_targeting_status",List.of());
     conditions.put("created_time",createdStart.isBlank()||createdEnd.isBlank()?List.of():List.of(createdStart,createdEnd));
@@ -77,7 +77,7 @@ public class GdtBidMonitorClient {
         "deep_bid_amount","deep_conversion_spec","optimization_goal","bid_amount","created_time","daily_budget","bid_mode","begin_date"));
     body.put("page",page);body.put("page_size",BidMonitorApiController.PAGE_SIZE);
     body.put("start_date",start.toString());body.put("end_date",end.toString());
-    body.put("kpis",List.of("view_count","view_user_count","ctr","cost","conversions_count","conversions_rate",
+    body.put("kpis",Boolean.TRUE.equals(input.get("verificationOnly"))?List.of("cost","conversions_count"):List.of("view_count","view_user_count","ctr","cost","conversions_count","conversions_rate",
         "conversions_cost","reg_pv","deep_conversions_count","deep_conversions_rate","deep_conversions_cost"));
     body.put("time_line","REPORTING_TIME");
     return body;

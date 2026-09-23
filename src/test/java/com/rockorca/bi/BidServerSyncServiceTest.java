@@ -70,6 +70,57 @@ class BidServerSyncServiceTest {
     assertEquals(1,result.size());assertEquals("byte",result.getFirst().get("source_platform"));assertEquals(8.0,result.getFirst().get("convert_cnt"));
   }
   private Map<String,Object> input(){return new LinkedHashMap<>(Map.of("cookie","userId=123; chuangliang_session=private-test-cookie", "clientUser","123","mainUserId","456","minutes",10,"createdDays",7));}
+  @Test void verificationStopsAfterFindingCandidatesInsteadOfReadingUnrelatedPages()throws Exception{
+    var candidate=rows(0,1).getFirst();candidate.put("source_platform","byte");
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",10000,"rows",rows(0,100)));
+    var batches=new ArrayList<List<Map<String,Object>>>();
+    var result=service.collectPlanTotals(input(),"cookie",List.of(candidate),java.time.LocalDate.of(2026,9,17),message->{},batches::add);
+    assertEquals(1,result.size());assertEquals(1,batches.size());assertEquals(1,batches.getFirst().size());
+    verify(upstream,times(1)).page(argThat(request->List.of("123").equals(request.get("accountIds"))&&Boolean.TRUE.equals(request.get("verificationOnly"))));
+  }
+  @Test void verificationRefillsFreeSlotsWithoutWaitingForTheSlowestPage()throws Exception{
+    var candidate=rows(500,1).getFirst();candidate.put("source_platform","byte");
+    var sixthStarted=new java.util.concurrent.CountDownLatch(1);
+    var active=new java.util.concurrent.atomic.AtomicInteger();var peak=new java.util.concurrent.atomic.AtomicInteger();
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");peak.accumulateAndGet(active.incrementAndGet(),Math::max);
+      try{
+        if(page==2)assertTrue(sixthStarted.await(3,java.util.concurrent.TimeUnit.SECONDS),"Page 6 must start while page 2 is waiting");
+        if(page==6)sixthStarted.countDown();
+        return Map.of("total",600,"rows",rows((page-1)*100,100));
+      }finally{active.decrementAndGet();}
+    });
+    var result=service.collectPlanTotals(input(),"cookie",List.of(candidate),java.time.LocalDate.of(2026,9,17));
+    assertEquals(1,result.size());assertTrue(peak.get()<=4);assertEquals(0,sixthStarted.getCount());
+  }
+  @Test void longLifetimeDoesNotPublishPartialSumsAsVerified()throws Exception{
+    var candidate=rows(0,1).getFirst();candidate.put("source_platform","byte");candidate.put("promotion_create_time","2026-06-01");
+    var batches=new ArrayList<List<Map<String,Object>>>();var requests=new java.util.concurrent.atomic.AtomicInteger();
+    when(upstream.page(anyMap())).thenAnswer(call->{assertTrue(batches.isEmpty());requests.incrementAndGet();return Map.of("total",1,"rows",List.of(candidate));});
+    service.collectPlanTotals(input(),"cookie",List.of(candidate),java.time.LocalDate.of(2026,9,17),message->{},batches::add);
+    assertEquals(2,requests.get());assertEquals(1,batches.size());assertEquals(2000.0,batches.getFirst().getFirst().get("stat_cost"));
+  }
+  @Test void missingAccountIdsKeepFullSearchAndMissingPlansRemainUnverified()throws Exception{
+    var candidate=rows(999,1).getFirst();candidate.put("source_platform","gdt");candidate.remove("advertiser_id");
+    when(gdt.page(anyMap())).thenAnswer(call->{
+      Map<String,Object> request=call.getArgument(0);assertFalse(request.containsKey("accountIds"));int page=(Integer)request.get("page");
+      return Map.of("total",200,"rows",rows((page-1)*100,100));
+    });
+    assertTrue(service.collectPlanTotals(input(),"cookie",List.of(candidate),java.time.LocalDate.of(2026,9,17)).isEmpty());
+    verify(gdt,times(2)).page(anyMap());
+  }
+  @Test void gdtVerificationFiltersItsAdvertiserIdsNotInternalAccountIds()throws Exception{
+    var candidate=rows(0,1).getFirst();candidate.put("source_platform","gdt");
+    when(gdt.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(candidate)));
+    assertEquals(1,service.collectPlanTotals(input(),"cookie",List.of(candidate),java.time.LocalDate.of(2026,9,17)).size());
+    verify(gdt).page(argThat(request->List.of("1866402186668232").equals(request.get("accountIds"))));
+  }
+  @Test void duplicateCandidatePagesFailInsteadOfAddingTheirCountersTwice()throws Exception{
+    var present=rows(0,1).getFirst();present.put("source_platform","byte");
+    var missing=rows(999,1).getFirst();missing.put("source_platform","byte");
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",200,"rows",rows(0,100)));
+    assertThrows(IllegalArgumentException.class,()->service.collectPlanTotals(input(),"cookie",List.of(present,missing),java.time.LocalDate.of(2026,9,17)));
+  }
   private List<Map<String,Object>> rows(int offset,int size){
     var rows=new ArrayList<Map<String,Object>>();
     for(int i=0;i<size;i++){

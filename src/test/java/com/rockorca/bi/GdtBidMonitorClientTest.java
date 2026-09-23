@@ -10,6 +10,12 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import tools.jackson.databind.ObjectMapper;
 
 class GdtBidMonitorClientTest {
+  @Test void warningVerificationRequestsOnlyNecessaryCountersAndCandidateAdvertisers(){
+    var body=GdtBidMonitorClient.requestBody(Map.of("verificationOnly",true,"accountIds",List.of("89696535","89696535")),LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-22"),1);
+    assertEquals(List.of("cost","conversions_count"),body.get("kpis"));
+    assertEquals(List.of("89696535"),((Map<?,?>)body.get("conditions")).get("advertiser_id"));
+    assertTrue(((List<?>)body.get("base_infos")).contains("bid_amount"));
+  }
   @Test void springCanCreateTheProductionClient(){
     try(var context=new AnnotationConfigApplicationContext()){
       context.registerBean(ObjectMapper.class,()->new ObjectMapper());context.register(GdtBidMonitorClient.class);context.refresh();

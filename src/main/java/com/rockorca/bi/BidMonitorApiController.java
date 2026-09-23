@@ -45,28 +45,7 @@ public class BidMonitorApiController {
     if (cookie.isBlank() || !user.matches("[0-9]+") || !main.matches("[0-9]+"))
       throw new IllegalArgumentException("请填写 Cookie、client-user 和 main-user-id");
     validateCookieUser(cookie, user);
-    Map<String, Object> conditions = new LinkedHashMap<>();
-    conditions.put("search_field", "promotion_name");
-    conditions.put("search_keyword", text(input, "keyword"));
-    conditions.put("search_type", "like");
-    for (String key : List.of("cl_project_id", "cl_app_id", "user_id", "media_account_id", "companys", "project_id", "scene_type", "strategy_id", "learning_phase", "external_action", "deep_external_action", "deep_bid_type", "material_id"))
-      conditions.put(key, List.of());
-    for (String key : List.of("landing_type", "delivery_mode", "status_first", "ad_type", "star_delivery_type", "star_task_id", "app_type", "combinatorial_id", "status", "status_second"))
-      conditions.put(key, "");
-    String createdStart = text(input, "createdStart"), createdEnd = text(input, "createdEnd");
-    if (!createdStart.isBlank()) conditions.put("cdt_start_date", LocalDate.parse(createdStart) + " 00:00:00");
-    if (!createdEnd.isBlank()) conditions.put("cdt_end_date", LocalDate.parse(createdEnd) + " 23:59:59");
-    if (!createdStart.isBlank() && !createdEnd.isBlank() && createdStart.compareTo(createdEnd) > 0)
-      throw new IllegalArgumentException("计划创建开始日期不能晚于结束日期");
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("conditions", mapper.writeValueAsString(conditions));
-    body.put("start_date", start.toString()); body.put("end_date", end.toString());
-    body.put("page", page); body.put("page_size", PAGE_SIZE);
-    // Full pagination must use an immutable and unique field. Creation timestamps can tie,
-    // while today's spend changes during collection; either can repeat boundary rows.
-    body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
-    if(input.get("total")!=null){long total=Long.parseLong(String.valueOf(input.get("total")));if(total<0||total>MAX_PLAN_ROWS)throw new IllegalArgumentException("计划总数超出安全范围");body.put("total_count",total);body.put("total_page",(total+PAGE_SIZE-1)/PAGE_SIZE);}
-    body.put("select_kpi_fields", List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate", "app_type_text", "deep_bid_type_text", "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text"));
+    Map<String,Object> body=requestBody(input,start,end,page);
     HttpRequest request = HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
         .timeout(Duration.ofSeconds(40)).header("Content-Type", "application/json;charset=UTF-8")
         .header("Accept", "application/json, text/plain, */*").header("Cookie", cookie)
@@ -103,6 +82,40 @@ public class BidMonitorApiController {
     Object total = totalCount(container, result);
     output.put("total", total); output.put("page", page);
     return output;
+  }
+
+  Map<String,Object> requestBody(Map<String,Object> input,LocalDate start,LocalDate end,int page){
+    Map<String, Object> conditions = new LinkedHashMap<>();
+    conditions.put("search_field", "promotion_name");
+    conditions.put("search_keyword", text(input, "keyword"));
+    conditions.put("search_type", "like");
+    for (String key : List.of("cl_project_id", "cl_app_id", "user_id", "media_account_id", "companys", "project_id", "scene_type", "strategy_id", "learning_phase", "external_action", "deep_external_action", "deep_bid_type", "material_id"))
+      conditions.put(key, List.of());
+    for (String key : List.of("landing_type", "delivery_mode", "status_first", "ad_type", "star_delivery_type", "star_task_id", "app_type", "combinatorial_id", "status", "status_second"))
+      conditions.put(key, "");
+    String createdStart = text(input, "createdStart"), createdEnd = text(input, "createdEnd");
+    if (!createdStart.isBlank()) conditions.put("cdt_start_date", LocalDate.parse(createdStart) + " 00:00:00");
+    if (!createdEnd.isBlank()) conditions.put("cdt_end_date", LocalDate.parse(createdEnd) + " 23:59:59");
+    if (!createdStart.isBlank() && !createdEnd.isBlank() && createdStart.compareTo(createdEnd) > 0)
+      throw new IllegalArgumentException("计划创建开始日期不能晚于结束日期");
+    conditions.put("media_account_id", accountIds(input));
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("conditions", mapper.writeValueAsString(conditions));
+    body.put("start_date", start.toString()); body.put("end_date", end.toString());
+    body.put("page", page); body.put("page_size", PAGE_SIZE);
+    // Full pagination must use an immutable and unique field. Creation timestamps can tie,
+    // while today's spend changes during collection; either can repeat boundary rows.
+    body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
+    if(input.get("total")!=null){long total=Long.parseLong(String.valueOf(input.get("total")));if(total<0||total>MAX_PLAN_ROWS)throw new IllegalArgumentException("计划总数超出安全范围");body.put("total_count",total);body.put("total_page",(total+PAGE_SIZE-1)/PAGE_SIZE);}
+    body.put("select_kpi_fields", Boolean.TRUE.equals(input.get("verificationOnly"))
+        ?List.of("stat_cost","convert_cnt","cpa_bid","promotion_create_time","account_info"):List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate", "app_type_text", "deep_bid_type_text", "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text"));
+    return body;
+  }
+
+  static List<String> accountIds(Map<String,Object> input){
+    if(input.get("accountIds")==null)return List.of();
+    if(!(input.get("accountIds") instanceof List<?> ids))throw new IllegalArgumentException("账户筛选格式无效");
+    return ids.stream().map(BidMonitorApiController::idText).filter(java.util.Objects::nonNull).distinct().toList();
   }
 
   static String requestId() {

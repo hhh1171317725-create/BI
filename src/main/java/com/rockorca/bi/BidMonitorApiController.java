@@ -108,7 +108,7 @@ public class BidMonitorApiController {
     body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
     if(input.get("total")!=null){long total=Long.parseLong(String.valueOf(input.get("total")));if(total<0||total>MAX_PLAN_ROWS)throw new IllegalArgumentException("计划总数超出安全范围");body.put("total_count",total);body.put("total_page",(total+PAGE_SIZE-1)/PAGE_SIZE);}
     body.put("select_kpi_fields", Boolean.TRUE.equals(input.get("verificationOnly"))
-        ?List.of("stat_cost","convert_cnt","cpa_bid","promotion_create_time","account_info"):List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate", "app_type_text", "deep_bid_type_text", "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text"));
+        ?List.of("stat_cost","convert_cnt","cpa_bid","promotion_create_time","account_info"):List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate", "app_type_text", "deep_bid_type_text", "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "open_url"));
     return body;
   }
 

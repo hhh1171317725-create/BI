@@ -76,13 +76,14 @@ class BidGapServiceTest {
     assertEquals(21d,(double)account.get("settlementPrice"),1e-12);assertEquals("2026-09-07",account.get("settlementPriceDate"));
     assertEquals(630d,account.get("settlementCommission"));assertEquals(30d,account.get("settlementCount"));
   }
-  @Test void dingtalkInfersGdtTaskFromHistoricalSettlementUnitPrice(){
-    var row=Map.<String,Object>of("source_platform","gdt","advertiser_id","123","media_account_id","456","media_account_name","无法识别账户",
-        "promotion_id","p1","user_name","张三","stat_cost",100,"convert_cnt",20,"active_register",100,"cpa_bid",10);
+  @Test void dingtalkInfersGdtTaskFromOpenUrlWithoutUsingSettlementPrice(){
+    var row=ReportService.mapOf("source_platform","gdt","advertiser_id","123","media_account_id","456","media_account_name","无法识别账户",
+        "promotion_id","p1","user_name","张三","open_url","https://example.com/landing?campaign=task-a","stat_cost",100,"convert_cnt",20,"active_register",100,"cpa_bid",10);
     var snapshot=ReportService.mapOf("rows",List.of(row));
-    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","甲账户","price",10),Map.<String,Object>of("name","任务乙","keyword","乙账户","price",30));
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","甲账户","urlKeyword","task-a","price",10),Map.<String,Object>of("name","任务乙","keyword","乙账户","price",30));
     String output=BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),Map.of("000456.0",Map.of("gap",.2,"settlementPrice",10.01,"settlementPriceDate","2026-09-08"))).getFirst().get("text");
-    assertTrue(output.contains("历史结算价反推"));assertFalse(output.contains("暂无匹配计划"));assertFalse(output.contains("gap缺失"));
+    assertTrue(output.contains("open_url 识别任务"));assertFalse(output.contains("暂无匹配计划"));assertFalse(output.contains("gap缺失"));
+    row.remove("open_url");assertTrue(BidTop5Formatter.messages(snapshot,rules,List.of("任务甲"),Map.of("000456.0",Map.of("gap",.2,"settlementPrice",10.01))).getFirst().get("text").contains("暂无匹配计划"));
   }
   @Test void latestDailyReportTaskNameWorksWithoutSettlementAndOverridesAccountKeyword(){
     var calculated=BidGapService.calculate(List.of(taskRow("2026-09-07","任务甲",100),taskRow("2026-09-08","任务乙",20)),LocalDate.of(2026,9,9));
@@ -166,16 +167,27 @@ class BidGapServiceTest {
     assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("甲｜账123｜计p1"));
     assertTrue(text.contains("【任务乙 TOP5】\n①"));assertTrue(text.contains("乙｜账123｜计p2"));
   }
-  @Test void dingtalkUsesBidAndReturnRatioForOtherwiseUnmatchedPlans(){
+  @Test void dingtalkUsesOpenUrlForOtherwiseUnmatchedPlans(){
     var row=Map.<String,Object>of("source_platform","byte","advertiser_id","new","media_account_name","未知账户",
-        "promotion_id","p1","user_name","甲","stat_cost",981.68,"convert_cnt",11,"active_register",195,"cpa_bid",12);
-    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中甲","price",""),
+        "promotion_id","p1","user_name","甲","open_url","https://example.com/?campaign=task-a","stat_cost",981.68,"convert_cnt",11,"active_register",195,"cpa_bid",12);
+    var rules=List.of(Map.<String,Object>of("name","任务甲","keyword","不会命中甲","urlKeyword","task-a","price",""),
         Map.<String,Object>of("name","任务乙","keyword","不会命中乙","price",""));
     var payload=ReportService.mapOf("priceDate","2026-09-08","accounts",Map.of("new",Map.of("gap",.888)),"tasks",Map.of(
         "任务甲",ReportService.mapOf("gap",.888,"dailyPrice",Map.of("date","2026-09-08","price",1)),
         "任务乙",ReportService.mapOf("gap",.843,"dailyPrice",Map.of("date","2026-09-08","price",.24))));
     String text=BidTop5Formatter.messages(ReportService.mapOf("rows",List.of(row)),rules,List.of("任务甲","任务乙"),payload).getFirst().get("text");
-    assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("出价回传估算任务"));
+    assertTrue(text.contains("【任务甲 TOP5】\n①"));assertTrue(text.contains("open_url 识别任务"));
     assertTrue(text.contains("【任务乙 TOP5】\n暂无匹配计划"));
+  }
+  @Test void nestedTbopenLinksLearnTaskByPushPlanIdWithoutUsingBid(){
+    String nested=java.net.URLEncoder.encode("{\"bizparams\":{\"outPushPlanId\":\"N7Z3ae\"}}",java.nio.charset.StandardCharsets.UTF_8);
+    String h5=java.net.URLEncoder.encode("https://m.taobao.com/index.htm?recmdparams="+nested,java.nio.charset.StandardCharsets.UTF_8);
+    String first="tbopen://m.taobao.com/tbopen/index.html?h5Url="+h5+"&spm=first";
+    String second="tbopen://m.taobao.com/tbopen/index.html?h5Url="+h5+"&spm=second";
+    var known=ReportService.mapOf("source_platform","byte","advertiser_id","known","promotion_id","1","open_url",first);
+    var unknown=ReportService.mapOf("source_platform","byte","advertiser_id","new","promotion_id","2","open_url",second);
+    var result=BidTaskInference.infer(List.of(known,unknown),List.of(),Map.<String,Object>of("known",Map.of("taskName","淘宝任务")));
+    assertEquals("淘宝任务",result.get(BidTaskInference.inferenceIdentity(unknown)).get("task"));
+    assertEquals("same-push-id",result.get(BidTaskInference.inferenceIdentity(unknown)).get("urlMatch"));
   }
 }

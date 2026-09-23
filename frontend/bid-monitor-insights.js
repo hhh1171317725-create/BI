@@ -55,14 +55,14 @@
   dialog.querySelector('.dialog-close').onclick=dialog.querySelector('.bid-dialog-footer button').onclick=()=>dialog.close();
   const startInput=dialog.querySelector('#planDetailStart'),endInput=dialog.querySelector('#planDetailEnd'),loadButton=dialog.querySelector('#planDetailLoad'),note=dialog.querySelector('.bid-dialog-note'),body=dialog.querySelector('.bid-dialog-body');
   const field=(label,value)=>`<div><dt>${esc(label)}</dt><dd>${esc(value??'--')}</dd></div>`;
-  const sourceLabels={'account-name':'账户名称关键词','daily-report':'大航海日报任务','plan-name':'计划 / 账户名称识别','bid-return':'出价 × 回传比例估算','inferred':'历史价格推测'};
+  const sourceLabels={'account-name':'账户名称关键词','daily-report':'大航海日报任务','open-url':'open_url 链接识别'};
   let selectedIdentity='',queryGeneration=0;
 
   function renderDetail(row,detailRange,recordCount=null){
-    const detail=row.inference||{},estimated=['bid-return','inferred'].includes(row.taskSource);
+    const detail=row.inference||{},estimated=row.taskSource==='open-url';
     const cashProfit=Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;
     const issues=[];
-    if(!row.task)issues.push(names[row.pricingStatus]||'尚未识别任务，请核对日报任务名或账户关键词。');
+    if(!row.task)issues.push(row.openUrl?'open_url 未能唯一对应任务；可设置任务的 URL 特征，或等待同链接计划的日报任务数据。':names[row.pricingStatus]||'尚未识别任务，请核对日报任务名或账户关键词。');
     if(row.missingReason)issues.push(row.missingReason);
     if(!Number.isFinite(row.bidProfitRate)&&!row.missingReason)issues.push(names[row.status]||'出价利润率暂无有效结果，请检查出价、注册数、转化数与实际单价。');
     const priceSource={manual:'手动设置（优先）','daily-account':`${row.priceDate} 账户日报`,'daily-task':`${row.priceDate} 同任务日报参考`,'range-total':`${row.rangeStart} 至 ${row.rangeEnd} 每日结果合并`}[row.priceSource]||'暂无有效单价';
@@ -72,15 +72,15 @@
     body.innerHTML=`
       <div class="plan-detail-identity"><h3>${esc(row.name||'未命名计划')}</h3><p>计划 ${esc(row.id)} · ${esc(row.platform||'平台未返回')} · 优化师 ${esc(row.optimizer||'未返回')}</p><p>${esc(row.account||'账户未返回')} · ${esc(row.accountId)}</p></div>
       ${row.compensationShortfall>0&&(recordCount!==null||compensationWarningsReady())?`<div class="detail-callout detail-warning"><strong>转化门槛未达到：还差 ${row.compensationShortfall} 个转化</strong><p>该计划创建于 ${esc(String(row.createdAt||'').slice(0,10))}，符合三天前创建的预警范围。累计消耗 ${fmt(row.overallCost)} 元，高于最低消耗 ${fmt(row.compensationWarningThreshold)} 元（当前出价 × 7.2）；累计转化 ${fmt(row.overallConversions)} 个。</p></div>`:''}
-      ${estimated?'<p class="detail-callout detail-warning">该任务为估算关联，不是日报直接确认的归属；相关收益指标也属于估算，请结合业务核对。</p>':''}
+      ${estimated?'<p class="detail-callout detail-warning">该任务由 open_url 匹配，不是当前账户日报直接确认的归属；请核对链接和任务配置。</p>':''}
       ${issues.length?`<div class="detail-callout detail-warning"><strong>数据待核对</strong><ul>${issues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></div>`:''}
       <div class="detail-kpis">${[['总消耗',fmt(row.cost)],['现金消耗',fmt(row.cashCost)],['预估佣金',fmt(row.commission)],['预估 ROI',fmtRoi(row.estimatedRoi)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
       <h3>任务与单价来源</h3><dl class="detail-fields">
       ${field('关联任务',row.task||'未匹配任务')}${field('关联依据',sourceLabels[row.taskSource]||'未识别')}
+      ${field('open_url',row.openUrl||'接口未返回')}${field('URL 匹配方式',{'same-daily-url':'同链接已由其他计划日报确认','same-push-id':'相同 outPushPlanId 已由其他计划日报确认','configured-url':'匹配任务配置的 URL 特征','task-name-in-url':'链接包含唯一任务名称'}[detail.urlMatch]||'--')}
       ${field('结算单价',fmt(row.basePrice))}${field('单价来源',priceSource)}
       ${field('gap',fmtRoi(row.gap))}${field('gap 来源',detailGap)}
       ${field('实际单价 = 结算单价 × gap',fmt(row.price))}${field('日报任务日期',detail.taskDate||row.priceDate||'--')}</dl>
-      ${row.taskSource==='bid-return'?`<div class="detail-callout"><strong>估算匹配过程</strong><p>当前出价 ${fmt(row.bid)} × 回传比例 ${fmtPercent(row.ratio)} = 每注册估算结算金额 ${fmt(detail.estimatedSettlementPrice)}</p><p>最近且唯一的任务实际单价 ${fmt(detail.matchedActualPrice)}；绝对差值 ${fmtRoi(detail.difference)}。金额接近不代表任务一定正确。</p></div>`:''}
       <h3>投放与收益计算</h3><dl class="detail-fields">
       ${field(row.impressionsEstimated?'曝光数（按消耗和媒体 CPM 反算）':'曝光数',fmt(row.impressions))}${field('转化数 / 注册数',`${fmt(row.conversions)} / ${fmt(row.registrations)}`)}${field('注册成本 = 总消耗 ÷ 注册数',fmt(row.cpa))}${field('计划累计转化数',fmt(row.overallConversions))}${field('计划累计消耗',fmt(row.overallCost))}${field('预警最低消耗 = 当前出价 × 7.2',fmt(row.compensationWarningThreshold))}${field('预估 eCPM = 当前出价 × 转化数 ÷ 曝光数 × 1000',fmt(row.ecpm))}${field('回传比例 = 转化数 ÷ 注册数',fmtPercent(row.ratio))}
       ${field('当前出价',fmt(row.bid))}${field('预估赔付',fmt(row.estimatedCompensation))}

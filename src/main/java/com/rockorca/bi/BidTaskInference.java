@@ -1,9 +1,10 @@
 package com.rockorca.bi;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+/** Matches a plan to a reported task or an unambiguous open_url; bids never identify tasks. */
 final class BidTaskInference {
   private BidTaskInference(){}
 
@@ -11,69 +12,48 @@ final class BidTaskInference {
     return infer(rows,rules,accountGaps,true);
   }
 
-  static Map<String,Map<String,Object>> infer(List<?> rows,List<Map<String,Object>> rules,Map<String,Object> accountGaps,boolean allowHistoricalPrice){
-    if(accountGaps==null)return Map.of();
+  // Kept for callers that supplied the old historical-price flag; URL matching is always used.
+  static Map<String,Map<String,Object>> infer(List<?> rows,List<Map<String,Object>> rules,Map<String,Object> accountGaps,boolean ignored){
     Map<String,Object> gapIndex=new HashMap<>();
-    accountGaps.forEach((id,value)->{gapIndex.put(id,value);String canonical=canonicalId(id);if(!canonical.isBlank())gapIndex.put(canonical,value);});
-    Map<String,List<Map<?,?>>> grouped=new LinkedHashMap<>();
+    if(accountGaps!=null)accountGaps.forEach((id,value)->{gapIndex.put(id,value);String canonical=canonicalId(id);if(!canonical.isBlank())gapIndex.put(canonical,value);});
+    Map<String,Map<String,String>> learned=new HashMap<>();
     for(Object item:rows){
-      if(!(item instanceof Map<?,?> row)||!"gdt".equalsIgnoreCase(text(row.get("source_platform"))))continue;
-      String id=inferenceKey(row);if(!id.isBlank())grouped.computeIfAbsent(inferenceIdentity(row),k->new ArrayList<>()).add(row);
+      if(!(item instanceof Map<?,?> row))continue;
+      String task=text(taskEvidence(row,gapIndex).get("taskName"));
+      if(!task.isBlank())for(String key:openUrlKeys(row))learned.computeIfAbsent(key,ignoredKey->new LinkedHashMap<>()).putIfAbsent(task.toLowerCase(Locale.ROOT),task);
     }
     Map<String,Map<String,Object>> result=new LinkedHashMap<>();
-    grouped.forEach((id,items)->{
-      Object accountEntry=gapEntry(rowIds(items.getFirst()),gapIndex);
-      if(!(accountEntry instanceof Map<?,?> account))return;
-      Map<?,?> taskEvidence=taskEvidence(account,items.getFirst());
-      Map<String,Object> reportedRule=taskRule(text(taskEvidence.get("taskName")),rules);
-      if(reportedRule!=null){
-        result.put(id,ReportService.mapOf("rule",reportedRule,"method","daily-report-task",
-            "reportedTaskName",taskEvidence.get("taskName"),"taskDate",taskEvidence.get("taskDate")));
-        return;
+    for(Object item:rows){
+      if(!(item instanceof Map<?,?> row))continue;
+      String identity=inferenceIdentity(row),reported=text(taskEvidence(row,gapIndex).get("taskName"));
+      if(!reported.isBlank()){
+        Map<String,Object> rule=taskRule(reported,rules);
+        result.put(identity,rule==null?ReportService.mapOf("task",reported,"method","daily-report-task"):
+            ReportService.mapOf("rule",rule,"method","daily-report-task","reportedTaskName",reported));
+        continue;
       }
-      if(nameRule(items.getFirst(),rules)!=null)return;
-      if(!allowHistoricalPrice)return;
-      BigDecimal historical=positive(account.get("settlementPrice"));if(historical==null)return;
-      var ranked=rules.stream().map(rule->new Candidate(rule,positive(rule.get("price"))))
-          .filter(candidate->candidate.price()!=null)
-          .map(candidate->new Scored(candidate,candidate.price().subtract(historical).abs()))
-          .sorted(Comparator.comparing(Scored::difference)).toList();
-      if(ranked.isEmpty())return;
-      var best=ranked.getFirst();
-      if(ranked.size()>1&&ranked.get(1).difference().subtract(best.difference()).abs().compareTo(new BigDecimal("0.000001"))<=0)return;
-      result.put(id,ReportService.mapOf("rule",best.candidate().rule(),"method","historical-settlement-price",
-          "settlementPrice",historical,"settlementPriceDate",account.get("settlementPriceDate"),"matchedPrice",best.candidate().price()));
-    });
-    return result;
-  }
-
-  static Map<String,Object> bidReturnRule(Map<?,?> row,List<Map<String,Object>> rules,Map<String,Object> accountGaps,
-      Map<String,Object> taskEntries,String priceDate){
-    if(nameMatches(row,rules).size()>1)return null;
-    BigDecimal bid=nonnegative(row.get("cpa_bid")),conversions=nonnegative(row.get("convert_cnt")),registrations=positive(row.get("active_register"));
-    if(bid==null||conversions==null||registrations==null)return null;
-    BigDecimal estimated=bid.multiply(conversions).divide(registrations,12,RoundingMode.HALF_UP);
-    Map<?,?> account=accountGaps!=null&&accountEntry(row,accountGaps) instanceof Map<?,?> value?value:Map.of();
-    var candidates=new ArrayList<EstimateCandidate>();
-    for(var rule:rules){
-      String task=text(rule.get("name"));if(task.isBlank())continue;
-      Map<?,?> taskEntry=namedEntry(taskEntries,task);
-      BigDecimal base=positive(rule.get("price"));
-      if(base==null){
-        Map<?,?> daily=accountDailyPrice(account,task);
-        if(!usableDailyPrice(daily,priceDate))daily=dailyPrice(taskEntry);
-        base=usableDailyPrice(daily,priceDate)?nonnegative(daily.get("price")):null;
+      List<String> urlKeys=openUrlKeys(row);if(urlKeys.isEmpty())continue;
+      boolean resolved=false,conflict=false;
+      for(String key:urlKeys){
+        Map<String,String> observed=learned.get(key);
+        if(observed==null)continue;
+        if(observed.size()!=1){conflict=true;break;}
+        String task=observed.values().iterator().next();Map<String,Object> rule=taskRule(task,rules);
+        String match=key.startsWith("outpushplanid:")?"same-push-id":"same-daily-url";
+        result.put(identity,rule==null?ReportService.mapOf("task",task,"method","open-url-task","urlMatch",match):
+            ReportService.mapOf("rule",rule,"method","open-url-task","urlMatch",match));
+        resolved=true;break;
       }
-      BigDecimal gap=nonnegative(account.get("gap"));if(gap==null)gap=nonnegative(taskEntry.get("gap"));
-      if(base==null||gap==null)continue;
-      BigDecimal actual=base.multiply(gap);
-      candidates.add(new EstimateCandidate(rule,actual,actual.subtract(estimated).abs()));
+      if(resolved||conflict)continue;
+      String url=openUrlKey(row);
+      String decoded=decodedUrl(url).toLowerCase(Locale.ROOT);
+      var configured=rules.stream().filter(rule->{String keyword=text(rule.get("urlKeyword")).toLowerCase(Locale.ROOT);return !keyword.isBlank()&&decoded.contains(keyword);}).toList();
+      if(configured.size()==1){result.put(identity,ReportService.mapOf("rule",configured.getFirst(),"method","open-url-task","urlMatch","configured-url"));continue;}
+      if(configured.size()>1)continue;
+      var named=rules.stream().filter(rule->{String name=text(rule.get("name")).toLowerCase(Locale.ROOT);return name.length()>=3&&decoded.contains(name);}).toList();
+      if(named.size()==1)result.put(identity,ReportService.mapOf("rule",named.getFirst(),"method","open-url-task","urlMatch","task-name-in-url"));
     }
-    candidates.sort(Comparator.comparing(EstimateCandidate::difference).thenComparing(candidate->text(candidate.rule().get("name"))));
-    if(candidates.isEmpty()||candidates.size()>1&&candidates.get(1).difference().subtract(candidates.getFirst().difference()).abs().compareTo(new BigDecimal("0.000001"))<=0)return null;
-    var best=candidates.getFirst();
-    return ReportService.mapOf("rule",best.rule(),"method","bid-return-estimate","estimatedSettlementPrice",estimated,
-        "matchedActualPrice",best.actualPrice(),"difference",best.difference(),"returnRatio",conversions.divide(registrations,12,RoundingMode.HALF_UP));
+    return result;
   }
 
   static Map<String,Object> nameRule(Map<?,?> row,List<Map<String,Object>> rules){
@@ -94,18 +74,34 @@ final class BidTaskInference {
     return contained.size()==1?contained.getFirst():null;
   }
 
-  private static Map<?,?> taskEvidence(Map<?,?> account,Map<?,?> row){
+  private static Map<?,?> taskEvidence(Map<?,?> row,Map<String,Object> gapIndex){
+    Object entry=gapEntry(rowIds(row),gapIndex);
+    if(!(entry instanceof Map<?,?> account))return Map.of();
     String optimizer=text(row.get("user_name"));
     if(account.get("taskByOptimizer") instanceof Map<?,?> byOptimizer&&!optimizer.isBlank()){
-      for(var entry:byOptimizer.entrySet())if(text(entry.getKey()).equalsIgnoreCase(optimizer)&&entry.getValue() instanceof Map<?,?> value&& !text(value.get("taskName")).isBlank())return value;
+      for(var candidate:byOptimizer.entrySet())if(text(candidate.getKey()).equalsIgnoreCase(optimizer)&&candidate.getValue() instanceof Map<?,?> value&&!text(value.get("taskName")).isBlank())return value;
     }
     return account;
   }
 
+  private static String openUrlKey(Map<?,?> row){return text(row.get("open_url"));}
+  private static String decodedUrl(String url){
+    String text=url;
+    for(int step=0;step<3;step++)try{String decoded=URLDecoder.decode(text,StandardCharsets.UTF_8);if(decoded.equals(text))break;text=decoded;}catch(IllegalArgumentException error){break;}
+    return text;
+  }
+  private static List<String> openUrlKeys(Map<?,?> row){
+    String url=openUrlKey(row);if(url.isBlank())return List.of();
+    var keys=new ArrayList<String>();keys.add("url:"+url);
+    var matcher=java.util.regex.Pattern.compile("outpushplanid[\\\"']?\\s*[:=]\\s*[\\\"']?([a-z0-9_-]+)",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(decodedUrl(url));
+    if(matcher.find())keys.add("outpushplanid:"+matcher.group(1));
+    return keys;
+  }
   static String inferenceKey(Map<?,?> row){String advertiser=text(row.get("advertiser_id"));return advertiser.isBlank()?text(row.get("media_account_id")):advertiser;}
-  static String inferenceIdentity(Map<?,?> row){return inferenceKey(row)+"\u0000"+text(row.get("user_name")).toLowerCase(Locale.ROOT);}
+  static String inferenceIdentity(Map<?,?> row){return text(row.get("source_platform"))+"\u0000"+inferenceKey(row)+"\u0000"+text(row.get("user_name")).toLowerCase(Locale.ROOT)+"\u0000"+text(row.get("promotion_id"))+"\u0000"+openUrlKey(row);}
 
   static Object accountEntry(Map<?,?> row,Map<String,Object> accountGaps){
+    if(accountGaps==null)return null;
     for(String id:rowIds(row)){
       Object value=accountGaps.get(id);if(value!=null)return value;
       String canonical=canonicalId(id);
@@ -114,30 +110,8 @@ final class BidTaskInference {
     return null;
   }
 
-  private static BigDecimal positive(Object value){var number=nonnegative(value);return number!=null&&number.signum()>0?number:null;}
-  private static BigDecimal nonnegative(Object value){try{var number=new BigDecimal(text(value));return number.signum()>=0?number:null;}catch(Exception ignored){return null;}}
   private static String text(Object value){return Objects.toString(value,"").trim();}
   private static List<String> rowIds(Map<?,?> row){return List.of(text(row.get("advertiser_id")),text(row.get("media_account_id")));}
   private static Object gapEntry(List<String> ids,Map<String,Object> index){for(String id:ids){Object value=index.get(id);if(value==null)value=index.get(canonicalId(id));if(value!=null)return value;}return null;}
   private static String canonicalId(String id){return id.replaceFirst("\\.0+$","").replaceFirst("^0+(?=\\d)","");}
-  private static Map<?,?> namedEntry(Map<String,Object> entries,String name){
-    if(entries==null)return Map.of();
-    for(var entry:entries.entrySet())if(entry.getKey().trim().equalsIgnoreCase(name.trim())&&entry.getValue() instanceof Map<?,?> value)return value;
-    return Map.of();
-  }
-  private static Map<?,?> dailyPrice(Map<?,?> entry){return entry.get("dailyPrice") instanceof Map<?,?> value?value:Map.of();}
-  private static Map<?,?> accountDailyPrice(Map<?,?> account,String task){
-    if(account.get("dailyPricesByTask") instanceof Map<?,?> split){
-      for(var entry:split.entrySet())if(text(entry.getKey()).equalsIgnoreCase(task.trim())&&entry.getValue() instanceof Map<?,?> value)return value;
-      if(!split.isEmpty())return Map.of();
-    }
-    return dailyPrice(account);
-  }
-  private static boolean usableDailyPrice(Map<?,?> daily,String expectedDate){
-    String actual=text(daily.get("date"));
-    return !expectedDate.isBlank()&&nonnegative(daily.get("price"))!=null&&(expectedDate.equals(actual)||expectedDate.equals(text(daily.get("fallbackFrom")))&&!actual.isBlank()&&actual.compareTo(expectedDate)<0);
-  }
-  private record Candidate(Map<String,Object> rule,BigDecimal price){}
-  private record Scored(Candidate candidate,BigDecimal difference){}
-  private record EstimateCandidate(Map<String,Object> rule,BigDecimal actualPrice,BigDecimal difference){}
 }

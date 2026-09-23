@@ -325,13 +325,14 @@ class BidServerSyncServiceTest {
     service.start(7,input());String token=store.get(7).get("token").toString();
     var rules=List.of(Map.of("name","taskA","keyword","account-A","price","21.5"));
     var result=service.savePricing(7,Map.of("revision","","rules",rules));
-    assertEquals(rules,result.get("rules"));assertEquals(List.of(),service.pricing(8).get("rules"));
+    assertEquals("",((List<Map<String,Object>>)result.get("rules")).getFirst().get("urlKeyword"));assertEquals(List.of(),service.pricing(8).get("rules"));
     assertEquals(token,store.get(7).get("token"));assertFalse(result.containsKey("credential"));
     assertThrows(ResponseStatusException.class,()->service.savePricing(7,Map.of("revision","","rules",List.of())));
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(rules.getFirst(),rules.getFirst())));
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","","price",1))));
     assertThrows(IllegalArgumentException.class,()->BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",0))));
     assertEquals("",BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","price",""))).getFirst().get("price"));
+    assertEquals("task-a",BidServerSyncService.validateRules(List.of(Map.of("name","t","keyword","x","urlKeyword","task-a","price",""))).getFirst().get("urlKeyword"));
   }
   @Test void renewsLeaseDuringLongCollectionAndCanStopBeforeNextPage()throws Exception{
     service.start(7,input());var pages=Collections.synchronizedList(new ArrayList<Integer>());

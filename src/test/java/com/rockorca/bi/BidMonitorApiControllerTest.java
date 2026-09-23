@@ -18,6 +18,7 @@ class BidMonitorApiControllerTest {
     var conditions=new ObjectMapper().readValue(body.get("conditions").toString(),Map.class);
     assertEquals(List.of("7680747160631230500"),conditions.get("media_account_id"));
     assertTrue(((List<?>)controller.requestBody(Map.of(),day,day,1).get("select_kpi_fields")).contains("active_register"));
+    assertTrue(((List<?>)controller.requestBody(Map.of(),day,day,1).get("select_kpi_fields")).contains("open_url"));
     assertThrows(IllegalArgumentException.class,()->BidMonitorApiController.accountIds(Map.of("accountIds",List.of(123.0))));
   }
 

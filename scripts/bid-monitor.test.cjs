@@ -203,13 +203,14 @@ test('analysis cache reuses calculations and invalidates price edits, gap and sn
  const refreshed=cached([...rows],rules,false,gaps);assert.notStrictEqual(refreshed,repriced);
  assert.notStrictEqual(cached(rows,rules,true,gaps),refreshed);
 });
-test('infers one GDT account task from its latest historical settlement unit price',()=>{
+test('uses a unique configured open_url feature instead of settlement price or bid',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
- const rows=[normalize({source_platform:'gdt',platform_text:'广点通',advertiser_id:'123',advertiser_nick:'无法识别账户',stat_cost:100,convert_cnt:20,reg_pv:100,active_register:100,bid_amount:10,cpa_bid:10})];
- const rules=[{name:'任务甲',keyword:'甲账户',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
+ const rows=[normalize({source_platform:'gdt',platform_text:'广点通',advertiser_id:'123',advertiser_nick:'无法识别账户',open_url:'https://example.com/landing?campaign=task-a',stat_cost:100,convert_cnt:20,reg_pv:100,active_register:100,bid_amount:10,cpa_bid:10})];
+ const rules=[{name:'任务甲',keyword:'甲账户',urlKeyword:'task-a',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
  const gaps={'123':{gap:.2,settlementPrice:10.01,settlementPriceDate:'2026-09-08'}};
- const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务甲');assert.equal(result.taskSource,'inferred');
- assert.equal(result.inference.settlementPrice,10.01);assert.equal(result.inference.settlementPriceDate,'2026-09-08');assert.equal(result.price,2);
+ const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务甲');assert.equal(result.taskSource,'open-url');
+ assert.equal(result.inference.urlMatch,'configured-url');assert.equal(result.price,2);
+ assert.equal(cached([{...rows[0],openUrl:''}],rules,false,gaps)[0].task,'');
 });
 test('explicit account-name task match takes priority over inference',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
@@ -218,22 +219,22 @@ test('explicit account-name task match takes priority over inference',()=>{
  const gaps={'123':{gap:.5,settlementPrice:10,settlementPriceDate:'2026-09-08'}};
  const result=cached(rows,rules,false,gaps)[0];assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'account-name');assert.equal(result.price,15);
 });
-test('historical settlement price inference chooses the nearest task and rejects equal-distance ties',()=>{
+test('historical price and bid cannot identify a task without open_url evidence',()=>{
  const {inferAccountTasks}=require('../frontend/bid-monitor-core.js');
  const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'未知',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
- assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:20}],{'123':{settlementPrice:10}}).get(require('../frontend/bid-monitor-core.js').accountIdentity(rows[0])).rule.name,'A');
+ assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:20}],{'123':{settlementPrice:10}}).size,0);
  assert.equal(inferAccountTasks(rows,[{name:'A',keyword:'a',price:10},{name:'B',keyword:'b',price:20}],{'123':{settlementPrice:15}}).size,0);
 });
 test('GDT matching accepts the provider internal account ID when the daily report uses it',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
  const rows=[normalize({platform_text:'广点通',advertiser_id:'external-123',media_account_id:'456',advertiser_nick:'未知',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
- const result=cached(rows,[{name:'A',keyword:'不会命中',price:10}],false,{'000456.0':{gap:.8,settlementPrice:10,settlementPriceDate:'2026-09-08'}})[0];
+ const result=cached(rows,[{name:'A',keyword:'不会命中',price:10}],false,{'000456.0':{gap:.8,taskName:'A',taskDate:'2026-09-08'}})[0];
  assert.equal(result.task,'A');assert.equal(result.gap,.8);assert.equal(result.price,8);
 });
 test('latest daily-report task name assigns GDT task without settlements and overrides account keyword',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
- const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'甲账户',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
- const rules=[{name:'任务甲',keyword:'甲账户',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
+ const rows=[normalize({platform_text:'广点通',advertiser_id:'123',advertiser_nick:'甲账户',open_url:'https://example.com/?campaign=task-a',stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1})];
+ const rules=[{name:'任务甲',keyword:'甲账户',urlKeyword:'task-a',price:10},{name:'任务乙',keyword:'乙账户',price:30}];
  const result=cached(rows,rules,false,{'123':{gap:.5,taskName:'任务乙',taskDate:'2026-09-08',settlementPrice:null}})[0];
  assert.equal(result.task,'任务乙');assert.equal(result.taskSource,'daily-report');assert.equal(result.price,15);
  assert.equal(result.inference.reportedTaskName,'任务乙');
@@ -267,7 +268,7 @@ test('unconfigured daily task uses the account daily price and stays filterable 
 });
 test('new account may use an exact task reference but never stale daily prices',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
- const row=normalize({platform_text:'广点通',advertiser_id:'new',advertiser_nick:'任务甲 新账户',promotion_name:'任务甲 计划',stat_cost:100,convert_cnt:10,active_register:20,cpa_bid:8});
+ const row=normalize({platform_text:'广点通',advertiser_id:'new',advertiser_nick:'新账户',promotion_name:'普通计划',open_url:'https://example.com/%E4%BB%BB%E5%8A%A1%E7%94%B2',stat_cost:100,convert_cnt:10,active_register:20,cpa_bid:8});
  const reference={priceDate:'2026-09-07',accounts:{},tasks:{'任务甲':{gap:.6,dailyPrice:{date:'2026-09-07',price:25}}}};
  const result=cached([row],[],false,reference.accounts,reference)[0];
  assert.equal(result.task,'任务甲');assert.equal(result.basePrice,25);assert.equal(result.gap,.6);assert.equal(result.price,15);assert.equal(result.priceSource,'daily-task');assert.equal(result.gapSource,'task-reference');
@@ -283,26 +284,42 @@ test('mixed-task account never uses its blended account price',()=>{
  const result=cached([row],[],false,accounts,{priceDate:'2026-09-07',accounts,tasks:{}})[0];
  assert.equal(result.basePrice,null);assert.equal(result.priceSource,'');assert.match(result.priceReason,/2026-09-07/);
 });
-test('unmatched plan estimates settlement from bid and return ratio to select the nearest task',()=>{
+test('unmatched plan inherits a task only from an identical URL with unique daily evidence',()=>{
  const cached=require('../frontend/bid-monitor-core.js').createAnalysisCache();
- const row=normalize({platform_text:'字节',advertiser_id:'new',advertiser_nick:'无法匹配账户',promotion_name:'普通计划',stat_cost:981.68,convert_cnt:11,active_register:195,cpa_bid:12});
- const accounts={new:{gap:.888}},reference={priceDate:'2026-09-08',accounts,tasks:{
+ const url='https://example.com/landing?activity=123';
+ const known=normalize({platform_text:'字节',advertiser_id:'known',advertiser_nick:'已确认账户',promotion_id:'1',open_url:url,stat_cost:10,convert_cnt:1,active_register:10,cpa_bid:100});
+ const row=normalize({platform_text:'字节',advertiser_id:'new',advertiser_nick:'无法匹配账户',promotion_id:'2',open_url:url,promotion_name:'普通计划',stat_cost:981.68,convert_cnt:11,active_register:195,cpa_bid:12});
+ const accounts={known:{taskName:'淘宝促购增量-UV（日披）',taskDate:'2026-09-08',gap:.888},new:{gap:.888}},reference={priceDate:'2026-09-08',accounts,tasks:{
   '淘宝促购增量-UV（日披）':{gap:.888,dailyPrice:{date:'2026-09-08',price:1}},
   '另一任务':{gap:.843,dailyPrice:{date:'2026-09-08',price:.24}}
  }};
- const result=cached([row],[],false,accounts,reference)[0];
- assert.equal(result.task,'淘宝促购增量-UV（日披）');assert.equal(result.taskSource,'bid-return');
- assert.ok(Math.abs(result.inference.estimatedSettlementPrice-12*11/195)<1e-12);
- assert.equal(result.inference.matchedActualPrice,.888);assert.equal(result.basePrice,1);assert.equal(result.price,.888);
+ const result=cached([known,row],[],false,accounts,reference)[1];
+ assert.equal(result.task,'淘宝促购增量-UV（日披）');assert.equal(result.taskSource,'open-url');
+ assert.equal(result.inference.urlMatch,'same-daily-url');assert.equal(result.basePrice,1);assert.equal(result.price,.888);
 });
-test('bid-return estimate refuses equal-distance ties, missing ratios and conflicting keywords',()=>{
- const {inferTaskFromBidReturn}=require('../frontend/bid-monitor-core.js');
- const base=normalize({platform_text:'字节',advertiser_id:'new',advertiser_nick:'未知',promotion_name:'普通计划',convert_cnt:5,active_register:10,cpa_bid:1});
- const refs={priceDate:'2026-09-08',tasks:{A:{gap:1,dailyPrice:{date:'2026-09-08',price:.4}},B:{gap:1,dailyPrice:{date:'2026-09-08',price:.6}}}};
- assert.equal(inferTaskFromBidReturn(base,[],null,refs),null);
-  assert.equal(inferTaskFromBidReturn({...base,registrations:0},[],null,refs),null);
-  assert.equal(inferTaskFromBidReturn({...base,bid:null},[],null,refs),null);
- assert.equal(inferTaskFromBidReturn({...base,account:'both'},[{name:'A',keyword:'both',price:.4},{name:'B',keyword:'both',price:.6}],null,refs),null);
+test('nested tbopen URLs can share a confirmed outPushPlanId despite changing tracking parameters',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const link=spm=>'tbopen://m.taobao.com/tbopen/index.html?h5Url='+encodeURIComponent('https://m.taobao.com/index.htm?recmdparams='+encodeURIComponent(JSON.stringify({bizparams:{outPushPlanId:'N7Z3ae'}})))+'&spm='+spm;
+ const known=B.normalize({promotion_id:'1',platform_text:'字节',advertiser_id:'known',open_url:link('first'),stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:100});
+ const unknown=B.normalize({promotion_id:'2',platform_text:'字节',advertiser_id:'new',open_url:link('second'),stat_cost:1,convert_cnt:1,active_register:1,cpa_bid:1});
+ const accounts={known:{taskName:'淘宝任务',taskDate:'2026-09-08'},new:{}};
+ const inferred=B.inferAccountTasks([known,unknown],[],accounts);
+ assert.equal(inferred.get(B.inferenceIdentity(unknown)).task,'淘宝任务');
+ assert.equal(inferred.get(B.inferenceIdentity(unknown)).detail.urlMatch,'same-push-id');
+ const other={...unknown,openUrl:link('second').replace('N7Z3ae','N7Z3af')};
+ assert.equal(B.inferAccountTasks([known,other],[],accounts).get(B.inferenceIdentity(other)),undefined);
+});
+test('ambiguous open_url evidence stays unmatched even when bids suggest a task',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const rows=[B.normalize({promotion_id:'1',platform_text:'字节',advertiser_id:'new',advertiser_nick:'未知',open_url:'https://example.com/?campaign=both',convert_cnt:5,active_register:10,cpa_bid:1})];
+ const rules=[{name:'A',keyword:'a-account',urlKeyword:'campaign=both',price:.4},{name:'B',keyword:'b-account',urlKeyword:'both',price:.6}];
+ assert.equal(B.inferAccountTasks(rows,rules,{},{}).size,0);
+ assert.equal(B.createAnalysisCache()(rows,rules,false,{},{} )[0].task,'');
+});
+test('an unmatched open_url cannot silently fall back to an account keyword',()=>{
+ const B=require('../frontend/bid-monitor-core.js');
+ const row=B.normalize({promotion_id:'1',platform_text:'字节',advertiser_id:'new',advertiser_nick:'客户甲',open_url:'tbopen://example/opaque',stat_cost:10,convert_cnt:1,active_register:2,cpa_bid:1});
+ assert.equal(B.createAnalysisCache()([row],[{name:'任务甲',keyword:'客户甲',price:1}],false,{},{} )[0].task,'');
 });
 test('15% return rate uses division for break-even bid',()=>{
  const r=analyze(row,21.5,10,20,false);

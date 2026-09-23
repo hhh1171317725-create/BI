@@ -93,12 +93,14 @@ public class BidServerSyncService {
     for(Object item:list){
       if(!(item instanceof Map<?,?> raw))throw new IllegalArgumentException("任务格式无效");
       String name=Objects.toString(raw.get("name"),"").trim(),keyword=Objects.toString(raw.get("keyword"),"").trim();
+      String urlKeyword=Objects.toString(raw.get("urlKeyword"),"").trim();
       if(name.isBlank()||name.length()>80||keyword.isBlank()||keyword.length()>80||
           !names.add(name.toLowerCase(Locale.ROOT))||!keywords.add(keyword.toLowerCase(Locale.ROOT)))
         throw new IllegalArgumentException("任务名及账户关键词须为 1 至 80 字，且不能重复");
+      if(urlKeyword.length()>200)throw new IllegalArgumentException("URL 特征不能超过 200 字");
       String configuredPrice=Objects.toString(raw.get("price"),"").trim();
       if(configuredPrice.isBlank()){
-        result.add(Map.of("name",name,"keyword",keyword,"price",""));
+        result.add(Map.of("name",name,"keyword",keyword,"urlKeyword",urlKeyword,"price",""));
         continue;
       }
       java.math.BigDecimal price;
@@ -106,7 +108,7 @@ public class BidServerSyncService {
       catch(NumberFormatException error){throw new IllegalArgumentException("请填写有效结算单价");}
       if(price.signum()<=0||price.compareTo(new java.math.BigDecimal("1000000"))>0||price.scale()>6)
         throw new IllegalArgumentException("结算单价须大于 0、不超过 1000000，最多 6 位小数");
-      result.add(Map.of("name",name,"keyword",keyword,"price",price.toPlainString()));
+      result.add(Map.of("name",name,"keyword",keyword,"urlKeyword",urlKeyword,"price",price.toPlainString()));
     }
     return result;
   }
@@ -515,7 +517,7 @@ public class BidServerSyncService {
       var row=new LinkedHashMap<String,Object>();
       for(String key:List.of("promotion_id","promotion_name","advertiser_id","media_account_id","user_name","promotion_create_time",
           "stat_cost","convert_cnt","active_register","cpa_bid","app_type_text","deep_bid_type_text","deep_cpabid",
-          "deep_external_action_text","external_action_text","status_text","show_cnt","cpm_platform","ecpm","source_platform","platform_text","provider_data"))row.put(key,raw.get(key));
+          "deep_external_action_text","external_action_text","status_text","show_cnt","cpm_platform","ecpm","open_url","source_platform","platform_text","provider_data"))row.put(key,raw.get(key));
       row.putIfAbsent("source_platform",platform);row.putIfAbsent("platform_text","gdt".equals(platform)?"广点通":"字节");
       for(String key:List.of("promotion_id","advertiser_id","media_account_id")){
         Object id=row.get(key);

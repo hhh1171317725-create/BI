@@ -74,7 +74,7 @@ public class GdtBidMonitorClient {
     body.put("data_type","list");body.put("media_type","gdt_upgrade");body.put("conditions",conditions);
     body.put("sort_field","adgroup_id");body.put("sort_direction","desc");
     body.put("base_infos",List.of("adgroup_name","adgroup_id","advertiser_id","advertiser_nick","user_name","balance",
-        "deep_bid_amount","deep_conversion_spec","optimization_goal","bid_amount","created_time","daily_budget","bid_mode","begin_date"));
+        "deep_bid_amount","deep_conversion_spec","optimization_goal","bid_amount","created_time","daily_budget","bid_mode","begin_date","open_url"));
     body.put("page",page);body.put("page_size",BidMonitorApiController.PAGE_SIZE);
     body.put("start_date",start.toString());body.put("end_date",end.toString());
     body.put("kpis",Boolean.TRUE.equals(input.get("verificationOnly"))?List.of("cost","conversions_count"):List.of("view_count","view_user_count","ctr","cost","conversions_count","conversions_rate",
@@ -104,6 +104,7 @@ public class GdtBidMonitorClient {
       row.put("deep_external_action_text",first(raw,"deep_conversion_spec_name","deep_conversion_spec"));
       row.put("external_action_text",first(raw,"optimization_goal_name","optimization_goal"));
       row.put("status_text",first(raw,"system_status_name","system_status"));
+      row.put("open_url",first(raw,"open_url"));
       row.put("source_platform","gdt");row.put("platform_text","广点通");rows.add(row);
     }
     Object total=BidMonitorApiController.totalCount(data,result);

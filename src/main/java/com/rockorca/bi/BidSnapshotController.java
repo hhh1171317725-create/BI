@@ -21,7 +21,7 @@ public class BidSnapshotController {
   static final Set<String> FIELDS = Set.of("promotion_id", "promotion_name",
       "media_account_id", "advertiser_id", "media_account_name", "user_name", "promotion_create_time",
       "stat_cost", "convert_cnt", "active_register", "cpa_bid", "app_type_text", "deep_bid_type_text",
-      "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "show_cnt", "cpm_platform", "ecpm", "source_platform", "platform_text");
+      "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "show_cnt", "cpm_platform", "ecpm", "open_url", "source_platform", "platform_text");
 
   public BidSnapshotController(SessionService sessions, ReportRepository reports, ObjectMapper mapper) {
     this(sessions,reports,mapper,null);
@@ -166,7 +166,7 @@ public class BidSnapshotController {
         Object value = row.get(field);
         if (value != null && !(value instanceof String) && !(value instanceof Number))
           throw new IllegalArgumentException("计划字段必须是文本或数字");
-        if (value != null && value.toString().length() > 1000) throw new IllegalArgumentException("计划字段过长");
+        if (value != null && value.toString().length() > ("open_url".equals(field) ? 4096 : 1000)) throw new IllegalArgumentException("计划字段过长");
         record.put(field, value);
       }
       record.put("advertiser_id",BidMonitorApiController.idText(record.get("advertiser_id")));

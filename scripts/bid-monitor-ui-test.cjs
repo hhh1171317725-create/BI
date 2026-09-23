@@ -84,11 +84,11 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#syncStatus').textContent(),/第 3 \/ 5 页；已读取 200 \/ 450 条；已用时 10 秒；速度 [0-9.]+ 条\/秒；预计剩余/);
   await page.locator('#startDate').fill('2026-08-01');await page.locator('#endDate').fill('2026-08-02');await page.waitForFunction(()=>!document.querySelector('#pricingFields').disabled);
   for(const [name,keyword,price] of [['任务A','客户-A','21.5'],['任务B','客户-B','']]){
-   await page.locator('#pricingAdd').click();const last=page.locator('#pricingRows tr').last();await last.locator('[data-key=name]').fill(name);await last.locator('[data-key=keyword]').fill(keyword);await last.locator('[data-key=price]').fill(price);
+   await page.locator('#pricingAdd').click();const last=page.locator('#pricingRows tr').last();await last.locator('[data-key=name]').fill(name);await last.locator('[data-key=keyword]').fill(keyword);if(name==='任务A')await last.locator('[data-key=urlKeyword]').fill('task-a');await last.locator('[data-key=price]').fill(price);
   }
   await page.locator('#pricingSave').click();await page.waitForFunction(()=>document.querySelector('#pricingStatus').textContent==='任务价格已保存');
   await page.locator('#pricingReload').click();await page.waitForFunction(()=>document.querySelector('#pricingStatus').textContent==='任务价格已从服务器读取');
-  assert.equal(savedRules.length,2);
+  assert.equal(savedRules.length,2);assert.equal(savedRules[0].urlKeyword,'task-a');
   await page.locator('#dingReload').click();await page.locator('#dingTasks input[value="任务A"]').waitFor();
   assert.equal(await page.locator('#dingTime').inputValue(),'18:00');
   await page.locator('#dingWebhook').fill('https://oapi.dingtalk.com/robot/send?access_token=test-only-token');
@@ -405,13 +405,13 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#openBidColumns').click();assert.equal(await page.evaluate(()=>document.querySelector('#bidColumnsDialog').scrollWidth<=document.querySelector('#bidColumnsDialog').clientWidth),true);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-columns-mobile.png')});await page.keyboard.press('Escape');
   await page.setViewportSize({width:1440,height:1000});
-  await page.evaluate(()=>receive([{promotion_id:'estimated-task',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',user_name:'甲',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5}],'估算任务测试',{start:'2026-08-01',end:'2026-08-01'}));
-  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(4)')?.textContent.includes('出价回传估算'));
-  assert.match(await page.locator('#rows tr td').nth(3).getAttribute('title'),/当前出价 × 回传比例估算结算金额/);
+  await page.evaluate(()=>receive([{promotion_id:'estimated-task',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',user_name:'甲',open_url:'https://example.com/%E4%BB%BB%E5%8A%A1A',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5}],'URL 任务测试',{start:'2026-08-01',end:'2026-08-01'}));
+  await page.waitForFunction(()=>document.querySelector('#rows tr td:nth-child(4)')?.textContent.includes('open_url'));
+  assert.match(await page.locator('#rows tr td').nth(3).getAttribute('title'),/按 open_url 判断任务/);
   // Summary cards use the same filtered data and calculations as the table and exports.
   await page.evaluate(rows=>receive([
     rows[0],
-    {promotion_id:'estimated-task',promotion_name:'估算示例',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5},
+    {promotion_id:'estimated-task',promotion_name:'URL 示例',source_platform:'byte',platform_text:'字节',advertiser_id:'unmatched',media_account_name:'未知账户',open_url:'https://example.com/%E4%BB%BB%E5%8A%A1A',stat_cost:100,convert_cnt:10,active_register:10,cpa_bid:21.5},
     {promotion_id:'missing-task',promotion_name:'缺失示例 <script>bad()</script>',source_platform:'gdt',platform_text:'广点通',advertiser_id:'missing',media_account_name:'未知账户',stat_cost:25,convert_cnt:2,active_register:0,cpa_bid:12}
   ],'完整度测试',{start:'2026-08-01',end:'2026-08-01'}),sample);
   const card=key=>page.locator(`#summaryCards [data-summary="${key}"]`);
@@ -423,8 +423,8 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.match(await page.locator('#bidPlanDetail').textContent(),/注册成本 = 总消耗 ÷ 注册数/);
   const detailLayout=await page.evaluate(()=>{const rect=id=>document.querySelector(id).getBoundingClientRect(),dialog=rect('#bidPlanDetail'),range=document.querySelector('#bidPlanDetail .plan-detail-range'),start=rect('#planDetailStart'),end=rect('#planDetailEnd'),button=rect('#planDetailLoad');return{display:getComputedStyle(range).display,dialogWidth:dialog.width,startTop:start.top,endTop:end.top,buttonTop:button.top,startLeft:start.left,endLeft:end.left,buttonLeft:button.left};});
   assert.equal(detailLayout.display,'grid');assert.ok(detailLayout.dialogWidth<=902);assert.ok(Math.abs(detailLayout.startTop-detailLayout.endTop)<2&&Math.abs(detailLayout.startTop-detailLayout.buttonTop)<2);assert.ok(detailLayout.startLeft<detailLayout.endLeft&&detailLayout.endLeft<detailLayout.buttonLeft);
-  assert.match(await page.locator('#bidPlanDetail').textContent(),/不是日报直接确认的归属/);
-  assert.match(await page.locator('#bidPlanDetail').textContent(),/每注册估算结算金额 21.50/);
+  assert.match(await page.locator('#bidPlanDetail').textContent(),/不是当前账户日报直接确认的归属/);
+  assert.match(await page.locator('#bidPlanDetail').textContent(),/链接包含唯一任务名称/);
   assert.match(await page.locator('#bidPlanDetail').textContent(),/现金利润 = 佣金 − 现金消耗115.00/);
   await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-plan-detail-desktop.png')});
   await page.keyboard.press('Escape');

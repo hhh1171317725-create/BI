@@ -3,20 +3,24 @@
     dhh: '/',
     jd: '/jd',
     jdLowActivity: '/jd-low-activity',
-    adpflux: '/adpflux'
+    adpflux: '/adpflux',
+    bidMonitor: '/bid-monitor.html'
   };
   const currentReport = Object.entries(reportPaths)
       .find(([, path]) => location.pathname === path)?.[0];
-  const cacheKey = 'report-visibility-v1';
+  const cacheKey = 'report-visibility-v2';
   const style = document.createElement('style');
   style.textContent = '.report-visibility-hidden{display:none!important}'
       + 'html.report-visibility-checking body{visibility:hidden}';
   document.head.appendChild(style);
   if (currentReport) document.documentElement.classList.add('report-visibility-checking');
 
-  function renderVisibility(visibility) {
-    const navigation = document.querySelector('.header-actions, nav.nav');
-    const supplementalLinks = [{path: '/adpflux', label: 'TikTok账户'}];
+  function renderVisibility(visibility, canRedirect = true) {
+    const navigation = document.querySelector('.header-actions, nav.nav, nav[aria-label="页面导航"]');
+    const supplementalLinks = [
+      {path: '/adpflux', label: 'TikTok账户'},
+      {path: '/bid-monitor.html', label: '出价监测'}
+    ];
     for (const item of supplementalLinks) {
       if (!navigation || location.pathname === item.path
           || navigation.querySelector(`a[href="${item.path}"]`)) continue;
@@ -33,7 +37,7 @@
         link.classList.toggle('report-visibility-hidden', visibility[key] === false);
       });
     }
-    if (currentReport && visibility[currentReport] === false) {
+    if (canRedirect && currentReport && visibility[currentReport] === false) {
       const destination = Object.entries(reportPaths)
           .find(([key]) => visibility[key] !== false)?.[1] || '/tools';
       location.replace(destination);return false;
@@ -43,10 +47,10 @@
   }
 
   async function applyVisibility() {
-    let visibility = {dhh: true, jd: true, jdLowActivity: true, adpflux: true};
+    let visibility = {dhh: true, jd: true, jdLowActivity: true, adpflux: true, bidMonitor: false};
     try {
       const saved=JSON.parse(sessionStorage.getItem(cacheKey)||'null');
-      if(saved&&Date.now()-saved.savedAt<30_000){visibility={...visibility,...saved.visibility};renderVisibility(visibility);}
+      if(saved&&Date.now()-saved.savedAt<30_000){visibility={...visibility,...saved.visibility};renderVisibility(visibility,false);}
     } catch { sessionStorage.removeItem(cacheKey); }
     try {
       const response = await fetch('/api/report-visibility', {cache: 'no-store'});
@@ -55,10 +59,12 @@
       }
       if (response.ok) {
         visibility = {...visibility, ...await response.json()};
-        sessionStorage.setItem(cacheKey,JSON.stringify({savedAt:Date.now(),visibility}));
       }
+      const tools = await fetch('/api/tool-visibility', {cache: 'no-store'});
+      visibility.bidMonitor = tools.ok && (await tools.json()).bidMonitor === true;
+      sessionStorage.setItem(cacheKey,JSON.stringify({savedAt:Date.now(),visibility}));
     } catch {
-      // Keep every report visible if the preference endpoint is temporarily unavailable.
+      // Keep the known report links usable if the preference endpoint is unavailable.
     }
     renderVisibility(visibility);
   }

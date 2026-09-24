@@ -26,8 +26,6 @@ prepare_disk_space() {
       ;;
   esac
 
-  # target 只包含可重新生成的构建产物。先删除它，确保磁盘写满时仍有机会拉取和构建。
-  rm -rf -- "$PROJECT_DIR/target"
   available_kb="$(df -Pk "$PROJECT_DIR" | awk 'NR == 2 { print $4 }')"
   required_kb="$((MIN_FREE_MB * 1024))"
   if [ -z "$available_kb" ] || [ "$available_kb" -lt "$required_kb" ]; then
@@ -37,6 +35,8 @@ prepare_disk_space() {
     exit 1
   fi
   printf '磁盘预检通过：可用 %s MB，要求至少 %s MB。\n' "$((available_kb / 1024))" "$MIN_FREE_MB"
+  # 空间不足时保留现有 JAR，避免一次失败的部署让服务无法重启。
+  rm -rf -- "$PROJECT_DIR/target"
 }
 
 resolve_java_home() {
@@ -83,5 +83,23 @@ git pull --ff-only "$REMOTE_NAME" "$BRANCH_NAME"
 chmod +x mvnw
 ./mvnw clean package -DskipTests
 systemctl restart "$SERVICE_NAME"
-systemctl is-active --quiet "$SERVICE_NAME"
+ready=0
+attempt=0
+HEALTH_URL="${BI_HEALTH_URL:-http://127.0.0.1:8765/api/session}"
+while [ "$attempt" -lt 45 ]; do
+  if curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  printf '服务重启后未能通过接口检查：%s\n' "$HEALTH_URL" >&2
+  systemctl status "$SERVICE_NAME" --no-pager -l >&2 || true
+  exit 1
+fi
 printf '部署完成：%s，JAVA_HOME=%s\n' "$(git rev-parse --short HEAD)" "$JAVA_HOME"

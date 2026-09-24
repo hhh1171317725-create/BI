@@ -10,11 +10,22 @@ import java.util.List;
 import java.util.Map;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.mock.web.MockMultipartFile;
 import tools.jackson.databind.ObjectMapper;
 
 class BidMonitorApiControllerTest {
   private final BidMonitorApiController controller = new BidMonitorApiController(new ObjectMapper());
+
+  @Test void springCanCreateTheProductionController() {
+    try (var context = new AnnotationConfigApplicationContext()) {
+      context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+      context.register(BidMonitorApiController.class);
+      context.refresh();
+      assertNotNull(context.getBean(BidMonitorApiController.class));
+    }
+  }
+
   @Test void warningVerificationUsesNarrowMetricsWithoutChangingNormalSnapshots(){
     var day=java.time.LocalDate.parse("2026-09-22");
     var body=controller.requestBody(Map.of("verificationOnly",true,"accountIds",List.of("7680747160631230500")),day,day,1);

@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.core.type.TypeReference;
@@ -29,6 +30,7 @@ public class BidMonitorApiController {
   private volatile boolean skipOpenUrlField;
   private final HttpClient client;
 
+  @Autowired
   public BidMonitorApiController(ObjectMapper mapper) {
     this(mapper, HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build());

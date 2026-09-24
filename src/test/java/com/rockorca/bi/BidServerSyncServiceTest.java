@@ -39,6 +39,12 @@ class BidServerSyncServiceTest {
     service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
   }
   @AfterEach void close(){service.close();}
+  @Test void syncErrorNamesTheFailingProviderWithoutShowingUpstreamSecrets(){
+    String status=BidServerSyncService.failure(new IllegalArgumentException(
+        "广点通拒绝请求（code=-1）：private-cookie-value"));
+    assertTrue(status.contains("广点通 code=-1"));
+    assertFalse(status.contains("private-cookie-value"));
+  }
   @Test void expiredVerificationQueriesCreationThroughTodayInsteadOfSummingOldArchives()throws Exception{
     var row=rows(0,1).getFirst();row.put("source_platform","byte");row.put("convert_cnt",9);
     when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",List.of(row)));

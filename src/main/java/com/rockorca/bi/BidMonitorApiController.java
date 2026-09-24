@@ -26,13 +26,25 @@ public class BidMonitorApiController {
   static final int PAGE_SIZE = 100;
   static final int MAX_PLAN_ROWS = 100_000;
   private final ObjectMapper mapper;
-  private final HttpClient client = HttpClient.newBuilder()
-      .connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
+  private volatile boolean skipOpenUrlField;
+  private final HttpClient client;
 
-  public BidMonitorApiController(ObjectMapper mapper) { this.mapper = mapper; }
+  public BidMonitorApiController(ObjectMapper mapper) {
+    this(mapper, HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build());
+  }
+
+  BidMonitorApiController(ObjectMapper mapper, HttpClient client) {
+    this.mapper = mapper;
+    this.client = client;
+  }
 
   @PostMapping("/page")
   public Map<String, Object> page(@RequestBody Map<String, Object> input) throws Exception {
+    if (skipOpenUrlField && !Boolean.FALSE.equals(input.get("requestOpenUrl"))) {
+      input = new LinkedHashMap<>(input);
+      input.put("requestOpenUrl", false);
+    }
     LocalDate start = LocalDate.parse(text(input, "startDate"));
     LocalDate end = LocalDate.parse(text(input, "endDate"));
     if (start.isAfter(end) || start.plusDays(92).isBefore(end))
@@ -60,8 +72,21 @@ public class BidMonitorApiController {
     Map<String, Object> result;
     try { result = mapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {}); }
     catch (Exception error) { throw new IllegalArgumentException("创量返回的不是 JSON，请重新登录或导入报表"); }
-    if (!List.of("0", "200").contains(text(result, "code")))
-      throw new IllegalArgumentException(upstreamError(result, cookie));
+    if (!List.of("0", "200").contains(text(result, "code"))) {
+      String reason = upstreamError(result, cookie);
+      if ("-1".equals(text(result, "code")) && ((List<?>)body.get("select_kpi_fields")).contains("open_url")) {
+        var retry = new LinkedHashMap<>(input);
+        retry.put("requestOpenUrl", false);
+        try {
+          Map<String,Object> recovered = page(retry);
+          skipOpenUrlField = true;
+          return recovered;
+        } catch (Exception ignored) {
+          // Keep the original upstream error when removing the optional field does not help.
+        }
+      }
+      throw new IllegalArgumentException(reason);
+    }
     Object data = result.get("data");
     Map<?, ?> container = data instanceof Map<?, ?> map ? map : result;
     Object raw = data instanceof List<?> ? data : container.get("list");
@@ -107,8 +132,10 @@ public class BidMonitorApiController {
     // while today's spend changes during collection; either can repeat boundary rows.
     body.put("sort_field", "promotion_id"); body.put("sort_direction", "desc"); body.put("data_type", "list");
     if(input.get("total")!=null){long total=Long.parseLong(String.valueOf(input.get("total")));if(total<0||total>MAX_PLAN_ROWS)throw new IllegalArgumentException("计划总数超出安全范围");body.put("total_count",total);body.put("total_page",(total+PAGE_SIZE-1)/PAGE_SIZE);}
-    body.put("select_kpi_fields", Boolean.TRUE.equals(input.get("verificationOnly"))
+    var fields = new ArrayList<>(Boolean.TRUE.equals(input.get("verificationOnly"))
         ?List.of("stat_cost","convert_cnt","cpa_bid","promotion_create_time","account_info"):List.of("stat_cost", "convert_cnt", "conversion_cost", "active_register", "active_register_cost", "cpa_bid", "promotion_create_time", "account_info", "conversion_rate", "show_cnt", "cpm_platform", "click_cnt", "ctr", "cpc_platform", "active_register_rate", "app_type_text", "deep_bid_type_text", "deep_cpabid", "deep_external_action_text", "external_action_text", "status_text", "open_url"));
+    if (Boolean.FALSE.equals(input.get("requestOpenUrl"))) fields.remove("open_url");
+    body.put("select_kpi_fields", fields);
     return body;
   }
 

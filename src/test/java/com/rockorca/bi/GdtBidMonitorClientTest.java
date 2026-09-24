@@ -1,6 +1,10 @@
 package com.rockorca.bi;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +14,23 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import tools.jackson.databind.ObjectMapper;
 
 class GdtBidMonitorClientTest {
+  @SuppressWarnings("unchecked")
+  @Test void rejectedOptionalUrlFieldRetriesAndKeepsLaterPagesOnCompatibleRequest() throws Exception {
+    HttpClient client=mock(HttpClient.class);
+    HttpResponse<String> rejected=mock(HttpResponse.class),accepted=mock(HttpResponse.class);
+    when(rejected.statusCode()).thenReturn(200);
+    when(rejected.body()).thenReturn("{\"code\":-1,\"message\":\"invalid field\"}");
+    when(accepted.statusCode()).thenReturn(200);
+    when(accepted.body()).thenReturn("{\"code\":0,\"data\":{\"list\":[],\"page_info\":{\"total_count\":0}}}");
+    when(client.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class)))
+        .thenReturn(rejected,accepted,accepted);
+    var subject=new GdtBidMonitorClient(new ObjectMapper(),client);
+    var input=Map.<String,Object>of("startDate","2026-09-22","endDate","2026-09-22","page",1,
+        "cookie","userId=123; chuangliang_session=test","clientUser","123","mainUserId","456");
+    assertEquals(0,subject.page(input).get("total"));
+    assertEquals(0,subject.page(input).get("total"));
+    verify(client,times(3)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
+  }
   @Test void warningVerificationRequestsOnlyNecessaryCountersAndCandidateAdvertisers(){
     var body=GdtBidMonitorClient.requestBody(Map.of("verificationOnly",true,"accountIds",List.of("89696535","89696535")),LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-22"),1);
     assertEquals(List.of("cost","conversions_count"),body.get("kpis"));
@@ -29,6 +50,7 @@ class GdtBidMonitorClientTest {
     assertEquals("adgroup_id",body.get("sort_field"));
     var conditions=(Map<?,?>)body.get("conditions");assertEquals(List.of("2026-09-06","2026-09-09"),conditions.get("created_time"));
     assertTrue(((List<?>)body.get("base_infos")).containsAll(List.of("advertiser_nick","user_name","deep_bid_amount","open_url")));
+    assertFalse(((List<?>)GdtBidMonitorClient.requestBody(Map.of("requestOpenUrl",false),LocalDate.parse("2026-09-09"),LocalDate.parse("2026-09-09"),1).get("base_infos")).contains("open_url"));
     assertTrue(((List<?>)body.get("kpis")).contains("reg_pv"));
   }
 

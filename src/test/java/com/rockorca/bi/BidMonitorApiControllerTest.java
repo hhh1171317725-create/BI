@@ -1,7 +1,11 @@
 package com.rockorca.bi;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import java.io.ByteArrayOutputStream;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -19,7 +23,26 @@ class BidMonitorApiControllerTest {
     assertEquals(List.of("7680747160631230500"),conditions.get("media_account_id"));
     assertTrue(((List<?>)controller.requestBody(Map.of(),day,day,1).get("select_kpi_fields")).contains("active_register"));
     assertTrue(((List<?>)controller.requestBody(Map.of(),day,day,1).get("select_kpi_fields")).contains("open_url"));
+    assertFalse(((List<?>)controller.requestBody(Map.of("requestOpenUrl",false),day,day,1).get("select_kpi_fields")).contains("open_url"));
     assertThrows(IllegalArgumentException.class,()->BidMonitorApiController.accountIds(Map.of("accountIds",List.of(123.0))));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test void rejectedOptionalUrlFieldRetriesAndKeepsLaterPagesOnCompatibleRequest() throws Exception {
+    HttpClient client=mock(HttpClient.class);
+    HttpResponse<String> rejected=mock(HttpResponse.class),accepted=mock(HttpResponse.class);
+    when(rejected.statusCode()).thenReturn(200);
+    when(rejected.body()).thenReturn("{\"code\":-1,\"message\":\"invalid field\"}");
+    when(accepted.statusCode()).thenReturn(200);
+    when(accepted.body()).thenReturn("{\"code\":0,\"data\":{\"list\":[],\"page_info\":{\"total_count\":0}}}");
+    when(client.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class)))
+        .thenReturn(rejected,accepted,accepted);
+    var subject=new BidMonitorApiController(new ObjectMapper(),client);
+    var input=Map.<String,Object>of("startDate","2026-09-22","endDate","2026-09-22","page",1,
+        "cookie","userId=123; chuangliang_session=test","clientUser","123","mainUserId","456");
+    assertEquals(0,subject.page(input).get("total"));
+    assertEquals(0,subject.page(input).get("total"));
+    verify(client,times(3)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
   }
 
   @Test void requestIdMatchesSuccessfulUpstreamFormat() {

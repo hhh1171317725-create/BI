@@ -20,6 +20,7 @@ public class GdtBidMonitorClient {
   private static final URI ENDPOINT=URI.create("https://cli1.mobgi.com/MainPanelReport/AdReport/getReport");
   private final ObjectMapper mapper;
   private final HttpClient client;
+  private volatile boolean skipOpenUrlField;
 
   @Autowired
   public GdtBidMonitorClient(ObjectMapper mapper){
@@ -30,6 +31,9 @@ public class GdtBidMonitorClient {
   GdtBidMonitorClient(ObjectMapper mapper,HttpClient client){this.mapper=mapper;this.client=client;}
 
   Map<String,Object> page(Map<String,Object> input)throws Exception{
+    if(skipOpenUrlField&&!Boolean.FALSE.equals(input.get("requestOpenUrl"))){
+      input=new LinkedHashMap<>(input);input.put("requestOpenUrl",false);
+    }
     LocalDate start=LocalDate.parse(text(input,"startDate")),end=LocalDate.parse(text(input,"endDate"));
     if(start.isAfter(end)||start.plusDays(92).isBefore(end))throw new IllegalArgumentException("查询日期范围必须为 1 至 93 天");
     int page=Integer.parseInt(text(input,"page"));
@@ -55,6 +59,16 @@ public class GdtBidMonitorClient {
     Map<String,Object> result;
     try{result=mapper.readValue(response.body(),new TypeReference<Map<String,Object>>(){});}
     catch(Exception error){throw new IllegalArgumentException("广点通返回的不是 JSON，请重新登录");}
+    if("-1".equals(text(result,"code"))&&((List<?>)body.get("base_infos")).contains("open_url")){
+      var retry=new LinkedHashMap<>(input);retry.put("requestOpenUrl",false);
+      try{
+        Map<String,Object> recovered=page(retry);
+        skipOpenUrlField=true;
+        return recovered;
+      }catch(Exception ignored){
+        // A failed retry means the optional field was not the cause; retain the original error.
+      }
+    }
     return parse(result,page,cookie);
   }
 
@@ -73,8 +87,10 @@ public class GdtBidMonitorClient {
     Map<String,Object> body=new LinkedHashMap<>();
     body.put("data_type","list");body.put("media_type","gdt_upgrade");body.put("conditions",conditions);
     body.put("sort_field","adgroup_id");body.put("sort_direction","desc");
-    body.put("base_infos",List.of("adgroup_name","adgroup_id","advertiser_id","advertiser_nick","user_name","balance",
+    var baseInfos=new ArrayList<>(List.of("adgroup_name","adgroup_id","advertiser_id","advertiser_nick","user_name","balance",
         "deep_bid_amount","deep_conversion_spec","optimization_goal","bid_amount","created_time","daily_budget","bid_mode","begin_date","open_url"));
+    if(Boolean.FALSE.equals(input.get("requestOpenUrl"))||Boolean.TRUE.equals(input.get("verificationOnly")))baseInfos.remove("open_url");
+    body.put("base_infos",baseInfos);
     body.put("page",page);body.put("page_size",BidMonitorApiController.PAGE_SIZE);
     body.put("start_date",start.toString());body.put("end_date",end.toString());
     body.put("kpis",Boolean.TRUE.equals(input.get("verificationOnly"))?List.of("cost","conversions_count"):List.of("view_count","view_user_count","ctr","cost","conversions_count","conversions_rate",

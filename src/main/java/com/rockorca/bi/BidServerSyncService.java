@@ -540,9 +540,11 @@ public class BidServerSyncService {
     if("credential".equals(error.getMessage()))return "保存的凭据无法解密，请更新登录凭据后重新启用";
     // Do not persist upstream bodies, cookies, or exception stacks in user-visible status.
     String message=Objects.toString(error.getMessage(),"");
+    String platform=message.startsWith("广点通")?"广点通":message.startsWith("创量")?"字节":"";
     var code=java.util.regex.Pattern.compile("code=([0-9-]{1,10})").matcher(message);
-    return "服务器同步失败"+(code.find()?"（上游 code="+code.group(1)+"）":"")
-        +"，已暂停并保留旧快照。请核对有效登录凭据、接口权限及网络后重新启用；不会绕过验证。";
+    String source=platform.isBlank()?"上游":platform;
+    return "服务器同步失败"+(code.find()?"（"+source+" code="+code.group(1)+"）":"")
+        +"，已暂停并保留旧快照。请更新创量登录凭据并核对"+source+"接口权限及网络后重新启用。";
   }
 
   static boolean requiresAttention(Exception error){

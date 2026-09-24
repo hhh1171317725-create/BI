@@ -78,6 +78,8 @@ body.bid-console #report .pager{margin:0;padding:14px 16px;border-top:1px solid 
 .console-data-status[data-state="error"] .console-status-indicator::before{background:#d92d20}
 body.bid-console .console-data-status #historyStatus{margin:0;padding:4px 0;font-size:12px}
 body.bid-console .console-data-status .gap-strip{border:0;padding:6px 0 12px;background:transparent}
+.console-revenue-coverage{margin:0;padding:8px 16px;border-top:1px solid #f5e6c8;background:#fffbf2;color:#875500;font-size:12px;line-height:1.6}
+.console-revenue-coverage[hidden]{display:none}
 .column-presets{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0 24px 14px;color:#667085;font-size:12px}
 .column-presets button{min-height:30px;padding:4px 10px;font-size:12px;border-radius:5px;background:#f9fafb;box-shadow:none!important}
 .column-presets button:hover{color:#1664ff;background:#eff5ff;border-color:#b2ccff}

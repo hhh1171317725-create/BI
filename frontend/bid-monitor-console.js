@@ -48,16 +48,31 @@
   statusSummary.append(statusTitle,statusIndicator);dataStatus.append(statusSummary);
   const historyStatus=document.getElementById('historyStatus'),gapStatus=document.getElementById('gapStatus');
   const gapStrip=gapStatus.closest('.gap-strip');gapStrip.before(dataStatus);dataStatus.append(historyStatus,gapStrip);
+  const revenueCoverage=make('p','console-revenue-coverage');
+  revenueCoverage.id='bidRevenueCoverage';revenueCoverage.setAttribute('role','status');
+  dataStatus.after(revenueCoverage);
   let lastFailure=false;
   function updateDataStatus(){
     const text=historyStatus.textContent+' '+gapStatus.textContent,failed=/失败|异常/.test(text),loading=/正在|读取中|更新中/.test(text);
-    const label=failed?'需要处理':loading?'更新中':raw.length?'已加载':'等待数据';
+    const rows=typeof filteredRows==='undefined'?[]:filteredRows;
+    const financialReady=!historyMode||historyFinancialReady;
+    const missing=financialReady?rows.filter(row=>row.price===null):[];
+    const label=failed?'需要处理':loading||!financialReady?'更新中':missing.length?`收益待关联 ${missing.length} 条`:raw.length?'已加载':'等待数据';
     if(statusIndicator.textContent!==label)statusIndicator.textContent=label;
     dataStatus.dataset.state=failed?'error':loading?'loading':'ready';
     if(failed&&!lastFailure)dataStatus.open=true;lastFailure=failed;
+    revenueCoverage.hidden=!rows.length||!financialReady||!missing.length||loading&&!gapData;
+    if(!revenueCoverage.hidden){
+      const noTask=missing.filter(row=>!row.task).length;
+      const noPrice=missing.filter(row=>row.basePrice===null).length;
+      const noGap=missing.filter(row=>row.gap===null).length;
+      const reasons=[noTask&&`任务未识别 ${noTask}`,noPrice&&`结算单价缺失 ${noPrice}`,noGap&&`gap 缺失 ${noGap}`].filter(Boolean).join('、');
+      const dates=gapData?`单价查询起点 ${gapData.priceDate}；gap 使用 ${gapData.start} 至 ${gapData.end} 的有效日报。`:'';
+      revenueCoverage.textContent=`当前结果 ${missing.length} / ${rows.length} 条计划无法计算 ROI：${reasons}（原因可能重叠）。${dates}点击计划名查看具体缺失原因。`;
+    }
   }
   const statusObserver=new MutationObserver(updateDataStatus);
-  for(const element of [historyStatus,gapStatus])statusObserver.observe(element,{childList:true,subtree:true,characterData:true});
+  for(const element of [historyStatus,gapStatus,document.getElementById('pricingCoverage')])statusObserver.observe(element,{childList:true,subtree:true,characterData:true});
   updateDataStatus();
   const tabs=level.querySelector('.ocean-level-tabs');
   tabs.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const buttons=[...tabs.querySelectorAll('button')],index=buttons.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});

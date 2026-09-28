@@ -38,17 +38,10 @@ public class BidHistoryStore {
   void replace(Connection connection,long owner,LocalDate date,List<Map<String,Object>> rows)throws Exception{
     initialize();
     var clean=BidSnapshotController.cleanRows(rows,true);
-    try(var delete=connection.prepareStatement("DELETE FROM bid_monitor_history_rows WHERE user_id=? AND report_date=?")){
-      delete.setLong(1,owner);delete.setString(2,date.toString());delete.executeUpdate();
-    }
-    try(var insert=connection.prepareStatement("INSERT INTO bid_monitor_history_rows(user_id,report_date,source_platform,media_account_id,promotion_id,payload) VALUES (?,?,?,?,?,?)")){
-      for(var row:clean){
-        insert.setLong(1,owner);insert.setString(2,date.toString());insert.setString(3,text(row,"source_platform"));
-        insert.setString(4,text(row,"media_account_id"));insert.setString(5,text(row,"promotion_id"));
-        insert.setString(6,mapper.writeValueAsString(row));insert.addBatch();
-      }
-      insert.executeBatch();
-    }
+    var incoming=new ArrayList<BidRowPersistence.Row>(clean.size());
+    for(var row:clean)incoming.add(new BidRowPersistence.Row(
+        new BidRowPersistence.Key(text(row,"source_platform"),text(row,"media_account_id"),text(row,"promotion_id")),"",mapper.writeValueAsString(row)));
+    BidRowPersistence.replace(connection,BidRowPersistence.Table.HISTORY,owner,date.toString(),incoming);
   }
 
   List<Map<String,Object>> read(long owner,LocalDate start,LocalDate end)throws Exception{

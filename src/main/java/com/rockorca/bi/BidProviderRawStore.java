@@ -32,20 +32,14 @@ public class BidProviderRawStore {
 
   void replace(Connection connection,long owner,String date,List<Map<String,Object>> rows)throws Exception{
     LocalDate.parse(date);
-    try(var delete=connection.prepareStatement("DELETE FROM bid_monitor_provider_rows WHERE user_id=? AND report_date=?")){
-      delete.setLong(1,owner);delete.setString(2,date);delete.executeUpdate();
+    var incoming=new ArrayList<BidRowPersistence.Row>(rows.size());
+    for(var row:rows){
+      if(!(row.get("provider_data") instanceof Map<?,?> provider))throw new IllegalArgumentException("上游原始计划字段缺失，未覆盖旧数据");
+      String payload=mapper.writeValueAsString(provider);
+      if(payload.getBytes(StandardCharsets.UTF_8).length>MAX_ROW_BYTES)throw new IllegalArgumentException("单条上游计划数据超过 1 MB，未覆盖旧数据");
+      incoming.add(new BidRowPersistence.Row(new BidRowPersistence.Key(text(row,"source_platform"),text(row,"media_account_id"),text(row,"promotion_id")),text(row,"advertiser_id"),payload));
     }
-    try(var insert=connection.prepareStatement("INSERT INTO bid_monitor_provider_rows(user_id,report_date,source_platform,media_account_id,advertiser_id,promotion_id,payload) VALUES (?,?,?,?,?,?,?)")){
-      for(var row:rows){
-        if(!(row.get("provider_data") instanceof Map<?,?> provider))throw new IllegalArgumentException("上游原始计划字段缺失，未覆盖旧数据");
-        String payload=mapper.writeValueAsString(provider);
-        if(payload.getBytes(StandardCharsets.UTF_8).length>MAX_ROW_BYTES)throw new IllegalArgumentException("单条上游计划数据超过 1 MB，未覆盖旧数据");
-        insert.setLong(1,owner);insert.setString(2,date);insert.setString(3,text(row,"source_platform"));
-        insert.setString(4,text(row,"media_account_id"));insert.setString(5,text(row,"advertiser_id"));insert.setString(6,text(row,"promotion_id"));
-        insert.setString(7,payload);insert.addBatch();
-      }
-      insert.executeBatch();
-    }
+    BidRowPersistence.replace(connection,BidRowPersistence.Table.PROVIDER,owner,date,incoming);
   }
 
   private static String text(Map<String,Object> row,String key){return Objects.toString(row.get(key),"");}

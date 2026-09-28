@@ -16,6 +16,7 @@
   if (currentReport) document.documentElement.classList.add('report-visibility-checking');
 
   function renderVisibility(visibility, canRedirect = true) {
+    window.biReportVisibility = {...visibility};
     const navigation = document.querySelector('.header-actions, nav.nav, nav[aria-label="页面导航"]');
     const supplementalLinks = [
       {path: '/adpflux', label: 'TikTok账户'},
@@ -42,6 +43,7 @@
           .find(([key]) => visibility[key] !== false)?.[1] || '/tools';
       location.replace(destination);return false;
     }
+    document.dispatchEvent(new CustomEvent('bi:report-visibility', {detail: {...visibility}}));
     document.documentElement.classList.remove('report-visibility-checking');
     document.documentElement.classList.add('report-visibility-ready');return true;
   }

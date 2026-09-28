@@ -6,7 +6,7 @@
   <style>html:not(.authenticated) body{visibility:hidden}html:not(.admin) .admin-only{display:none!important}</style>
   <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');try{localStorage.removeItem('marketing-report-x-token')}catch{}document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
   <title>京东广义新日报分析</title>
-  <script src="/report-visibility.js"></script>
+  <script src="/report-visibility.js?v=2"></script>
   <link rel="icon" type="image/png" href="/assets/miku-pet.png" />
   <style>
     :root {
@@ -592,7 +592,7 @@
       .card .v { font-size: 16px; }
     }
   </style>
-  <link rel="stylesheet" href="/app-ui.css?v=4" /><script src="/app-ui.js?v=4" defer></script>
+  <link rel="stylesheet" href="/app-ui.css?v=5" /><script src="/app-ui.js?v=5" defer></script>
   <link rel="stylesheet" href="/site-polish.css?v=20260922-workspace" /><script src="/site-polish.js?v=1" defer></script>
   <link rel="stylesheet" href="/workflow-shortcuts.css?v=1" /><script src="/report-date-presets.js?v=1" defer></script>
   <script src="/pet-loader.js?v=20260911-idle" defer></script>

@@ -18,6 +18,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   await page.route('**/api/**',route=>{
    const url=new URL(route.request().url());let data;
    if(url.pathname==='/api/session')data={authenticated:true};
+   else if(url.pathname==='/api/report-visibility')data={dhh:true,jd:true,jdLowActivity:true,adpflux:true};
    else if(url.pathname==='/api/tool-visibility')data={bidMonitor:true};
    else if(url.pathname==='/api/pet/config')data={configured:false,canManage:false};
    else if(url.pathname==='/api/pet/chat'){petRequests.push(route.request().postDataJSON());data={mode:'local',reply:'已读取出价监测，消耗100元',scope:'出价监测 · 当前筛选结果'};}

@@ -532,7 +532,7 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(await page.locator('.compensation-badge').textContent(),'还差 1 个转化');
   await page.locator('.plan-detail-link').click();assert.match(await page.locator('#bidPlanDetail').textContent(),/还差 1 个转化/);await page.locator('#bidPlanDetail .dialog-close').click();
   await page.locator('#compensationAlert').scrollIntoViewIfNeeded();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-compensation-alert-desktop.png')});
-  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth);
   await page.locator('#compensationAlert').scrollIntoViewIfNeeded();await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-compensation-alert-mobile.png')});
   await page.locator('#compensationAlertFilter').click();assert.equal(await page.locator('#count').textContent(),'2 条');assert.equal(await page.locator('#compensationAlertFilter').textContent(),'查看 1 个预警计划');
   await page.evaluate(()=>{priorConversionStatus='error';render();});assert.match(await page.locator('#compensationAlert').textContent(),/读取失败/);assert.equal(await page.locator('.compensation-badge').count(),0);

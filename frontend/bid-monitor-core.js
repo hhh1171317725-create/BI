@@ -41,10 +41,10 @@
     return r;
   }
   function taskFor(row,rules,inferred){
-    const account=row.account.trim().toLowerCase();
-    const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
     if(['daily-report-task','open-url-task'].includes(inferred?.detail?.method)){const price=number(inferred.rule?.price),task=String(inferred.rule?.name||inferred.task||'').trim(),sources={'daily-report-task':'daily-report','open-url-task':'open-url'};return{task,price:price>0?price:null,pricingStatus:price>0?'priced':'price-missing',taskSource:sources[inferred.detail.method],inference:inferred.detail}}
     if(row.openUrl)return{task:'',price:null,pricingStatus:'task-missing',taskSource:''};
+    const account=row.account.trim().toLowerCase();
+    const matches=account?rules.filter(rule=>String(rule.keyword||'').trim()&&account.includes(String(rule.keyword).trim().toLowerCase())):[];
     if(matches.length!==1){
       return{task:'',price:null,pricingStatus:matches.length?'task-conflict':'task-missing',taskSource:''};
     }
@@ -54,6 +54,7 @@
   const canonicalId=value=>String(value??'').trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   function buildGapIndex(gaps){const index=new Map();for(const [id,value] of Object.entries(gaps||{})){index.set(String(id),value);const canonical=canonicalId(id);if(canonical)index.set(canonical,value)}return index}
   function gapFor(row,index){for(const id of [row.accountId,row.internalAccountId]){if(index.has(String(id)))return index.get(String(id));const canonical=canonicalId(id);if(canonical&&index.has(canonical))return index.get(canonical)}return null}
+  function namedIndex(values){const index=new Map();for(const [name,value] of Object.entries(values||{})){const key=name.trim().toLowerCase();if(!index.has(key))index.set(key,value);}return index;}
   const inferenceIdentity=row=>JSON.stringify([row.platform,accountIdentity(row),String(row.optimizer||'').trim().toLowerCase(),row.id,row.openUrl]);
   const openUrlKey=row=>String(row?.openUrl||'').trim();
   function openUrlText(row){let text=openUrlKey(row);for(let step=0;step<3;step++){try{const decoded=decodeURIComponent(text.replace(/\+/g,' '));if(decoded===text)break;text=decoded;}catch{break}}return text}
@@ -75,12 +76,12 @@
     const task=matched[0],rule=rules.find(item=>String(item.name||'').trim().toLowerCase()===task.toLowerCase());
     return{task,rule,detail:{method:'open-url-task',urlMatch:'task-name-in-url'}};
   }
-  function inferAccountTasks(rows,rules,gaps,references){
-    const gapIndex=buildGapIndex(gaps);
-    const result=new Map(),learned=new Map();
+  function inferAccountTasks(rows,rules,gaps,references,gapIndex=buildGapIndex(gaps)){
+    const result=new Map(),learned=new Map(),optimizerIndexes=new WeakMap(),matchedRules=new Map();
     const dailyFor=row=>{
       const evidence=gapFor(row,gapIndex)||{},optimizer=String(row.optimizer||'').trim();
-      const optimizerEvidence=Object.entries(evidence.taskByOptimizer||{}).find(([name])=>name.trim().toLowerCase()===optimizer.toLowerCase())?.[1];
+      if(!optimizerIndexes.has(evidence))optimizerIndexes.set(evidence,namedIndex(evidence.taskByOptimizer));
+      const optimizerEvidence=optimizerIndexes.get(evidence).get(optimizer.toLowerCase());
       return optimizerEvidence?.taskName?optimizerEvidence:evidence;
     };
     for(const row of rows){const task=String(dailyFor(row).taskName||'').trim();if(task)for(const key of openUrlKeys(row)){if(!learned.has(key))learned.set(key,new Map());learned.get(key).set(task.toLowerCase(),task)}}
@@ -88,8 +89,12 @@
       const key=inferenceIdentity(row),dailyEvidence=dailyFor(row),optimizer=String(row.optimizer||'').trim();
       const reported=String(dailyEvidence.taskName||'').trim().toLowerCase();
       if(reported){
-        let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===reported);
-        if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&(name.includes(reported)||reported.includes(name))});
+        if(!matchedRules.has(reported)){
+          let matched=rules.filter(rule=>String(rule.name||'').trim().toLowerCase()===reported);
+          if(!matched.length)matched=rules.filter(rule=>{const name=String(rule.name||'').trim().toLowerCase();return name&&(name.includes(reported)||reported.includes(name))});
+          matchedRules.set(reported,matched);
+        }
+        const matched=matchedRules.get(reported);
         const detail={method:'daily-report-task',reportedTaskName:dailyEvidence.taskName,taskDate:dailyEvidence.taskDate,optimizer};
         result.set(key,matched.length===1?{rule:matched[0],detail}:{task:dailyEvidence.taskName,detail});continue;
       }
@@ -203,15 +208,18 @@
     if(price===null||price===0){for(const key of ['breakEven','ceiling','revenue','profit','bidRoi','actualRoi','projectedProfit'])result[key]=null;result.status=basePrice===null?task.pricingStatus:gap===null?'gap-missing':'zero-price';}
     return{...result,...task,basePrice,gap,price,...cashMetrics(row,price),...(resolved?.metadata||{})};
   }
-  function resolveDailyInputs(row,rules,gapIndex,references,inferred){
+  function resolveDailyInputs(row,rules,gapIndex,references,inferred,indexes){
     const taskResult=taskFor(row,rules,inferred),account=gapFor(row,gapIndex),taskName=String(taskResult.inference?.reportedTaskName||taskResult.task||'').trim();
-    const findTask=object=>Object.entries(object||{}).find(([name])=>name.trim().toLowerCase()===taskName.toLowerCase())?.[1];
-    const taskReference=taskName?findTask(references?.tasks):null;
+    const taskKey=taskName.toLowerCase(),taskReference=taskName?indexes.tasks.get(taskKey):null;
     const sameDay=value=>usableDailyPrice(value,references?.priceDate);
     let basePrice=taskResult.price,priceSource=basePrice!==null?'manual':'',priceDate='',priceReason='';
     if(basePrice===null){
-      const split=account?.dailyPricesByTask||{},splitNames=Object.keys(split);
-      const accountPrice=taskName?(findTask(split)||(splitNames.length===0?account?.dailyPrice:null)):(splitNames.length<=1?account?.dailyPrice:null);
+      let split=indexes.empty;
+      if(account){
+        if(!indexes.accounts.has(account))indexes.accounts.set(account,{values:namedIndex(account.dailyPricesByTask),count:Object.keys(account.dailyPricesByTask||{}).length});
+        split=indexes.accounts.get(account);
+      }
+      const accountPrice=taskName?(split.values.get(taskKey)||(split.count===0?account?.dailyPrice:null)):(split.count<=1?account?.dailyPrice:null);
       if(sameDay(accountPrice)){basePrice=number(accountPrice.price);priceSource='daily-account';priceDate=accountPrice.date;}
       else if(sameDay(taskReference?.dailyPrice)){basePrice=number(taskReference.dailyPrice.price);priceSource='daily-task';priceDate=taskReference.dailyPrice.date;}
       else priceReason=references?.priceDate?`${references.priceDate} 无可用日报结算单价${taskName?'':'，且任务未识别'}`:'未取得日报单价数据';
@@ -223,8 +231,9 @@
     return{taskResult,basePrice,gap,metadata:{priceSource,priceDate,gapSource,referenceTask:taskName,missingReason,priceReason,gapReason}};
   }
   function analyzePreparedRows(prepared,rules,current,gaps,references){
-    const inferred=inferAccountTasks(prepared,rules,gaps,references),gapIndex=buildGapIndex(gaps);
-    return prepared.map(row=>{const match=inferred.get(inferenceIdentity(row)),resolved=resolveDailyInputs(row,rules,gapIndex,references,match);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
+    const gapIndex=buildGapIndex(gaps),inferred=inferAccountTasks(prepared,rules,gaps,references,gapIndex);
+    const indexes={tasks:namedIndex(references?.tasks),accounts:new WeakMap(),empty:{values:new Map(),count:0}};
+    return prepared.map(row=>{const match=inferred.get(inferenceIdentity(row)),resolved=resolveDailyInputs(row,rules,gapIndex,references,match,indexes);return analyzeTask(row,rules,0,20,current,resolved.gap,match,resolved);});
   }
   function analyzeHistoricalRows(rows,rules,references){
     const prepared=withOverallConversions(rows),groups=new Map(),output=new Array(rows.length);

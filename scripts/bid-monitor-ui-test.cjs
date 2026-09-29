@@ -113,7 +113,12 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
   await page.evaluate(()=>window.testTaskOption=document.querySelector('#taskFilter option'));
   await page.evaluate(()=>window.testSummaryCard=document.querySelector('#summaryCards').firstElementChild);
+  await page.evaluate(()=>{window.testHeader=document.querySelector('#tableHead tr');window.testMetrics=document.querySelector('#metrics').firstElementChild;window.summaryCalls=0;window.originalSummary=BidMonitor.summarizeCash;BidMonitor.summarizeCash=(...args)=>{window.summaryCalls++;return window.originalSummary(...args);};});
   await page.locator('#lastPage').click();assert.equal(await page.locator('#rows tr').count(),5);
+  assert.equal(await page.evaluate(()=>window.testHeader===document.querySelector('#tableHead tr')),true);
+  assert.equal(await page.evaluate(()=>window.testMetrics===document.querySelector('#metrics').firstElementChild),true);
+  assert.equal(await page.evaluate(()=>window.summaryCalls),0);
+  await page.evaluate(()=>BidMonitor.summarizeCash=window.originalSummary);
   assert.equal(await page.evaluate(()=>window.testTaskOption===document.querySelector('#taskFilter option')),true);
   assert.equal(await page.evaluate(()=>window.testSummaryCard===document.querySelector('#summaryCards').firstElementChild),true);
   assert.equal(await page.locator('#pageRange').textContent(),'当前显示 101–105 项');
@@ -122,6 +127,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await page.locator('#pageJump').fill('99');await page.locator('#pageJumpButton').click();
   assert.equal(await page.locator('#pageLabel').textContent(),'第 2 / 3 页');
   await page.locator('#firstPage').click();
+  await page.evaluate(()=>{const search=document.querySelector('#search');search.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));search.value='未完成的中文';search.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));});
+  assert.equal(await page.locator('#count').textContent(),'105 条');
+  await page.evaluate(()=>{const search=document.querySelector('#search');search.value='测试计划 104';search.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));});
+  assert.equal(await page.locator('#count').textContent(),'1 条');
   await page.locator('#search').fill('10000 10001，10000');
   assert.equal(await page.locator('#count').textContent(),'2 条');
   assert.match(await page.locator('#batchSearchHint').textContent(),/2 个 ID/);
@@ -450,7 +459,10 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   await selectView('dates');
   assert.match(await page.locator('#count').textContent(),/^1 天（3 条计划）$/);
   assert.equal(await page.locator('#historyStart').inputValue(),'');assert.equal(await page.locator('#historyEnd').inputValue(),'');
+  await page.evaluate(()=>{window.dateFormatterCreates=0;window.originalDateTimeFormat=Intl.DateTimeFormat;Intl.DateTimeFormat=new Proxy(Intl.DateTimeFormat,{construct(target,args){if(args[0]==='sv-SE')window.dateFormatterCreates++;return Reflect.construct(target,args);}});});
   await page.locator('#historyRangeButton').click();
+  assert.equal(await page.evaluate(()=>window.dateFormatterCreates),0);
+  await page.evaluate(()=>Intl.DateTimeFormat=window.originalDateTimeFormat);
   assert.equal(await page.locator('#historyRangePicker').isVisible(),true);assert.equal(await page.locator('.ocean-range-preset').count(),8);assert.equal(await page.locator('.ocean-calendar-month').count(),2);
   assert.deepEqual(await page.locator('.ocean-range-preset').allTextContents(),['今天','昨天','最近3天','最近7天','最近15天','最近30天','上周','本月']);
   assert.equal(await page.locator('#historyRangePicker').evaluate(el=>el.getBoundingClientRect().right<=innerWidth),true);await page.screenshot({path:path.resolve(__dirname,'../.runtime/bid-date-range-mobile.png')});

@@ -23,7 +23,8 @@
   const levelHint=make('span','ocean-level-hint','点击标签切换数据维度');levelBar.append(levelTitle,levelTabs,levelHint);
   toolbar.before(controlDeck);controlDeck.append(levelBar,toolbar,summary,document.getElementById('historyStatus'));
   const historyToolbar=document.getElementById('historyToolbar');
-  const chinaToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+  const calendarDateFormatter=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'});
+  const chinaToday=()=>calendarDateFormatter.format(new Date());
   const addDays=(iso,offset)=>{const date=new Date(iso+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+offset);return date.toISOString().slice(0,10);};
   const addMonths=(iso,offset)=>{const [year,month]=iso.split('-').map(Number),date=new Date(Date.UTC(year,month-1+offset,1));return date.toISOString().slice(0,7)+'-01';};
   const setHistory=(start,end)=>{document.getElementById('historyStart').value=start;document.getElementById('historyEnd').value=end;if(start&&end)document.getElementById('historyLoad').click();else document.getElementById('historyToday').click();};
@@ -49,20 +50,20 @@
     else if(date<draftStart){draftEnd=draftStart;draftStart=date;}else draftEnd=date;
     renderCalendar();
   }
-  function buildMonth(month){
+  function buildMonth(month,today){
     const [year,monthNumber]=month.split('-').map(Number),section=make('section','ocean-calendar-month'),title=make('h3','',`${year}年 ${monthNumber}月`),week=make('div','ocean-calendar-week');
     for(const label of ['日','一','二','三','四','五','六'])week.append(make('span','',label));
     const grid=make('div','ocean-calendar-grid'),first=new Date(Date.UTC(year,monthNumber-1,1)),start=new Date(first);start.setUTCDate(1-first.getUTCDay());
     for(let index=0;index<42;index++){
       const cursor=new Date(start);cursor.setUTCDate(start.getUTCDate()+index);const date=cursor.toISOString().slice(0,10),button=make('button','ocean-calendar-day',String(cursor.getUTCDate()));button.type='button';button.dataset.date=date;
-      const outside=cursor.getUTCMonth()!==monthNumber-1,future=date>chinaToday(),edge=!draftLive&&(date===draftStart||date===draftEnd),inside=!draftLive&&draftEnd&&date>draftStart&&date<draftEnd;
-      button.classList.toggle('is-outside',outside);button.classList.toggle('is-edge',edge);button.classList.toggle('is-in-range',Boolean(inside));button.classList.toggle('is-today',date===chinaToday());button.classList.toggle('is-live-selected',draftLive&&date===chinaToday());
-      button.disabled=future;button.setAttribute('aria-label',`${date}${date===chinaToday()?'，今天实时':''}`);if(edge||draftLive&&date===chinaToday())button.setAttribute('aria-pressed','true');button.onclick=()=>chooseDate(date);grid.append(button);
+      const outside=cursor.getUTCMonth()!==monthNumber-1,future=date>today,edge=!draftLive&&(date===draftStart||date===draftEnd),inside=!draftLive&&draftEnd&&date>draftStart&&date<draftEnd;
+      button.classList.toggle('is-outside',outside);button.classList.toggle('is-edge',edge);button.classList.toggle('is-in-range',Boolean(inside));button.classList.toggle('is-today',date===today);button.classList.toggle('is-live-selected',draftLive&&date===today);
+      button.disabled=future;button.setAttribute('aria-label',`${date}${date===today?'，今天实时':''}`);if(edge||draftLive&&date===today)button.setAttribute('aria-pressed','true');button.onclick=()=>chooseDate(date);grid.append(button);
     }
     section.append(title,week,grid);return section;
   }
   function renderCalendar(){
-    const second=addMonths(calendarMonth,1);monthTitles.innerHTML=`<strong>${calendarMonth.slice(0,4)}年 ${Number(calendarMonth.slice(5,7))}月</strong><strong>${second.slice(0,4)}年 ${Number(second.slice(5,7))}月</strong>`;calendarMonths.replaceChildren(buildMonth(calendarMonth),buildMonth(second));
+    const second=addMonths(calendarMonth,1),today=chinaToday();monthTitles.innerHTML=`<strong>${calendarMonth.slice(0,4)}年 ${Number(calendarMonth.slice(5,7))}月</strong><strong>${second.slice(0,4)}年 ${Number(second.slice(5,7))}月</strong>`;calendarMonths.replaceChildren(buildMonth(calendarMonth,today),buildMonth(second,today));
     rangePresets.replaceChildren();for(const [label,range] of presetRanges()){const button=make('button','ocean-range-preset',label);button.type='button';button.classList.toggle('is-active',sameRange(range));button.onclick=()=>{draftLive=!range;draftStart=range?.[0]||'';draftEnd=range?.[1]||'';if(range)calendarMonth=range[0].slice(0,7)+'-01';renderCalendar();};rangePresets.append(button);}
     const selection=make('span','ocean-range-selection',draftLive?'今天 · 实时':draftEnd?`${draftStart} ~ ${draftEnd}`:`已选 ${draftStart}，请选择结束日期`),cancel=make('button','','取消'),apply=make('button','primary','确定');cancel.type=apply.type='button';apply.id='historyRangeApply';apply.disabled=!draftLive&&(!draftStart||!draftEnd);cancel.onclick=closeRange;apply.onclick=()=>{if(draftLive)setHistory('','');else setHistory(draftStart,draftEnd);closeRange();};calendarFooter.replaceChildren(selection,cancel,apply);
   }
@@ -126,7 +127,7 @@
   function updateBatch(){batchBar.hidden=!selectionMode;batchCount.textContent=`已选择 ${selectedRows.size} 条`;batchExport.disabled=!selectedRows.size;batchClear.disabled=!selectedRows.size;batchToggle.textContent=selectionMode?'退出批量选择':'批量选择';batchToggle.setAttribute('aria-pressed',String(selectionMode));}
   function enhanceSelection(){
     const planView=document.getElementById('viewMode').value==='plans';batchToggle.hidden=!planView;if(!planView&&selectionMode){selectionMode=false;selectedRows.clear();}
-    const head=document.querySelector('#tableHead tr'),bodyRows=[...document.querySelectorAll('#rows tr')];if(!selectionMode||!planView){updateBatch();return;}
+    const head=document.querySelector('#tableHead tr'),bodyRows=[...document.querySelectorAll('#rows tr')];if(!selectionMode||!planView){document.querySelectorAll('#tableHead .ocean-select-cell,#rows .ocean-select-cell').forEach(cell=>cell.remove());updateBatch();return;}
     if(head&&!head.querySelector('.ocean-select-cell')){const th=make('th','ocean-select-cell'),all=make('input');all.type='checkbox';all.setAttribute('aria-label','选择当前页全部计划');th.append(all);head.prepend(th);all.onchange=()=>{for(const box of document.querySelectorAll('#rows .ocean-row-select')){box.checked=all.checked;box.dispatchEvent(new Event('change'));}};}
     for(const row of bodyRows){const link=row.querySelector('.plan-detail-link');if(!link||row.querySelector('.ocean-select-cell'))continue;const id=link.parentElement.querySelector('small')?.textContent.trim()||link.textContent.trim(),td=make('td','ocean-select-cell'),box=make('input');box.type='checkbox';box.className='ocean-row-select';box.checked=selectedRows.has(id);box.setAttribute('aria-label',`选择计划 ${link.textContent.trim()}`);td.append(box);row.prepend(td);box.onchange=()=>{if(box.checked)selectedRows.set(id,selectedSnapshot(row));else selectedRows.delete(id);updateBatch();};if(box.checked)selectedRows.set(id,selectedSnapshot(row));}
     const boxes=[...document.querySelectorAll('#rows .ocean-row-select')],all=document.querySelector('#tableHead .ocean-select-cell input');if(all){all.checked=boxes.length>0&&boxes.every(box=>box.checked);all.indeterminate=boxes.some(box=>box.checked)&&!all.checked;}updateBatch();

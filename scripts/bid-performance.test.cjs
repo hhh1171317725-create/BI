@@ -44,3 +44,20 @@ test('pagination reuses sorting; sort direction and changed data invalidate it',
   context.sortDirection='asc';assert.equal(context.sortedReportRows(rows)[0].cost,1);assert.equal(calls,2);
   context.sortedReportRows([...rows,{cost:5}]);assert.equal(calls,3);
 });
+
+test('unchanged report rows reuse financial summary, coverage scans and table header',()=>{
+  const source=fs.readFileSync(require('node:path').join(__dirname,'../frontend/bid-monitor.js'),'utf8');
+  let calls=0,reads=0,headers=0;
+  const context=vm.createContext({B:{summarizeCash(rows){calls++;return {estimatedRoi:rows.reduce((sum,row)=>sum+row.commission,0)};}},
+    $:()=>({set innerHTML(value){headers++;}})});
+  vm.runInContext(source.slice(source.indexOf('let taskOptionsSource='),source.indexOf('let sortedRowsSource=')),context);
+  const rows=Array.from({length:10000},(_,i)=>({get price(){reads++;return i%2===0?1:null;},commission:3,priceSource:i%2===0?'manual':'daily-task',gapSource:'task-reference',taskSource:'open-url'}));
+  const summary=context.cachedReportSummary(rows),coverage=context.reportCoverage(rows),initialReads=reads;
+  assert.equal(summary.estimatedRoi,15000);assert.equal(coverage.unpriced,5000);assert.equal(coverage.daily,5000);
+  for(let i=0;i<20;i++){assert.equal(context.cachedReportSummary(rows),summary);assert.equal(context.reportCoverage(rows),coverage);context.reportHeader('<tr>same</tr>');}
+  assert.equal(calls,1);assert.equal(reads,initialReads);assert.equal(headers,1);
+  const changed=[...rows,{price:1,commission:20,priceSource:'manual'}];
+  assert.equal(context.cachedReportSummary(changed).estimatedRoi,15020);assert.equal(context.reportCoverage(changed).manual,5001);
+  assert.equal(calls,2);assert.ok(reads>initialReads);
+  context.reportHeader('<tr>new columns</tr>');assert.equal(headers,2);
+});

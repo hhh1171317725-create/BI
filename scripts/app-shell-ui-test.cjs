@@ -22,7 +22,7 @@ const root=path.resolve(__dirname,'../frontend'),output=path.resolve(__dirname,'
     const url=`http://127.0.0.1:${server.address().port}`;
     await page.goto(`${url}/tools.html`);
     await page.locator('.app-sidebar-link[data-module="bidMonitor"]').waitFor();
-    assert.equal(await page.locator('.app-sidebar-link:visible').count(),4);
+    assert.equal(await page.locator('.app-sidebar-link:visible').count(),5);
     assert.equal(await page.locator('.app-sidebar-link[aria-current="page"]').getAttribute('data-module'),'tools');
     assert.equal(await page.locator('.app-sidebar-link[data-module="jd"]').isVisible(),false);
     await page.locator('.app-sidebar-collapse').click();

@@ -19,6 +19,7 @@
     jdLowActivity:'M4 16l5-5 4 3 7-9 M16 5h4v4',bidMonitor:'M12 3v4m0 10v4M3 12h4m10 0h4 M12 7a5 5 0 1 0 0 10a5 5 0 0 0 0-10',
     adpflux:'M15 3v12a5 5 0 1 1-4-5 M15 3c0 4 3 6 6 6',
     tools:'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
+    memos:'M5 3h14v18H5z M8 8h8 M8 12h8 M8 16h5',
     account:'M12 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8 M4 21v-3a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v3',
     menu:'M4 6h16M4 12h16M4 18h16'};
   function icon(key){const element=document.createElementNS('http://www.w3.org/2000/svg','svg');element.setAttribute('viewBox','0 0 24 24');element.setAttribute('aria-hidden','true');const path=document.createElementNS(element.namespaceURI,'path');path.setAttribute('d',icons[key]);element.append(path);return element;}
@@ -38,7 +39,7 @@
   const workspace=make('div','app-sidebar-group');
   function navLink(item){const link=make('a','app-sidebar-link');link.href=item.href;link.title=item.label;link.dataset.module=item.key;link.append(icon(item.key),make('span','app-sidebar-label',item.label));if(normalize(item.href)===current)link.setAttribute('aria-current','page');return link;}
   const reportLinks=modules.map(item=>{const link=navLink(item);link.hidden=true;reports.append(link);return link;});
-  workspace.append(navLink({key:'tools',href:'/tools',label:'工具中心'}),navLink({key:'account',href:'/account',label:'账户与设置'}));
+  workspace.append(navLink({key:'memos',href:'/memos.html',label:'备忘录'}),navLink({key:'tools',href:'/tools',label:'工具中心'}),navLink({key:'account',href:'/account',label:'账户与设置'}));
   navigation.append(caption,reports,make('p','app-sidebar-caption','工作空间'),workspace);
   const collapse=make('button','app-sidebar-collapse');collapse.type='button';collapse.append(icon('menu'),make('span','app-sidebar-label','收起导航'));
   sidebar.append(brand,navigation,collapse);

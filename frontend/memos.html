@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>备忘录 · 营销数据工作台</title>
-  <link rel="stylesheet" href="/app-ui.css?v=5">
-  <link rel="stylesheet" href="/memos.css?v=1">
-  <script src="/report-visibility.js?v=2" defer></script>
-  <script src="/app-ui.js?v=6" defer></script>
-  <script src="/memos.js?v=1" defer></script>
+  <link rel="stylesheet" href="/app-ui.css?v=6">
+  <link rel="stylesheet" href="/memos.css?v=2">
+  <script src="/report-visibility.js?v=3" defer></script>
+  <script src="/app-ui.js?v=7" defer></script>
+  <script src="/memos.js?v=2" defer></script>
 </head>
 <body>
   <header><div class="brand"><span class="memo-mark">记</span><div><h1>备忘录</h1><p>随手记录，随时找到。</p></div></div><span class="private-label">仅自己可见 · 数据保存在网站</span></header>
@@ -25,6 +25,7 @@
       </aside>
       <section class="memo-detail" aria-label="备忘录内容">
         <div id="emptyEditor" class="empty-editor"><span class="empty-icon" aria-hidden="true">记</span><h2>让信息有个去处</h2><p>记录账户信息、操作步骤或临时想法。<br>选择左侧备忘录，或新建一条开始记录。</p><button id="emptyNew" class="primary" disabled>新建备忘录</button></div>
+        <div id="draftNotice" class="draft-notice" hidden><span id="draftText"></span><div><button id="recoverDraft" type="button">恢复草稿</button><button id="discardDraft" type="button">丢弃草稿</button></div></div>
         <form id="editor" hidden>
           <div class="editor-toolbar"><span id="saveState" role="status">未保存</span><div class="editor-actions"><button id="copy" type="button">复制正文</button><button id="remove" type="button" class="danger">删除</button><button id="restore" type="button" hidden>恢复备忘录</button><button id="save" type="submit" class="primary">保存</button></div></div>
           <fieldset id="fields"><label class="title-label" for="title">标题<input id="title" maxlength="160" required placeholder="给这条信息起个容易找到的标题"></label><div class="editor-properties"><label for="tags">标签<input id="tags" maxlength="256" placeholder="例如：账户，投放技巧，常用链接"></label><label class="pin-toggle"><input id="pinned" type="checkbox">置顶</label></div><label class="content-label" for="content">正文<textarea id="content" maxlength="50000" placeholder="在这里记录信息，支持多行文字和链接…"></textarea></label></fieldset>

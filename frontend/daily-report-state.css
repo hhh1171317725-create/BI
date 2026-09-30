@@ -1,0 +1,13 @@
+.daily-query-state{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:16px;width:min(1760px,calc(100% - 48px));margin:0 auto 16px;padding:14px 18px;border:1px solid #dfe7f1;border-radius:10px;background:#fff;color:#61758e;font-size:13px;line-height:1.65}
+.daily-query-copy{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-width:0}
+.daily-query-copy strong{color:#263f5b;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.daily-query-copy strong:before{content:'';width:7px;height:7px;flex:none;border-radius:50%;background:#429b78}
+.daily-query-copy span{overflow-wrap:anywhere}
+.daily-query-state button{flex:none;min-height:36px;padding:6px 14px;font-size:13px}
+.daily-query-state button[hidden]{display:none}
+.daily-query-state[data-state="loading"]{background:#f5f8ff;border-color:#dce5fa}
+.daily-query-state[data-state="loading"] strong:before{background:#3978e8}
+.daily-query-state[data-state="error"]{background:#fff7f5;border-color:#f3d4cb}
+.daily-query-state[data-state="error"] strong:before{background:#d66543}
+.daily-query-state[data-state="pending"] strong:before,.daily-query-state[data-state="empty"] strong:before{background:#be893b}
+@media(max-width:700px){.daily-query-state{width:calc(100% - 24px);align-items:flex-start;padding:12px;gap:10px}.daily-query-copy{display:block}.daily-query-copy strong{margin-bottom:4px}.daily-query-state button{padding:6px 10px}}

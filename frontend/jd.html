@@ -597,6 +597,7 @@
   <link rel="stylesheet" href="/workflow-shortcuts.css?v=1" /><script src="/report-date-presets.js?v=1" defer></script>
   <script src="/pet-loader.js?v=20260911-idle" defer></script>
   <link rel="stylesheet" href="/unified-controls.css?v=2" /><script src="/unified-controls.js?v=2" defer></script>
+  <link rel="stylesheet" href="/daily-report-state.css?v=1" />
 </head>
 <body>
   <header>
@@ -690,6 +691,7 @@
     <div class="pager" id="drillPager"></div>
   </section>
 
+  <script src="/daily-report-state.js?v=1"></script>
   <script src="/echarts.min.js"></script>
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
@@ -809,6 +811,7 @@
         "实际ROI",
       ]);
 
+      const reportState = BIReportState.create();
       let report = null;
       let active = "by_optimizer";
       let page = 1;
@@ -1245,6 +1248,7 @@
       }
 
       function showReport() {
+        reportState.refresh();
         $("#filterPanel").classList.remove("hidden");
         $("#cards").classList.remove("hidden");
         $("#tabs").classList.remove("hidden");
@@ -1293,7 +1297,7 @@
       }
 
       async function loadLatest() {
-        if (!isAdmin()) return;
+        if (!isAdmin() || reportState.isBusy()) return;
         const token = $("#token").value.trim();
         if (!token) {
           setStatus("请粘贴当前 x-token 后再更新数据。", "error");
@@ -1311,7 +1315,7 @@
             userId: $("#userId").value.trim() || "20",
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
-          report = await post("/api/jd/analyze", {
+          report = await reportState.query("/api/jd/analyze", {
             start: $("#start").value,
             end: $("#end").value,
             accountId: $("#accountId").value.trim(),
@@ -1331,6 +1335,7 @@
       }
 
       async function applyDateFilter(reset = false) {
+        if (reportState.isBusy()) return;
         const start = reset ? defaultMonthStart : $("#start").value;
         const end = reset ? defaultEndDate : $("#end").value;
         if (start && end && start > end) {
@@ -1342,8 +1347,8 @@
         try {
           button.disabled = true;
           $("#reset").disabled = true;
-          $("#loading").textContent = "计算中…";
-          report = await post("/api/jd/analyze", {
+          $("#loading").textContent = "";
+          report = await reportState.query("/api/jd/analyze", {
             start,
             end,
             accountId: $("#accountId").value.trim(),
@@ -1356,9 +1361,9 @@
           page = 1;
           drillPage = 1;
           showReport();
-          $("#loading").textContent = "筛选已应用。";
+          $("#loading").textContent = "";
         } catch (error) {
-          $("#loading").textContent = error.message;
+          $("#loading").textContent = "";
         } finally {
           button.disabled = false;
           $("#reset").disabled = false;
@@ -1480,7 +1485,7 @@
         alerts: { total: 0 },
       });
 
-      post("/api/jd/analyze", {
+      reportState.query("/api/jd/analyze", {
         start: defaultMonthStart,
         end: defaultEndDate,
         accountId: "",

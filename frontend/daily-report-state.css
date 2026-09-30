@@ -10,4 +10,6 @@
 .daily-query-state[data-state="error"]{background:#fff7f5;border-color:#f3d4cb}
 .daily-query-state[data-state="error"] strong:before{background:#d66543}
 .daily-query-state[data-state="pending"] strong:before,.daily-query-state[data-state="empty"] strong:before{background:#be893b}
+.daily-chart-status{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;height:100%;padding:24px;color:#61758e;font-size:13px;text-align:center}
+.daily-chart-status button{font-size:13px}
 @media(max-width:700px){.daily-query-state{width:calc(100% - 24px);align-items:flex-start;padding:12px;gap:10px}.daily-query-copy{display:block}.daily-query-copy strong{margin-bottom:4px}.daily-query-state button{padding:6px 10px}}

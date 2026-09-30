@@ -597,7 +597,7 @@
   <link rel="stylesheet" href="/workflow-shortcuts.css?v=1" /><script src="/report-date-presets.js?v=1" defer></script>
   <script src="/pet-loader.js?v=20260911-idle" defer></script>
   <link rel="stylesheet" href="/unified-controls.css?v=2" /><script src="/unified-controls.js?v=2" defer></script>
-  <link rel="stylesheet" href="/daily-report-state.css?v=1" />
+  <link rel="stylesheet" href="/daily-report-state.css?v=2" />
 </head>
 <body>
   <header>
@@ -692,7 +692,7 @@
   </section>
 
   <script src="/daily-report-state.js?v=1"></script>
-  <script src="/echarts.min.js"></script>
+  <script src="/daily-report-runtime.js?v=1"></script>
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     // 统一按北京时间计算默认日期，避免访客电脑时区不同导致日期偏移。
@@ -919,23 +919,9 @@
         return tableSettings[scope];
       }
 
+      const reportRows = BIDailyRows.create();
       function sortRows(rows, scope) {
-        const setting = tableSetting(scope);
-        if (!setting.sortColumn) return [...rows];
-        const direction = setting.sortDirection === "desc" ? -1 : 1;
-        return [...rows].sort((left, right) => {
-          const leftValue = left[setting.sortColumn];
-          const rightValue = right[setting.sortColumn];
-          const leftNumber = Number(leftValue);
-          const rightNumber = Number(rightValue);
-          if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
-            return (leftNumber - rightNumber) * direction;
-          }
-          return String(leftValue ?? "").localeCompare(String(rightValue ?? ""), "zh-CN", {
-            numeric: true,
-            sensitivity: "base",
-          }) * direction;
-        });
+        return reportRows.sort(rows, tableSetting(scope));
       }
 
       function selectedTableColumns(setting, allColumns, fixedColumns) {
@@ -1077,93 +1063,95 @@
         return [...rows].sort((left, right) => String(left.日期 || "").localeCompare(String(right.日期 || "")));
       }
 
-      function renderTrend(element, instance, rows) {
-        const ordered = trendRows(rows);
-        const chart = instance || echarts.init(element);
-        chart.setOption({
-          animationDuration: 350,
-          color: ["#e1251b", "#f59e0b", "#1677ff"],
-          grid: { left: 72, right: 72, top: 38, bottom: 66 },
-          legend: { top: 6, right: 24, data: ["消耗", "预估 ROI", "实际 ROI"] },
-          tooltip: {
-            trigger: "axis",
-            formatter(params) {
-              const row = ordered[params[0]?.dataIndex] || {};
-              return [
-                escapeHtml(row.日期 || "-"),
-                `消耗：${formatNumber(row.消耗, 2)}`,
-                `计费转化数：${formatNumber(row.计费转化数)}`,
-                `预估 ROI：${formatPercent(row.预估ROI)}`,
-                `实际利润：${formatNumber(row.实际利润, 2)}`,
-                `实际 ROI：${formatPercent(row.实际ROI)}`,
-              ].join("<br>");
-            },
-          },
-          xAxis: {
-            type: "category",
-            data: ordered.map((row) => row.日期),
-            axisLabel: { rotate: 35 },
-            axisTick: { alignWithLabel: true },
-          },
-          yAxis: [
-            {
-              type: "value",
-              name: "消耗",
-              splitLine: { lineStyle: { color: "#e8eef5" } },
-            },
-            {
-              type: "value",
-              name: "ROI",
-              axisLabel: { formatter: (value) => `${value}%` },
-              splitLine: { show: false },
-            },
-          ],
-          dataZoom: [
-            { type: "inside" },
-            { type: "slider", height: 18, bottom: 8 },
-          ],
-          series: [
-            {
-              name: "消耗",
-              type: "line",
-              data: ordered.map((row) => number(row.消耗)),
-              smooth: true,
-              symbolSize: 6,
-              lineStyle: { width: 3 },
-            },
-            {
-              name: "预估 ROI",
-              type: "line",
-              yAxisIndex: 1,
-              data: ordered.map((row) => Number((number(row.预估ROI) * 100).toFixed(2))),
-              smooth: true,
-              symbolSize: 6,
-              lineStyle: { width: 2 },
-            },
-            {
-              name: "实际 ROI",
-              type: "line",
-              yAxisIndex: 1,
-              data: ordered.map((row) => Number((number(row.实际ROI) * 100).toFixed(2))),
-              smooth: true,
-              symbolSize: 6,
-              lineStyle: { width: 2 },
-              markLine: {
-                silent: true,
-                symbol: "none",
-                lineStyle: { type: "dashed", color: "#98a2b3", width: 1.5 },
-                label: {
-                  show: true,
-                  formatter: "ROI = 1",
-                  color: "#667085",
-                  position: "insideEndTop",
-                },
-                data: [{ yAxis: 100 }],
+      function renderTrend(element, rows) {
+        return BIDailyCharts.render(element, rows, (api, existing) => {
+          const ordered = trendRows(rows);
+          const chart = existing || api.init(element);
+          chart.setOption({
+            animationDuration: 350,
+            color: ["#e1251b", "#f59e0b", "#1677ff"],
+            grid: { left: 72, right: 72, top: 38, bottom: 66 },
+            legend: { top: 6, right: 24, data: ["消耗", "预估 ROI", "实际 ROI"] },
+            tooltip: {
+              trigger: "axis",
+              formatter(params) {
+                const row = ordered[params[0]?.dataIndex] || {};
+                return [
+                  escapeHtml(row.日期 || "-"),
+                  `消耗：${formatNumber(row.消耗, 2)}`,
+                  `计费转化数：${formatNumber(row.计费转化数)}`,
+                  `预估 ROI：${formatPercent(row.预估ROI)}`,
+                  `实际利润：${formatNumber(row.实际利润, 2)}`,
+                  `实际 ROI：${formatPercent(row.实际ROI)}`,
+                ].join("<br>");
               },
             },
-          ],
-        }, { notMerge: true });
-        return chart;
+            xAxis: {
+              type: "category",
+              data: ordered.map((row) => row.日期),
+              axisLabel: { rotate: 35 },
+              axisTick: { alignWithLabel: true },
+            },
+            yAxis: [
+              {
+                type: "value",
+                name: "消耗",
+                splitLine: { lineStyle: { color: "#e8eef5" } },
+              },
+              {
+                type: "value",
+                name: "ROI",
+                axisLabel: { formatter: (value) => `${value}%` },
+                splitLine: { show: false },
+              },
+            ],
+            dataZoom: [
+              { type: "inside" },
+              { type: "slider", height: 18, bottom: 8 },
+            ],
+            series: [
+              {
+                name: "消耗",
+                type: "line",
+                data: ordered.map((row) => number(row.消耗)),
+                smooth: true,
+                symbolSize: 6,
+                lineStyle: { width: 3 },
+              },
+              {
+                name: "预估 ROI",
+                type: "line",
+                yAxisIndex: 1,
+                data: ordered.map((row) => Number((number(row.预估ROI) * 100).toFixed(2))),
+                smooth: true,
+                symbolSize: 6,
+                lineStyle: { width: 2 },
+              },
+              {
+                name: "实际 ROI",
+                type: "line",
+                yAxisIndex: 1,
+                data: ordered.map((row) => Number((number(row.实际ROI) * 100).toFixed(2))),
+                smooth: true,
+                symbolSize: 6,
+                lineStyle: { width: 2 },
+                markLine: {
+                  silent: true,
+                  symbol: "none",
+                  lineStyle: { type: "dashed", color: "#98a2b3", width: 1.5 },
+                  label: {
+                    show: true,
+                    formatter: "ROI = 1",
+                    color: "#667085",
+                    position: "insideEndTop",
+                  },
+                  data: [{ yAxis: 100 }],
+                },
+              },
+            ],
+          }, { notMerge: true });
+          return chart;
+        });
       }
 
       function renderMain() {
@@ -1188,7 +1176,7 @@
         if (active === "by_date") {
           $("#mainChartTitle").textContent = "京东广义新每日消耗、预估 ROI 与实际 ROI 趋势";
           chartSection.classList.remove("hidden");
-          mainChart = renderTrend($("#mainChart"), mainChart, rows);
+          mainChart = renderTrend($("#mainChart"), rows);
           requestAnimationFrame(() => mainChart?.resize());
         } else {
           chartSection.classList.add("hidden");
@@ -1225,9 +1213,8 @@
         select.value = selected;
 
         const source = report[config.dateSource];
-        const rows = (Array.isArray(source) ? source : [])
-          .filter((item) => String(item[config.valueKey]) === selected)
-          .sort((left, right) => String(right.日期 || "").localeCompare(String(left.日期 || "")));
+        const rows = reportRows.sort(reportRows.select(source, {[config.valueKey]:selected}, true),
+          {sortColumn:'日期', sortDirection:'desc'});
         const pages = Math.max(1, Math.ceil(rows.length / pageSize));
         drillPage = Math.min(drillPage, pages);
 
@@ -1237,7 +1224,7 @@
         $("#drillNote").textContent = `${title} 的关联日期数据，共 ${rows.length} 天；表格按日期降序展示。`;
         $("#drillChartTitle").textContent = `${title} 每日消耗、预估 ROI 与实际 ROI 趋势`;
         $("#drillChart").setAttribute("aria-label", `${title} 每日消耗、预估 ROI 与实际 ROI 趋势图`);
-        drillChart = renderTrend($("#drillChart"), drillChart, rows);
+        drillChart = renderTrend($("#drillChart"), rows);
         requestAnimationFrame(() => drillChart?.resize());
 
         const allColumns = ["日期", ...metricColumns];

@@ -113,6 +113,12 @@ public class ReportApiController {
 
   @PostMapping("/jd/analyze")
   public Map<String, Object> analyzeJd(@RequestBody Map<String, Object> payload) {
+    String view = ReportService.text(payload.get("view"));
+    if (!view.isBlank()) return reports.analyzeJd(
+        ReportService.text(payload.get("start")),
+        ReportService.text(payload.get("end")),
+        !Boolean.FALSE.equals(payload.get("excludeUnknownOptimizer")),
+        ReportService.text(payload.get("accountId")), view);
     return reports.analyzeJd(
         ReportService.text(payload.get("start")),
         ReportService.text(payload.get("end")),

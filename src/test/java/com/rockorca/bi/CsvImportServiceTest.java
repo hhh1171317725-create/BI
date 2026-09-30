@@ -45,6 +45,21 @@ class CsvImportServiceTest {
   }
 
   @Test
+  void numericFastPathPreservesLegacyConversions() {
+    Object[] values = {null, 0d, -0d, 1234.5d, Double.MAX_VALUE, Double.MIN_VALUE,
+        Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 12, Long.MAX_VALUE,
+        1.2f, new java.math.BigDecimal("123456789.123456789"), " 1,234.5 ", "invalid", ""};
+    for (Object value : values) {
+      double expected;
+      try {
+        expected = Double.parseDouble(String.valueOf(value == null ? "0" : value).replace(",", "").trim());
+        if (!Double.isFinite(expected)) expected = 0;
+      } catch (NumberFormatException ignored) { expected = 0; }
+      assertEquals(Double.doubleToLongBits(expected), Double.doubleToLongBits(CsvImportService.number(value)), String.valueOf(value));
+    }
+  }
+
+  @Test
   void upstreamRequestUsesRequiredHeadersAndImportsBomCsv() throws Exception {
     AtomicReference<String> tokenHeader = new AtomicReference<>();
     AtomicReference<String> userHeader = new AtomicReference<>();

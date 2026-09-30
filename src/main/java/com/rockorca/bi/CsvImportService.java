@@ -243,6 +243,9 @@ public class CsvImportService {
   }
 
   public static double number(Object value) {
+    // JDBC and aggregation already provide doubles; avoid a string allocation and parse per cell.
+    if (value instanceof Double parsed) return Double.isFinite(parsed) ? parsed : 0;
+    if (value == null) return 0;
     try {
       double parsed = Double.parseDouble(
           String.valueOf(value == null ? "0" : value).replace(",", "").trim());

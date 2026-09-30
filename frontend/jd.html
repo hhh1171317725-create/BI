@@ -813,6 +813,7 @@
 
       const reportState = BIReportState.create();
       let report = null;
+      let appliedFilters = null, syncing = false;
       let active = "by_optimizer";
       let page = 1;
       let drillPage = 1;
@@ -1296,8 +1297,14 @@
         });
       }
 
+      async function queryReport(filters, view = active) {
+        const current = await reportState.query("/api/jd/analyze", {...filters, view});
+        appliedFilters = {...filters};
+        return current;
+      }
+
       async function loadLatest() {
-        if (!isAdmin() || reportState.isBusy()) return;
+        if (!isAdmin() || syncing || reportState.isBusy()) return;
         const token = $("#token").value.trim();
         if (!token) {
           setStatus("请粘贴当前 x-token 后再更新数据。", "error");
@@ -1308,6 +1315,9 @@
         const button = $("#load");
         try {
           button.disabled = true;
+          syncing = true;
+          $("#apply").disabled = true;
+          $("#reset").disabled = true;
           button.textContent = "加载中…";
           setStatus("正在获取并保存京东全量报表…");
           await post("/api/jd/load", {
@@ -1315,7 +1325,7 @@
             userId: $("#userId").value.trim() || "20",
             excludeUnknownOptimizer: $("#excludeUnknownOptimizer").value === "true",
           });
-          report = await reportState.query("/api/jd/analyze", {
+          report = await queryReport({
             start: $("#start").value,
             end: $("#end").value,
             accountId: $("#accountId").value.trim(),
@@ -1330,12 +1340,15 @@
           setStatus(error.message, "error");
         } finally {
           button.disabled = false;
+          syncing = false;
+          $("#apply").disabled = false;
+          $("#reset").disabled = false;
           button.textContent = "更新京东全量数据";
         }
       }
 
       async function applyDateFilter(reset = false) {
-        if (reportState.isBusy()) return;
+        if (syncing || reportState.isBusy()) return;
         const start = reset ? defaultMonthStart : $("#start").value;
         const end = reset ? defaultEndDate : $("#end").value;
         if (start && end && start > end) {
@@ -1348,7 +1361,7 @@
           button.disabled = true;
           $("#reset").disabled = true;
           $("#loading").textContent = "";
-          report = await reportState.query("/api/jd/analyze", {
+          report = await queryReport({
             start,
             end,
             accountId: $("#accountId").value.trim(),
@@ -1378,18 +1391,28 @@
       });
       $("#reset").addEventListener("click", () => applyDateFilter(true));
 
-      $("#tabs").addEventListener("click", (event) => {
+      $("#tabs").addEventListener("click", async (event) => {
         const tab = event.target.closest("button[data-key]");
-        if (!tab) return;
-        active = tab.dataset.key;
-        page = 1;
-        drillPage = 1;
-        document.querySelectorAll(".tab").forEach((item) => {
-          const selected = item === tab;
-          item.classList.toggle("active", selected);
-          item.setAttribute("aria-selected", String(selected));
-        });
-        renderMain();
+        const next = tab?.dataset.key;
+        if (!next || next === active || syncing || reportState.isBusy()) return;
+        try {
+          if (!Array.isArray(report?.[next])) {
+            const current = await queryReport(appliedFilters, next);
+            // Never mix dimensions built before and after a server data sync.
+            report = report?.cachedAt === current.cachedAt ? {...report, ...current} : current;
+          }
+          active = next;
+          page = 1;
+          drillPage = 1;
+          document.querySelectorAll(".tab").forEach((item) => {
+            const selected = item === tab;
+            item.classList.toggle("active", selected);
+            item.setAttribute("aria-selected", String(selected));
+          });
+          showReport();
+        } catch {
+          // Shared query state exposes retry; keep the current table and selection intact.
+        }
       });
 
       $("#pager").addEventListener("click", (event) => {
@@ -1485,7 +1508,7 @@
         alerts: { total: 0 },
       });
 
-      reportState.query("/api/jd/analyze", {
+      queryReport({
         start: defaultMonthStart,
         end: defaultEndDate,
         accountId: "",

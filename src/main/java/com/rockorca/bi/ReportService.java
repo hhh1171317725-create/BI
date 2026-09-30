@@ -127,10 +127,15 @@ public class ReportService {
 
   public Map<String, Object> analyzeJd(
       String start, String end, boolean excludeUnknownOptimizer, String accountId) {
+    return analyzeJd(start, end, excludeUnknownOptimizer, accountId, "");
+  }
+
+  public Map<String, Object> analyzeJd(
+      String start, String end, boolean excludeUnknownOptimizer, String accountId, String view) {
     String selectedStart = text(start);
     String selectedEnd = text(end);
     return cachedJdAnalysis(
-        selectedStart, selectedEnd, excludeUnknownOptimizer, text(accountId));
+        selectedStart, selectedEnd, excludeUnknownOptimizer, text(accountId), normalizedJdView(view));
   }
 
   public Map<String, Object> loadJd(
@@ -233,8 +238,13 @@ public class ReportService {
 
   private Map<String, Object> cachedJdAnalysis(
       String start, String end, boolean excludeUnknownOptimizer, String accountId) {
+    return cachedJdAnalysis(start, end, excludeUnknownOptimizer, accountId, "");
+  }
+
+  private Map<String, Object> cachedJdAnalysis(
+      String start, String end, boolean excludeUnknownOptimizer, String accountId, String view) {
     String cachedAt = repository.latestSyncTime("jd");
-    JdAnalysisKey key = new JdAnalysisKey(start, end, excludeUnknownOptimizer, accountId, cachedAt);
+    JdAnalysisKey key = new JdAnalysisKey(start, end, excludeUnknownOptimizer, accountId, cachedAt, view);
     long now = System.currentTimeMillis();
     jdAnalysisCache.entrySet().removeIf(entry -> now - entry.getValue().createdAtMillis() >= JD_ANALYSIS_CACHE_TTL_MILLIS);
     CachedJdAnalysis cached = jdAnalysisCache.get(key);
@@ -242,7 +252,7 @@ public class ReportService {
     // Concurrent viewers of the same range share one database read and aggregation.
     CachedJdAnalysis loaded = jdAnalysisCache.computeIfAbsent(key, ignored -> {
       Map<String, Object> analysis = buildJdAnalysis(
-          repository.readJdRows(start, end, accountId), start, end, excludeUnknownOptimizer, cachedAt);
+          repository.readJdRows(start, end, accountId), start, end, excludeUnknownOptimizer, cachedAt, view);
       return new CachedJdAnalysis(System.currentTimeMillis(), analysis);
     });
     while (jdAnalysisCache.size() > JD_ANALYSIS_CACHE_MAX_ENTRIES) {
@@ -540,25 +550,47 @@ public class ReportService {
       String end,
       boolean excludeUnknownOptimizer,
       String cachedAt) {
+    return buildJdAnalysis(sourceRows, start, end, excludeUnknownOptimizer, cachedAt, "");
+  }
+
+  Map<String, Object> buildJdAnalysis(
+      List<Map<String, Object>> sourceRows, String start, String end,
+      boolean excludeUnknownOptimizer, String cachedAt, String view) {
     List<Map<String, Object>> filtered = filterJdRows(sourceRows, start, end, excludeUnknownOptimizer);
+    boolean all = view.isBlank();
     Map<String, Object> empty = zeroValues(CsvImportService.JD_NUMERIC_FIELDS);
     List<Map<String, Object>> totals = aggregateJd(filtered, List.of());
     Map<String, Object> response = baseAnalysis(filtered, cachedAt);
     response.put("excludeUnknownOptimizer", excludeUnknownOptimizer);
     response.put("summary", totals.isEmpty() ? jdMetrics(empty) : totals.getFirst());
-    response.put("by_optimizer", aggregateJd(filtered, List.of("优化师")));
-    response.put("by_date", dateDescending(aggregateJd(filtered, List.of("日期"))));
-    response.put("by_media", aggregateJd(filtered, List.of("媒体")));
-    response.put("by_account", aggregateJd(filtered, List.of("媒体账户名称", "媒体账户ID")));
-    response.put("by_promoter", aggregateJd(filtered, List.of("推客用户名")));
-    response.put("by_optimizer_date", aggregateJd(filtered, List.of("日期", "优化师")));
-    response.put("by_account_date",
-        dateDescending(aggregateJd(filtered, List.of("日期", "媒体账户名称", "媒体账户ID"))));
-    response.put("by_media_date",
-        dateDescending(aggregateJd(filtered, List.of("日期", "媒体"))));
-    response.put("by_promoter_date",
-        dateDescending(aggregateJd(filtered, List.of("日期", "推客用户名"))));
+    if (all || view.equals("by_optimizer")) {
+      response.put("by_optimizer", aggregateJd(filtered, List.of("优化师")));
+      response.put("by_optimizer_date", aggregateJd(filtered, List.of("日期", "优化师")));
+    }
+    if (all || view.equals("by_date")) {
+      response.put("by_date", dateDescending(aggregateJd(filtered, List.of("日期"))));
+    }
+    if (all || view.equals("by_media")) {
+      response.put("by_media", aggregateJd(filtered, List.of("媒体")));
+      response.put("by_media_date", dateDescending(aggregateJd(filtered, List.of("日期", "媒体"))));
+    }
+    if (all || view.equals("by_account")) {
+      response.put("by_account", aggregateJd(filtered, List.of("媒体账户名称", "媒体账户ID")));
+      response.put("by_account_date", dateDescending(aggregateJd(filtered, List.of("日期", "媒体账户名称", "媒体账户ID"))));
+    }
+    if (all || view.equals("by_promoter")) {
+      response.put("by_promoter", aggregateJd(filtered, List.of("推客用户名")));
+      response.put("by_promoter_date", dateDescending(aggregateJd(filtered, List.of("日期", "推客用户名"))));
+    }
     return response;
+  }
+
+  private static String normalizedJdView(String value) {
+    String view = text(value);
+    if (!view.isBlank() && !Set.of("by_optimizer", "by_date", "by_media", "by_account", "by_promoter").contains(view)) {
+      throw new IllegalArgumentException("京东统计维度无效");
+    }
+    return view;
   }
 
   public List<Map<String, Object>> aggregateJd(
@@ -737,7 +769,8 @@ public class ReportService {
       String end,
       boolean excludeUnknownOptimizer,
       String accountId,
-      String cachedAt) {}
+      String cachedAt,
+      String view) {}
 
   private record CachedJdAnalysis(long createdAtMillis, Map<String, Object> analysis) {}
   private record DhhAnalysisKey(

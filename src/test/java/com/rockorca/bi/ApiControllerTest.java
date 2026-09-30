@@ -237,6 +237,18 @@ class ApiControllerTest {
   }
 
   @Test
+  void jdAnalysisAcceptsRequestedView() throws Exception {
+    when(reports.analyzeJd("2026-09-01", "2026-09-15", true, "123", "by_account"))
+        .thenReturn(Map.of("by_account", java.util.List.of()));
+    mvc.perform(post("/api/jd/analyze").contentType("application/json")
+            .content("""
+                {"start":"2026-09-01","end":"2026-09-15","accountId":"123","view":"by_account"}
+                """))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.by_account").isArray());
+    verify(reports).analyzeJd("2026-09-01", "2026-09-15", true, "123", "by_account");
+  }
+
+  @Test
   void jdLowActivityApisDelegateAndProtectSettings() throws Exception {
     when(lowActivityReports.current()).thenReturn(Map.of("source", "current"));
     when(lowActivityReports.analyze("2026-07-01", "2026-07-31", "账户A", "任务A"))

@@ -598,6 +598,7 @@
   <script src="/pet-loader.js?v=20260911-idle" defer></script>
   <link rel="stylesheet" href="/unified-controls.css?v=2" /><script src="/unified-controls.js?v=2" defer></script>
   <link rel="stylesheet" href="/daily-report-state.css?v=2" />
+  <link rel="stylesheet" href="/daily-table-actions.css?v=1" />
 </head>
 <body>
   <header>
@@ -693,6 +694,7 @@
 
   <script src="/daily-report-state.js?v=1"></script>
   <script src="/daily-report-runtime.js?v=1"></script>
+  <script src="/daily-table-actions.js?v=1"></script>
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     // 统一按北京时间计算默认日期，避免访客电脑时区不同导致日期偏移。
@@ -920,6 +922,10 @@
       }
 
       const reportRows = BIDailyRows.create();
+      const tableActions = BIDailyTableActions.create({
+        reportName:'京东广义新日报', getRange:() => report?.range || [],
+        rerender:scope => { if(scope.startsWith('main:')) { page=1;renderMain(); } else { drillPage=1;renderDrilldown(); } },
+      });
       function sortRows(rows, scope) {
         return reportRows.sort(rows, tableSetting(scope));
       }
@@ -960,7 +966,8 @@
         const selectedColumns = selectedTableColumns(setting, allColumns, fixedColumns);
         const columns = [...new Set([...fixedColumns, ...selectedColumns])].filter(column => allColumns.includes(column));
         renderTableTools(tools, scope, allColumns, fixedColumns);
-        return { rows: sortRows(rows, scope), columns };
+        return { rows: tableActions.prepare(tools, scope, sortRows(rows, scope), columns,
+          allColumns.filter(column => ['优化师','日期','媒体','媒体账户名称','媒体账户ID','推客用户名'].includes(column))), columns };
       }
 
       function toggleSort(scope, column) {
@@ -1157,8 +1164,6 @@
       function renderMain() {
         const config = dimensions[active];
         const rows = Array.isArray(report[active]) ? report[active] : [];
-        const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-        page = Math.min(page, pages);
         const range = Array.isArray(report.range) ? report.range : ["-", "-"];
         const optimizerFilterText = report.excludeUnknownOptimizer ? "，已排除未知优化师" : "，包含未知优化师";
         $("#insight").textContent = `数据范围：${range[0]} 至 ${range[1]}，当前按${config.label}汇总，共 ${rows.length} 条${optimizerFilterText}。`;
@@ -1168,9 +1173,10 @@
           : [config.key, ...metricColumns];
         const scope = `main:${active}`;
         const view = tableView(rows, allColumns, [config.key], scope, $("#mainTableTools"));
+        page = Math.min(page, Math.max(1, Math.ceil(view.rows.length / pageSize)));
         const visibleRows = view.rows.slice((page - 1) * pageSize, page * pageSize);
         renderTable($("#table"), visibleRows, view.columns, config.key, scope);
-        renderPager($("#pager"), rows.length, page);
+        renderPager($("#pager"), view.rows.length, page);
 
         const chartSection = $("#mainChartSection");
         if (active === "by_date") {
@@ -1215,8 +1221,6 @@
         const source = report[config.dateSource];
         const rows = reportRows.sort(reportRows.select(source, {[config.valueKey]:selected}, true),
           {sortColumn:'日期', sortDirection:'desc'});
-        const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-        drillPage = Math.min(drillPage, pages);
 
         const selectedChoice = choices.find((item) => String(item[config.valueKey]) === selected);
         const title = selectedChoice ? config.title(selectedChoice) : selected;
@@ -1230,9 +1234,10 @@
         const allColumns = ["日期", ...metricColumns];
         const scope = `drill:${active}`;
         const view = tableView(rows, allColumns, ["日期"], scope, $("#drillTableTools"));
+        drillPage = Math.min(drillPage, Math.max(1, Math.ceil(view.rows.length / pageSize)));
         const visibleRows = view.rows.slice((drillPage - 1) * pageSize, drillPage * pageSize);
         renderTable($("#drillTable"), visibleRows, view.columns, "日期", scope);
-        renderPager($("#drillPager"), rows.length, drillPage);
+        renderPager($("#drillPager"), view.rows.length, drillPage);
       }
 
       function showReport() {

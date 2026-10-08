@@ -92,6 +92,7 @@
   <link rel="stylesheet" href="/unified-controls.css?v=2" /><script src="/unified-controls.js?v=2" defer></script>
   <link rel="stylesheet" href="/daily-report-state.css?v=2" />
   <link rel="stylesheet" href="/daily-table-actions.css?v=1" />
+  <link rel="stylesheet" href="/daily-table-presentation.css?v=1" />
 </head>
 <body>
   <header><div class="header-row"><div><div class="brand"><button class="brand-mark admin-only" id="copyToken" type="button" title="复制已保存的 x-token" aria-label="复制已保存的 x-token">海</button><h1>大航海日报分析</h1></div><p>按日期同步后，按优化师、项目、日期和任务归因汇总。利润口径：预估佣金 - 现金消耗。</p></div><div class="header-actions"><a class="report-link" href="/jd">京东广义新</a><a class="report-link" href="/jd-low-activity">京东低活</a><a class="report-link" href="/tools">工具中心</a><a class="report-link" href="/account">设置</a><button class="report-link" id="logout" type="button">退出登录</button></div></div></header>
@@ -104,7 +105,8 @@
   <section class="panel hidden" id="drillPanel"><div class="filters"><label id="drillLabel">关联对象<select id="drillSelect"></select></label><label class="hidden" id="optimizerFilter">优化师<select id="optimizerSelect"></select></label><label class="hidden" id="projectFilter">项目<select id="projectSelect"></select></label><label class="hidden" id="taskFilter">任务<select id="taskSelect"></select></label></div><p class="note" id="drillNote"></p><section class="optimizer-breakdown hidden" id="optimizerBreakdown"><h2 class="chart-heading" id="optimizerBreakdownTitle"></h2><p class="chart-subtitle">按当前日期范围汇总各优化师的消耗与利润。</p><div class="table-tools" id="optimizerBreakdownTools"></div><div class="table-wrap"><table id="optimizerBreakdownTable"></table></div></section><h2 class="chart-heading" id="drillChartTitle"></h2><p class="chart-subtitle">折线同时展示每日消耗与现金 ROI，便于定位投放效率变化。</p><div class="chart" id="drillChart" role="img" aria-label="每日消耗与现金 ROI 趋势图"></div><div class="table-tools" id="drillTableTools"></div><div class="table-wrap"><table id="drillTable"></table></div><div class="pager" id="drillPager"></div></section>
   <script src="/daily-report-state.js?v=1"></script>
   <script src="/daily-report-runtime.js?v=1"></script>
-  <script src="/daily-table-actions.js?v=1"></script>
+  <script src="/daily-table-presentation.js?v=1"></script>
+  <script src="/daily-table-actions.js?v=2"></script>
   <script>
     let data=null,active='by_optimizer',page=1,drillPage=1,mainChart,detailChart,alertOptimizer='__all__',alertProject='__all__',alertTask='__all__',alertsExpanded=false;
     const pageSize=20;

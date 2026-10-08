@@ -1,0 +1,102 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),http=require('node:http'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../frontend'),output=path.resolve(__dirname,'../.runtime');
+const metrics={消耗:100,现金消耗:90,预估佣金:120,现金利润:30,ROI:1.2,现金ROI:1.33,预估ROI:1.2,实际ROI:1.1};
+const people=Array.from({length:35},(_,i)=>({...metrics,优化师:`优化师 ${i}`}));
+const dates=people.map(person=>({...person,日期:'2026-10-01'}));
+const report={rows:35,range:['2026-10-01','2026-10-07'],summary:metrics,by_optimizer:people,by_optimizer_date:dates,by_date:dates.slice(0,1),by_account:[],by_project:[],by_task:[],by_media:[],by_promoter:[],alerts:{items:[]},excludeUnknownOptimizer:true};
+(async()=>{
+  fs.mkdirSync(output,{recursive:true});
+  const server=http.createServer((req,res)=>{
+    const url=new URL(req.url,'http://localhost').pathname,file=path.resolve(root,'.'+({'/':'/index.html','/jd':'/jd.html'}[url]||url));
+    if(!file.startsWith(root+path.sep)||!fs.existsSync(file))return res.writeHead(404).end();
+    res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html;charset=utf-8');res.end(fs.readFileSync(file));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
+  try{
+    browser=await chromium.launch({channel:'chrome',headless:true});
+    for(const route of ['/','/jd']){
+      const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];let requests=0;
+      page.on('pageerror',error=>errors.push(error.message));
+      await page.route('**/pet-loader.js*',r=>r.fulfill({body:''}));
+      await page.route('**/api/**',r=>{
+        const url=new URL(r.request().url()).pathname;
+        if(url==='/api/session')return r.fulfill({json:{authenticated:true,user:{role:'member'}}});
+        if(url.endsWith('/analyze')){requests++;return r.fulfill({json:report});}
+        return r.fulfill({json:{}});
+      });
+      await page.goto(`http://127.0.0.1:${server.address().port}${route}`);
+      await page.locator('#content:not(.hidden)').waitFor();
+      const bar=page.locator('#content .daily-table-actions'),density=bar.getByRole('button',{name:'紧凑行距',exact:true});
+      const normal=await page.locator('#table tbody tr').first().evaluate(el=>el.getBoundingClientRect().height);
+      await density.click();
+      assert.equal(await density.getAttribute('aria-pressed'),'true');
+      assert.ok(await page.locator('#table tbody tr').first().evaluate(el=>el.getBoundingClientRect().height)<normal);
+      assert.equal(await page.locator('#drillPanel > .daily-table-actions').getByRole('button',{name:'紧凑行距'}).getAttribute('aria-pressed'),'true');
+      await page.reload();await page.locator('#content:not(.hidden)').waitFor();
+      assert.equal(await density.getAttribute('aria-pressed'),'true','Density preference survives reload');
+      await page.setViewportSize({width:1100,height:1000});
+      const sticky=await page.locator('#content > .table-wrap').evaluate(wrap=>{
+        const cell=wrap.querySelector('td'),before=cell.getBoundingClientRect().left;
+        wrap.scrollLeft=200;
+        return {moved:wrap.scrollLeft>0,before,after:cell.getBoundingClientRect().left};
+      });
+      assert.equal(sticky.moved,true);assert.ok(Math.abs(sticky.before-sticky.after)<2,'Identity column stays visible');
+      await page.setViewportSize({width:1440,height:1000});
+      await page.locator('#tabs [data-key="by_date"]').click();
+      const trend=bar.getByRole('button',{name:'收起趋势',exact:true});await trend.waitFor();
+      await trend.click();assert.equal(await page.locator('#mainChartSection').isVisible(),false);
+      await page.locator('#tabs [data-key="by_optimizer"]').focus();
+      await page.locator('#tabs [data-key="by_optimizer"]').press('End');
+      await page.waitForFunction(()=>document.querySelector('#tabs button:last-child').getAttribute('aria-selected')==='true');
+      await page.locator('#tabs button:last-child').press('Home');
+      await page.waitForFunction(()=>document.querySelector('#tabs button:first-child').getAttribute('aria-selected')==='true');
+      assert.equal(await page.locator('#tabs [tabindex="0"]').count(),1);
+      await page.locator('#tabs [data-key="by_date"]').click();
+      assert.equal(await page.locator('#mainChartSection').isVisible(),false,'Fold preference survives dimension changes');
+      await page.reload();await page.locator('#content:not(.hidden)').waitFor();
+      await page.locator('#tabs [data-key="by_date"]').click();
+      assert.equal(await page.locator('#mainChartSection').isVisible(),false,'Fold preference survives reload');
+      await bar.getByRole('button',{name:'显示趋势',exact:true}).click();
+      assert.equal(await page.locator('#mainChartSection').isVisible(),true);
+      await page.locator('#tabs [data-key="by_optimizer"]').click();
+      await bar.getByRole('searchbox').fill('优化师 2');await bar.getByRole('searchbox').press('Enter');
+      const count=await page.locator('#table tbody tr').count(),beforeExpand=requests;
+      await bar.getByRole('button',{name:'展开看表',exact:true}).click();
+      await page.waitForFunction(()=>document.fullscreenElement?.id==='content');
+      assert.equal(await page.locator('#table tbody tr').count(),count);
+      assert.equal(requests,beforeExpand,'Presentation changes do not call analysis API');
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      await page.locator('#mainTableTools .uc-columns-button').click();
+      assert.equal(await page.locator('#unifiedControlsDialog').isVisible(),true);
+      await page.locator('#unifiedControlsDialog .uc-apply').click();
+      await page.screenshot({path:path.join(output,`daily-expanded-${route==='/'?'dhh':'jd'}.png`)});
+      await bar.getByRole('button',{name:'退出展开',exact:true}).click();
+      await page.waitForFunction(()=>!document.fullscreenElement);
+      assert.equal(await bar.getByRole('searchbox').inputValue(),'优化师 2');
+      await bar.getByRole('button',{name:'清除搜索',exact:true}).click();
+      await page.locator('#pager [data-step="1"]').click();
+      await bar.getByRole('button',{name:'展开看表',exact:true}).click();
+      await page.waitForFunction(()=>document.fullscreenElement?.id==='content');
+      assert.match(await page.locator('#pager').innerText(),/第 2\/2 页/);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(()=>!document.fullscreenElement);
+      const deniedBefore=requests;
+      await page.evaluate(()=>document.getElementById('content').requestFullscreen=()=>Promise.reject(new Error('denied')));
+      await bar.getByRole('button',{name:'展开看表',exact:true}).click();
+      await page.locator('.daily-view-status').filter({hasText:'浏览器未允许展开'}).waitFor();
+      assert.equal(await bar.getByRole('button',{name:'展开看表',exact:true}).isEnabled(),true);
+      assert.equal(requests,deniedBefore);
+      await page.reload();await page.locator('#content:not(.hidden)').waitFor();
+      await bar.scrollIntoViewIfNeeded();
+      await page.screenshot({path:path.join(output,`daily-workspace-${route==='/'?'dhh':'jd'}.png`)});
+      await page.setViewportSize({width:390,height:844});
+      assert.equal(await bar.getByRole('button',{name:'展开看表',exact:true}).isVisible(),false);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      await bar.scrollIntoViewIfNeeded();
+      await page.screenshot({path:path.join(output,`daily-workspace-${route==='/'?'dhh':'jd'}-mobile.png`)});
+      assert.deepEqual(errors,[]);await page.close();
+    }
+    console.log('PASS: density/trend preferences, sticky names, keyboard tabs, fullscreen search/columns/paging/exit/failure and mobile layout');
+  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -51,6 +51,7 @@
             download.title = '导出当前已选列和全部匹配行，包含其他页';
             element.append(label, clear, count, download);
             tools.before(element);
+            root.BIDailyTablePresentation?.attach(element, tools, scope);
             bar = {element, input, clear, count, download, queries:new Map(), query:'', timer:null, scope};
             bars.set(tools, bar);
             const apply = () => {

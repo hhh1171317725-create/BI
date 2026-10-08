@@ -12,11 +12,25 @@
 
 搜索索引按数据数组和字段缓存，数据刷新后使用新数组自动重建。下载前若输入框仍有待应用关键词，先立即应用，避免导出上一次搜索结果。
 
+## 表格展示
+
+参考 [Ant Design ProTable 的工具栏](https://procomponents.ant.design/components/table/)的密度、展开、展示列操作，使用共享的轻量脚本实现，无新增第三方依赖。
+
+- 搜索、导出和展示选项统一使用紧凑工具栏样式。
+- 紧凑行距同时作用于汇总和明细表，在本机浏览器保留，两个日报页面共用偏好；标准行距仍是首次访问默认值。
+- 时间维度支持收起/显示趋势，切换维度和刷新保留偏好。无数据趋势缩小高度，减少空白。
+- 桌面端支持展开当前汇总表，保留已选列、搜索、排序和分页。原生 Fullscreen API 使焦点范围跟随展开区域；退出按钮或 Esc 返回，浏览器不允许时显示可重试提示。
+- 横向滚动时固定名称列；手机继续使用卡片布局，不固定列、不显示桌面展开按钮。
+- 维度标签支持左右方向键、Home、End，并同步选中状态；只把当前选中维度放入 Tab 顺序。
+
+展示设置只改变 DOM/CSS，不调用分析接口，也不改动报表计算。展开后的趋势图暂时收起，退出后恢复先前展示状态。
+
 验证：
 
 ```sh
 node --test scripts/daily-table-actions.test.cjs
 node scripts/daily-table-actions-ui-test.cjs
+node scripts/daily-table-presentation-ui-test.cjs
 node scripts/daily-polish-ui-test.cjs
 node scripts/daily-report-state-ui-test.cjs
 node scripts/daily-charts-ui-test.cjs

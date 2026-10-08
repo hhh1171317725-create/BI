@@ -599,6 +599,7 @@
   <link rel="stylesheet" href="/unified-controls.css?v=2" /><script src="/unified-controls.js?v=2" defer></script>
   <link rel="stylesheet" href="/daily-report-state.css?v=2" />
   <link rel="stylesheet" href="/daily-table-actions.css?v=1" />
+  <link rel="stylesheet" href="/daily-table-presentation.css?v=1" />
 </head>
 <body>
   <header>
@@ -694,7 +695,8 @@
 
   <script src="/daily-report-state.js?v=1"></script>
   <script src="/daily-report-runtime.js?v=1"></script>
-  <script src="/daily-table-actions.js?v=1"></script>
+  <script src="/daily-table-presentation.js?v=1"></script>
+  <script src="/daily-table-actions.js?v=2"></script>
   <script>
     document.querySelector('#logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}finally{location.replace('/login')}};
     // 统一按北京时间计算默认日期，避免访客电脑时区不同导致日期偏移。

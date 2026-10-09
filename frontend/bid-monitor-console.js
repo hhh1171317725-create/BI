@@ -83,6 +83,18 @@
   const tabs=level.querySelector('.ocean-level-tabs');
   tabs.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const buttons=[...tabs.querySelectorAll('button')],index=buttons.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});
   const search=document.getElementById('search');search.type='search';
+  const searchBox=make('span','console-search-box');search.before(searchBox);searchBox.append(search);
+  const clearSearch=button('×','clearBidSearch');clearSearch.className='console-clear-search';
+  clearSearch.setAttribute('aria-label','清空关键词');clearSearch.title='清空关键词';searchBox.append(clearSearch);
+  const pendingHint=make('small','console-search-pending','正在匹配 · Enter 立即应用');
+  pendingHint.setAttribute('role','status');pendingHint.hidden=true;
+  const searchHints=make('span','console-search-hints'),batchHint=document.getElementById('batchSearchHint');
+  batchHint.before(searchHints);searchHints.append(batchHint,pendingHint);
+  function syncSearch(){clearSearch.hidden=!search.value;}
+  search.addEventListener('input',syncSearch);document.addEventListener('bid:rendered',syncSearch);
+  document.addEventListener('bid:filter-pending',event=>{pendingHint.hidden=!event.detail.pending;batchHint.hidden=event.detail.pending;});
+  clearSearch.onclick=()=>{search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));search.focus();};
+  syncSearch();
   document.addEventListener('keydown',event=>{if(event.key!=='/'||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,[contenteditable="true"]')||document.querySelector('dialog[open]')||report.hidden)return;event.preventDefault();search.focus();search.select();});
   document.body.classList.add('bid-console');
 })();

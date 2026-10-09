@@ -237,7 +237,16 @@ function drawValueFilters(){
   optimizer.innerHTML=optimizers.map(value=>`<option value="${esc(value)}" ${chosenOptimizers.has(value)?'selected':''}>${esc(value)}</option>`).join('');
 }
 function optionalCell(row,key){return key==='deepCpaBid'?fmt(row[key]):esc(row[key]||'--');}
+const reportFilterInput=BIBidFilterInput.create({
+  apply:()=>{page=1;render();},
+  onPending:pending=>{
+    $('#search').setAttribute('aria-busy',String(pending));
+    document.dispatchEvent(new CustomEvent('bid:filter-pending',{detail:{pending}}));
+  }
+});
 function render(){
+  if(reportFilterInput.pending)page=1;
+  reportFilterInput.cancel();
   for(const checkbox of document.querySelectorAll('#columnSettings input[data-column]'))checkbox.checked=visibleOptionalColumns.has(checkbox.dataset.column);
   const current=range?range.end>=today():true,viewMode=$('#viewMode').value;$('#lag').hidden=!current;
   dailyAnalyzed=historyMode?window.analyzeBidStrategyRows(raw,historyTaskReferences):cachedAnalysis(raw,taskRules,current,gapData?.accounts,gapData,priorConversionRows);
@@ -419,8 +428,15 @@ $('#historyLoad').onclick=()=>void loadHistory();
 $('#historyToday').onclick=()=>{$('#historyStart').value='';$('#historyEnd').value='';void loadRealtime();};
 for(const id of ['historyStart','historyEnd'])$('#'+id).addEventListener('input',()=>{const start=$('#historyStart').value,end=$('#historyEnd').value;$('#historyToday').hidden=!historyMode&&!start&&!end;$('#historyStatus').textContent=start&&end?'点击查询，按所选日期范围统计当前维度。':'日期都留空时显示当日最新实时数据。';if(!start&&!end&&historyMode)void loadRealtime();});
 $('#viewMode').addEventListener('input',()=>{selectedAccount=null;page=1;const view=$('#viewMode').value;if(isTimeView(view)){sortKey='statDate';sortDirection='desc';}render();});
-for(const id of ['search','taskFilter','optimizerFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',event=>{if(event.isComposing)return;page=1;render();});
-$('#search').addEventListener('compositionend',()=>{page=1;render();});
+for(const id of ['taskFilter','optimizerFilter','pageSize','platformFilter','appTypeFilter','deepBidTypeFilter','deepExternalActionFilter','externalActionFilter','statusFilter','deepCpaBidMin','deepCpaBidMax'])$('#'+id).addEventListener('input',event=>{if(event.isComposing)return;page=1;render();});
+$('#search').addEventListener('compositionstart',()=>reportFilterInput.cancel());
+$('#search').addEventListener('input',event=>{
+  if(event.isComposing){reportFilterInput.cancel();return;}
+  if(event instanceof InputEvent&&event.inputType&&event.currentTarget.value)reportFilterInput.schedule();
+  else{page=1;render();}
+});
+$('#search').addEventListener('compositionend',()=>{if($('#search').value)reportFilterInput.schedule();else{page=1;render();}});
+$('#search').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();reportFilterInput.flush();}});
 $('#columnSettings').addEventListener('change',event=>{
   const checkbox=event.target.closest('input[data-column]');if(!checkbox)return;
   checkbox.checked?visibleOptionalColumns.add(checkbox.dataset.column):visibleOptionalColumns.delete(checkbox.dataset.column);
@@ -432,18 +448,21 @@ $('#rows').onclick=event=>{const button=event.target.closest('[data-account-key]
 $('#accountDrillBack').onclick=()=>{selectedAccount=null;$('#viewMode').value='accounts';page=1;render();};
 $('#tableHead').onclick=event=>{const button=event.target.closest('.sort-header');if(!button)return;const nextKey=button.dataset.sortKey;if(nextKey===sortKey)sortDirection=sortDirection==='desc'?'asc':'desc';else{sortKey=nextKey;sortDirection=textSortKeys.has(nextKey)?'asc':'desc';}page=1;render();};
 for(const id of ['startDate','endDate','createdStart','createdEnd'])$('#'+id).onchange=()=>{if(raw.length)message('日期已修改，下方仍为原统计区间数据，请重新查询');};
-$('#prev').onclick=()=>{page--;render();$('#report .table-wrap').scrollTop=0;};$('#next').onclick=()=>{page++;render();$('#report .table-wrap').scrollTop=0;};
+$('#prev').onclick=()=>{if(reportFilterInput.pending){reportFilterInput.flush();return;}page--;render();$('#report .table-wrap').scrollTop=0;};$('#next').onclick=()=>{if(reportFilterInput.pending){reportFilterInput.flush();return;}page++;render();$('#report .table-wrap').scrollTop=0;};
 function jumpToPage(value){
+  reportFilterInput.flush();
   const pages=Number($('#pageJump').max)||1;
   if(!Number.isInteger(value)||value<1||value>pages){$('#pageJump').setCustomValidity(`请输入 1 到 ${pages} 的整数页码`);$('#pageJump').reportValidity();return;}
   $('#pageJump').setCustomValidity('');page=value;render();$('#report .table-wrap').scrollTop=0;
 }
 $('#firstPage').onclick=()=>jumpToPage(1);
-$('#lastPage').onclick=()=>jumpToPage(Number($('#pageJump').max));
+$('#lastPage').onclick=()=>{reportFilterInput.flush();jumpToPage(Number($('#pageJump').max));};
 $('#pageJumpButton').onclick=()=>jumpToPage(Number($('#pageJump').value));
 $('#pageJump').oninput=()=>$('#pageJump').setCustomValidity('');
 $('#pageJump').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();jumpToPage(Number(event.currentTarget.value));}};
 $('#export').onclick=()=>{
+  reportFilterInput.flush();
+  if(!visible.length)return;
   const cell=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'$&").replaceAll('"','""')+'"';
   const viewMode=$('#viewMode').value,aggregateMode=viewMode!=='plans',dimensions=viewDimensions(viewMode);
   const visibleOptional=optionalColumns.filter(column=>column[1]!=='platform'&&visibleOptionalColumns.has(column[1]));
@@ -465,6 +484,7 @@ $('#gapReload').onclick=()=>void loadGap();
 // Only report fields are exposed to the assistant; configuration credentials stay out.
 let reportTotalsSource=null,reportTotalsDate='',reportTotals=null;
 window.getPetReportContext=(summaryOnly=false)=>{
+  if(summaryOnly!==true)reportFilterInput.flush();
   const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const totalsDate=today();

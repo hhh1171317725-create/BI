@@ -11,6 +11,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
  try{
   browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
   const selectView=value=>page.evaluate(value=>{const select=document.getElementById('viewMode');select.value=value;select.dispatchEvent(new Event('input',{bubbles:true}));},value);
+  const setSearch=async value=>{await page.locator('#search').fill(value);await page.locator('#search').press('Enter');};
   const errors=[],forbidden=[],petRequests=[];page.on('pageerror',e=>errors.push(e.message));
   let stamp='2026-09-08T01:00:00Z',price=2,revision='p1';
   let dailyRevision='dhh-v1',gapFactor=.8;
@@ -65,8 +66,8 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#tableHead [data-sort-key="optimizer"]').count(),1);
   await page.locator('#openBidFilters').click();await page.locator('#draft-deepCpaBidMin').fill('100');await page.keyboard.press('Escape');
   assert.equal(await page.locator('#deepCpaBidMin').inputValue(),'');
-  await page.locator('#search').fill('不存在');assert.equal(await page.locator('#count').textContent(),'0 条');
-  await page.locator('#search').fill('张三');assert.equal(await page.locator('#count').textContent(),'1 条');
+  await setSearch('不存在');assert.equal(await page.locator('#count').textContent(),'0 条');
+  await setSearch('张三');assert.equal(await page.locator('#count').textContent(),'1 条');
   const download=page.waitForEvent('download');await page.locator('#export').click();
   const csv=fs.readFileSync(await (await download).path(),'utf8');assert.match(csv,/共享计划/);assert.match(csv,/"1.6"/);
   price=3;revision='p2';stamp='2026-09-08T01:10:00Z';

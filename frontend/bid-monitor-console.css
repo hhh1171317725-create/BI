@@ -1,4 +1,12 @@
 /* One console layout: overview, dimensions/date, filters, then the table. */
+.console-search-box{display:block;position:relative;min-width:0}
+body.bid-console .console-search-box input{padding-right:38px}
+body.bid-console #search::-webkit-search-cancel-button{-webkit-appearance:none}
+body.bid-console .workspace-search .console-clear-search{position:absolute;right:6px;top:50%;transform:translateY(-50%)!important;width:26px!important;height:26px!important;min-height:26px;padding:0;border:0;background:transparent;color:#8491a2;font-size:19px;text-align:center;box-shadow:none}
+body.bid-console .workspace-search .console-clear-search:hover{background:#eef3f9;color:#344054}
+.console-search-pending{color:#175cd3;font-size:11px;font-weight:400;line-height:1.5}
+.console-search-hints{display:block;min-height:17px}
+.console-search-hints :is(.batch-search-hint,.console-search-pending){margin:0}
 body.bid-console{--ocean-blue:#1664ff;--ocean-blue-hover:#0e52db;background:#f5f6f8;color:#1d2939;font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif}
 body.bid-console main{max-width:none;padding-inline:24px}
 body.bid-console .section-nav{margin-inline:-24px;padding-inline:24px}

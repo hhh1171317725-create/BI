@@ -38,7 +38,7 @@
   const caption=make('p','app-sidebar-caption','数据分析');
   const reports=make('div','app-sidebar-group');reports.id='appReportLinks';
   const workspace=make('div','app-sidebar-group');
-  function navLink(item){const link=make('a','app-sidebar-link');link.href=item.href;link.title=item.label;link.dataset.module=item.key;link.append(icon(item.key),make('span','app-sidebar-label',item.label));if(normalize(item.href)===current)link.setAttribute('aria-current','page');return link;}
+  function navLink(item){const link=make('a','app-sidebar-link');link.href=item.href;link.title=item.label;link.dataset.module=item.key;link.append(icon(item.key),make('span','app-sidebar-label',item.label));if(normalize(item.href)===current||(item.key==='tools'&&current==='/games'))link.setAttribute('aria-current','page');return link;}
   const reportLinks=modules.map(item=>{const link=navLink(item);link.hidden=true;reports.append(link);return link;});
   workspace.append(navLink({key:'memos',href:'/memos.html',label:'备忘录'}),navLink({key:'tools',href:'/tools',label:'工具中心'}),navLink({key:'account',href:'/account',label:'账户与设置'}));
   navigation.append(caption,reports,make('p','app-sidebar-caption','工作空间'),workspace);

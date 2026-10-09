@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>游戏大厅 · 营销数据工作台</title>
+  <style>html:not(.authenticated) body{visibility:hidden}</style>
+  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+  <script src="/report-visibility.js?v=3"></script>
+  <link rel="stylesheet" href="/app-ui.css?v=6" />
+  <script src="/app-ui.js?v=20261009-games" defer></script>
+  <link rel="stylesheet" href="/games.css?v=20261009-games" />
+  <script src="/gomoku-core.js?v=20261009-games" defer></script>
+  <script src="/games.js?v=20261009-games" defer></script>
+  <script src="/pet-loader.js?v=20261009-assistant" defer></script>
+</head>
+<body data-page="games">
+  <header><div class="header-row"><div class="brand"><span class="mark">游</span><h1>游戏大厅</h1></div><nav class="nav"><a href="/tools.html">返回工具中心</a></nav></div></header>
+  <main class="games-main">
+    <section id="gameLobby" aria-labelledby="lobbyTitle">
+      <div class="games-heading"><div><p class="games-eyebrow">工作之余，轻松一局</p><h2 id="lobbyTitle">选一个游戏，开始放松</h2><p class="games-copy">无需安装，打开即可玩。</p></div><span class="games-count" id="gameCount"></span></div>
+      <div class="game-catalog" id="gameCatalog"></div>
+      <p class="games-footnote">当前支持本机对局。刷新页面会重置对局。</p>
+    </section>
+    <section id="gomokuArena" hidden aria-labelledby="gomokuTitle">
+      <div class="game-topbar"><button class="game-button game-back" id="backToLobby" type="button"><span aria-hidden="true">←</span> 游戏大厅</button><div class="game-title"><h2 id="gomokuTitle">五子棋</h2><span class="game-tag">休闲棋类</span></div></div>
+      <div class="gomoku-layout">
+        <div class="gomoku-play-panel">
+          <div class="gomoku-status" role="status" aria-live="polite" aria-atomic="true"><span class="turn-stone" id="turnStone" aria-hidden="true"></span><div><strong id="gameStatus">轮到你 · 执黑</strong><p id="gameStatusHint">点击棋盘交点落子</p></div><span class="move-total" id="moveTotal">第 1 手</span></div>
+          <div class="gomoku-board"><div class="gomoku-grid" id="gomokuBoard" role="grid" aria-label="15 行 15 列五子棋棋盘，方向键移动，回车落子" aria-rowcount="15" aria-colcount="15"></div></div>
+          <div class="gomoku-board-footer"><span id="lastMove">尚未落子</span><span>黑先白后 · 五子连线获胜</span></div>
+        </div>
+        <aside class="game-side-panel" aria-label="对局设置和记录">
+          <section class="game-settings"><h3>对局设置</h3><label for="gameMode">对战模式</label><select id="gameMode"><option value="ai">人机对战</option><option value="local">本地双人</option></select><div id="humanSideControl"><label for="humanSide">我的执子</label><select id="humanSide"><option value="1">黑子 · 先手</option><option value="2">白子 · 后手</option></select></div><p class="game-setting-note">更改模式或执子将开始新局。</p><div class="game-actions"><button class="game-button game-primary" id="newGame" type="button">开始新局</button><button class="game-button" id="undoMove" type="button" disabled>悔棋</button></div></section>
+          <section class="game-history"><div class="game-section-heading"><h3>最近落子</h3><span>最近 8 手</span></div><ol id="moveHistory" aria-label="最近落子记录"></ol><p id="emptyHistory" class="game-empty-history">第一手，从这里开始。</p></section>
+          <details class="game-rules"><summary>规则与操作</summary><p>15 × 15 棋盘，黑子先行。任意方向连续五子或更多即获胜，不设禁手；棋盘填满且无人获胜为和棋。</p><p>人机模式悔棋会撤回你的最近一手及电脑的回应。本地双人每次撤回一手。</p><p>可用方向键选择交点，回车或空格落子。</p></details>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

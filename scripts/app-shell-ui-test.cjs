@@ -29,6 +29,12 @@ const root=path.resolve(__dirname,'../frontend'),output=path.resolve(__dirname,'
     assert.equal(await page.locator('.app-sidebar').evaluate(el=>el.getBoundingClientRect().width),72);
     await page.reload();await page.locator('.app-sidebar-link[data-module="bidMonitor"]').waitFor();
     assert.equal(await page.locator('.app-sidebar').evaluate(el=>el.getBoundingClientRect().width),72);
+    await page.goto(`${url}/games.html`);
+    await page.locator('.app-sidebar-link[data-module="bidMonitor"]').waitFor();
+    assert.equal(await page.locator('.app-sidebar-link[aria-current="page"]').getAttribute('data-module'),'tools');
+    assert.equal(await page.locator('body').getAttribute('data-route'),'/games');
+    await page.goto(`${url}/tools.html`);
+    await page.locator('.app-sidebar-link[data-module="bidMonitor"]').waitFor();
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.locator('.app-sidebar').isVisible(),false);
     await page.locator('.app-nav-toggle').click();

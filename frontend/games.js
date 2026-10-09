@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id), core = window.BIGomoku;
   const columns = 'ABCDEFGHJKLMNOP';
   // Each new game adds a catalog entry and an opener without changing the lobby layout.
-  const games = [{id:'gomoku',title:'五子棋',category:'休闲棋类',description:'黑白交替，五子连线。挑战电脑，或邀请朋友远程来一局。',modes:['人机对战','本地双人','远程对战']}];
+  const games = [{id:'gomoku',title:'五子棋',category:'休闲棋类',description:'黑白交替，五子连线。挑战电脑，或邀请朋友远程来一局。',modes:['人机对战','本地双人','远程对战']},{id:'go',title:'围棋',category:'策略棋类',description:'落子围地，攻守之间。支持提子、停一手与终局死子确认。',modes:['本地双人','9 / 13 / 19 路']}];
   let state = core.createGame(), mode = 'ai', human = 1, active = false, started = false;
   let aiTimer = null, revision = 0, focused = 7 * core.SIZE + 7;
   const board = $('gomokuBoard'), cells = [];
@@ -36,7 +36,7 @@
     return art;
   }
   $('gameCount').textContent = `${games.length} 款游戏`;
-  const openers = {gomoku:openGomoku};
+  const openers = {gomoku:openGomoku,go:()=>location.assign('/go.html')};
   for(const game of games){
     const card=make('article','game-card'), art=make('div','game-card-art'), body=make('div','game-card-body');
     art.append(catalogArt());

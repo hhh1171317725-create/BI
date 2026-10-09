@@ -1,0 +1,5 @@
+.go-grid{display:grid;grid-template-columns:repeat(var(--go-size),minmax(0,1fr));aspect-ratio:1;position:relative;isolation:isolate;touch-action:manipulation}
+.go-grid .gomoku-cell{aspect-ratio:1}.go-grid .gomoku-cell.dead .gomoku-stone{opacity:.35}.go-grid .gomoku-cell.dead:after{content:'×';position:absolute;color:#df3737;font-size:20px;font-weight:bold}
+.go-notice{font-size:13px;color:#ba4234;min-height:20px;line-height:1.5;margin:10px 0}.go-extra-actions{margin-top:12px;flex-wrap:wrap}
+#goScore{font-size:13px;line-height:1.8;margin:12px 0;color:#435673}.go-grid .gomoku-cell{opacity:1}
+@media(max-width:440px){.go-grid .gomoku-cell.last .gomoku-stone:after{border-width:1px}}

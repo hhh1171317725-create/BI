@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>游戏大厅 · 营销数据工作台</title>
   <style>html:not(.authenticated) body{visibility:hidden}</style>
-  <script>fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+  <script>window.gameSessionReady=fetch('/api/session',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(result=>{if(!result.authenticated)throw Error();window.currentSessionUser=result.user||{};if(result.user?.role==='admin')document.documentElement.classList.add('admin');document.documentElement.classList.add('authenticated');return window.currentSessionUser}).catch(()=>{location.replace('/login');return null});</script>
   <script src="/report-visibility.js?v=3"></script>
   <link rel="stylesheet" href="/app-ui.css?v=6" />
   <script src="/app-ui.js?v=20261009-games" defer></script>
-  <link rel="stylesheet" href="/games.css?v=20261009-games" />
+  <link rel="stylesheet" href="/games.css?v=20261009-online" />
   <script src="/gomoku-core.js?v=20261009-games" defer></script>
-  <script src="/games.js?v=20261009-games" defer></script>
+  <script src="/gomoku-online.js?v=20261009-online" defer></script>
+  <script src="/games.js?v=20261009-online" defer></script>
   <script src="/pet-loader.js?v=20261009-assistant" defer></script>
 </head>
 <body data-page="games">
@@ -20,7 +21,7 @@
     <section id="gameLobby" aria-labelledby="lobbyTitle">
       <div class="games-heading"><div><p class="games-eyebrow">工作之余，轻松一局</p><h2 id="lobbyTitle">选一个游戏，开始放松</h2><p class="games-copy">无需安装，打开即可玩。</p></div><span class="games-count" id="gameCount"></span></div>
       <div class="game-catalog" id="gameCatalog"></div>
-      <p class="games-footnote">当前支持本机对局。刷新页面会重置对局。</p>
+      <p class="games-footnote">支持人机、本地双人和远程对战。远程房间可刷新恢复，本机对局刷新后重置。</p>
     </section>
     <section id="gomokuArena" hidden aria-labelledby="gomokuTitle">
       <div class="game-topbar"><button class="game-button game-back" id="backToLobby" type="button"><span aria-hidden="true">←</span> 游戏大厅</button><div class="game-title"><h2 id="gomokuTitle">五子棋</h2><span class="game-tag">休闲棋类</span></div></div>
@@ -31,9 +32,16 @@
           <div class="gomoku-board-footer"><span id="lastMove">尚未落子</span><span>黑先白后 · 五子连线获胜</span></div>
         </div>
         <aside class="game-side-panel" aria-label="对局设置和记录">
-          <section class="game-settings"><h3>对局设置</h3><label for="gameMode">对战模式</label><select id="gameMode"><option value="ai">人机对战</option><option value="local">本地双人</option></select><div id="humanSideControl"><label for="humanSide">我的执子</label><select id="humanSide"><option value="1">黑子 · 先手</option><option value="2">白子 · 后手</option></select></div><p class="game-setting-note">更改模式或执子将开始新局。</p><div class="game-actions"><button class="game-button game-primary" id="newGame" type="button">开始新局</button><button class="game-button" id="undoMove" type="button" disabled>悔棋</button></div></section>
+          <section class="game-settings"><h3>对局设置</h3><label for="gameMode">对战模式</label><select id="gameMode"><option value="ai">人机对战</option><option value="local">本地双人</option><option value="online">双人远程</option></select><div id="humanSideControl"><label for="humanSide">我的执子</label><select id="humanSide"><option value="1">黑子 · 先手</option><option value="2">白子 · 后手</option></select></div><p class="game-setting-note" id="settingNote">更改模式或执子将开始新局。</p><div class="game-actions"><button class="game-button game-primary" id="newGame" type="button">开始新局</button><button class="game-button" id="undoMove" type="button" disabled>悔棋</button></div></section>
+          <section class="game-online-panel" id="onlinePanel" hidden aria-label="远程房间">
+            <div class="game-section-heading"><h3>远程房间</h3><span class="online-connection" id="onlineConnection">未加入</span></div>
+            <div id="roomSetup"><p class="online-copy">创建房间邀请好友，或输入好友的房间号。双方需登录网站。</p><button class="game-button game-primary" id="createRoom" type="button">创建房间</button><form id="joinRoomForm"><label for="roomCode">房间号</label><div class="room-join"><input id="roomCode" autocomplete="off" autocapitalize="characters" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" placeholder="输入 6 位房间号" required /><button class="game-button" id="joinRoom" type="submit">加入</button></div></form></div>
+            <div id="roomInfo" hidden><div class="room-code-row"><span>房间号</span><strong id="currentRoomCode"></strong></div><div class="room-players" id="roomPlayers"></div><button class="game-button" id="copyRoomLink" type="button">复制邀请链接</button><button class="room-leave" id="leaveRoom" type="button">离开房间</button></div>
+            <div id="roomRequest" class="room-request" hidden><p id="roomRequestText"></p><div id="requestResponses"><button class="game-button game-primary" id="acceptRequest" type="button">同意</button><button class="game-button" id="rejectRequest" type="button">拒绝</button></div></div>
+            <p class="online-notice" id="onlineNotice" role="status" aria-live="polite" hidden></p>
+          </section>
           <section class="game-history"><div class="game-section-heading"><h3>最近落子</h3><span>最近 8 手</span></div><ol id="moveHistory" aria-label="最近落子记录"></ol><p id="emptyHistory" class="game-empty-history">第一手，从这里开始。</p></section>
-          <details class="game-rules"><summary>规则与操作</summary><p>15 × 15 棋盘，黑子先行。任意方向连续五子或更多即获胜，不设禁手；棋盘填满且无人获胜为和棋。</p><p>人机模式悔棋会撤回你的最近一手及电脑的回应。本地双人每次撤回一手。</p><p>可用方向键选择交点，回车或空格落子。</p></details>
+          <details class="game-rules"><summary>规则与操作</summary><p>15 × 15 棋盘，黑子先行。任意方向连续五子或更多即获胜，不设禁手；棋盘填满且无人获胜为和棋。</p><p>人机模式悔棋会撤回你的最近一手及电脑的回应。本地双人每次撤回一手。</p><p>远程房主执黑、加入者执白。悔棋和再来一局需对方同意；返回大厅可保留房间，离开房间会结束双方对局。房间无人访问 2 小时后失效，服务器重启也会结束房间。</p><p>可用方向键选择交点，回车或空格落子。</p></details>
         </aside>
       </div>
     </section>

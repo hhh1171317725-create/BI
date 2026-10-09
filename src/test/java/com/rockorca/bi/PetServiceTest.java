@@ -34,6 +34,15 @@ class PetServiceTest {
     assertEquals("clarification",result.get("mode"));
   }
   @Test
+  void explicitlyUnloadedDailyReportDoesNotReadBottomRows() {
+    ReportRepository repository = mock(ReportRepository.class);
+    Map<String, Object> result = analysisService(repository).chat(Map.of("message", "分析利润", "context",
+        Map.of("loaded", false, "range", List.of("2026-09-01", "2026-09-01"), "reportType", "大航海日报")));
+    assertEquals("clarification", result.get("mode"));
+    assertTrue(result.get("reply").toString().contains("先查询数据"));
+    org.mockito.Mockito.verifyNoInteractions(repository);
+  }
+  @Test
   void pageHelpDoesNotReadReportsOrTrustArbitraryPageContents() {
     ReportRepository repository = mock(ReportRepository.class);
     Map<String, Object> result = analysisService(repository).chat(Map.of("message", "ROI是什么意思", "context",
@@ -164,7 +173,7 @@ class PetServiceTest {
     var requests = new java.util.concurrent.CopyOnWriteArrayList<String>();
     server.createContext("/chat/completions", exchange -> {
       requests.add(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
-      byte[] response = "{\"choices\":[{\"message\":{\"content\":\"根据匹配数据，张三现金利润30元。\"}}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      byte[] response = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"根据匹配数据，张三现金利润30元。\"}}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
       exchange.sendResponseHeaders(requests.size() == 1 ? 200 : 503, response.length);
       exchange.getResponseBody().write(response);
       exchange.close();
@@ -188,6 +197,138 @@ class PetServiceTest {
       assertTrue(fallback.get("notice").toString().contains("暂时不可用"));
       assertFalse(fallback.toString().contains("test-only-key"));
     } finally { server.stop(0); }
+  }
+
+  @Test
+  void incompleteEmptyAndUnavailableAiAnswersUseAccurateNoticesInAllModes() throws Exception {
+    var response = new java.util.concurrent.atomic.AtomicReference<>("");
+    var status = new java.util.concurrent.atomic.AtomicInteger(200);
+    var server = localAiServer(response, status, new java.util.concurrent.CopyOnWriteArrayList<>());
+    server.start();
+    try {
+      ReportRepository repository = mock(ReportRepository.class);
+      when(repository.readDhhRows("2026-09-01", "2026-09-01", "", ""))
+          .thenReturn(List.of(row("张三", 100, 130)));
+      PetService service = localAiService(repository, server);
+      List<Map<String, Object>> contexts = List.of(
+          Map.of("range", List.of("2026-09-01", "2026-09-01"), "reportType", "大航海日报"),
+          Map.of("mode", "bid", "loaded", true, "range", List.of("2026-09-01", "2026-09-01"),
+              "summary", Map.of("消耗", 100, "注册数", 10)),
+          Map.of("mode", "page", "pagePath", "/tools.html"));
+      List<Map<String, Object>> cases = List.of(
+          Map.of("body", deepseekResponse("length", "不完整的模型回答"), "status", 200, "notice", "被截断"),
+          Map.of("body", deepseekResponse("content_filter", "不完整的模型回答"), "status", 200, "notice", "未能提供此问题"),
+          Map.of("body", deepseekResponse("tool_calls", "不完整的模型回答"), "status", 200, "notice", "未完整生成"),
+          Map.of("body", deepseekResponse("stop", "  "), "status", 200, "notice", "未返回回答"),
+          Map.of("body", "{\"error\":{\"message\":\"test-only-key must remain private\"}}", "status", 200, "notice", "暂时不可用"),
+          Map.of("body", deepseekResponse("stop", "不完整的模型回答"), "status", 503, "notice", "暂时不可用"));
+      for (Map<String, Object> testCase : cases) {
+        response.set(testCase.get("body").toString());
+        status.set((Integer) testCase.get("status"));
+        for (Map<String, Object> context : contexts) {
+          Map<String, Object> result = service.chat(Map.of("message", "消耗多少", "context", context));
+          assertEquals("local", result.get("mode"), testCase + " / " + context);
+          assertTrue(result.get("notice").toString().contains(testCase.get("notice").toString()), result.toString());
+          assertFalse(result.get("notice").toString().contains("未配置"));
+          assertFalse(result.toString().contains("不完整的模型回答"));
+          assertFalse(result.toString().contains("test-only-key"));
+        }
+      }
+    } finally { server.stop(0); }
+  }
+
+  @Test
+  void openAiResponsesRequireCompletedTextWithoutErrorsOrRefusals() {
+    Map<String, Object> output = Map.of("type", "message", "status", "completed", "content",
+        List.of(Map.of("type", "output_text", "text", "完整回答")));
+    PetService.AiAnswer answer = PetService.parseAiAnswer("openai", Map.of("status", "completed", "output", List.of(output)));
+    assertEquals("完整回答", answer.text());
+    assertEquals(null, answer.failure());
+    assertEquals(PetService.AiFailure.INCOMPLETE, PetService.parseAiAnswer("openai",
+        Map.of("status", "incomplete", "incomplete_details", Map.of("reason", "max_output_tokens"), "output", List.of(output))).failure());
+    assertEquals(PetService.AiFailure.INCOMPLETE, PetService.parseAiAnswer("openai",
+        Map.of("status", "completed", "output", List.of(Map.of("status", "incomplete", "content", output.get("content"))))).failure());
+    assertEquals(PetService.AiFailure.UNAVAILABLE, PetService.parseAiAnswer("openai",
+        Map.of("status", "completed", "error", Map.of("message", "private provider error"), "output", List.of(output))).failure());
+    assertEquals(PetService.AiFailure.UNAVAILABLE, PetService.parseAiAnswer("openai", Map.of("status", "failed")).failure());
+    assertEquals(PetService.AiFailure.REFUSED, PetService.parseAiAnswer("openai", Map.of("status", "completed", "output",
+        List.of(Map.of("content", List.of(Map.of("type", "refusal", "refusal", "拒绝内容"),
+            Map.of("type", "output_text", "text", "不能作为完整答案")))))).failure());
+    assertEquals(PetService.AiFailure.REFUSED, PetService.parseAiAnswer("openai",
+        Map.of("status", "incomplete", "incomplete_details", Map.of("reason", "content_filter"))).failure());
+    assertEquals(PetService.AiFailure.EMPTY, PetService.parseAiAnswer("openai", Map.of("status", "completed", "output", List.of())).failure());
+    assertEquals("", PetService.parseAiAnswer("openai", Map.of("status", "incomplete", "output", List.of(output))).text());
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void bidAiReceivesCurrentMetricDefinitionsAndWhitelistedFacts() throws Exception {
+    var response = new java.util.concurrent.atomic.AtomicReference<>(deepseekResponse("stop", "**结论**：请核对注册成本。"));
+    var requests = new java.util.concurrent.CopyOnWriteArrayList<String>();
+    var server = localAiServer(response, new java.util.concurrent.atomic.AtomicInteger(200), requests);
+    server.start();
+    try {
+      ReportRepository repository = mock(ReportRepository.class);
+      Map<String, Object> metrics = Map.of("消耗", 100, "注册数", 10, "注册成本", 10, "预估eCPM", 12,
+          "预估赔付", 20, "cookie", "private-cookie");
+      Map<String, Object> result = localAiService(repository, server).chat(Map.of("message", "分析注册成本", "context",
+          Map.of("mode", "bid", "loaded", true, "range", List.of("2026-09-01", "2026-09-01"),
+              "summary", metrics, "plans", List.of(metrics), "anomalies", List.of(metrics))));
+      assertEquals("ai", result.get("mode"));
+      assertFalse(requests.getFirst().contains("private-cookie"));
+      ObjectMapper mapper = new ObjectMapper();
+      Map<String, Object> request = mapper.readValue(requests.getFirst(), Map.class);
+      List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get("messages");
+      assertTrue(messages.getFirst().get("content").toString().contains("简洁Markdown"));
+      assertTrue(messages.getFirst().get("content").toString().contains("关键证据"));
+      String content = messages.getLast().get("content").toString();
+      Map<String, Object> context = mapper.readValue(content.substring("报表上下文：".length(), content.indexOf("\n\n用户问题：")), Map.class);
+      for (Map<String, Object> facts : List.of((Map<String, Object>) context.get("汇总"),
+          ((List<Map<String, Object>>) context.get("消耗最高计划（最多30条）")).getFirst(),
+          ((List<Map<String, Object>>) context.get("异常计划（最多20条）")).getFirst())) {
+        assertEquals(10, facts.get("注册成本"));
+        assertEquals(12, facts.get("预估eCPM"));
+        assertEquals(20, facts.get("预估赔付"));
+      }
+      String definitions = context.get("口径").toString();
+      assertTrue(definitions.contains("无日报任务时解码open_url"));
+      assertTrue(definitions.contains("注册成本=消耗÷注册数"));
+      assertTrue(definitions.contains("历史按各数据日期D计算后合并"));
+      assertTrue(definitions.contains("不能平均逐日gap"));
+      assertTrue(definitions.contains("估算曝光"));
+      assertFalse(definitions.contains("实际单价最接近"));
+      org.mockito.Mockito.verifyNoInteractions(repository);
+    } finally { server.stop(0); }
+  }
+
+  private static String deepseekResponse(String finish, String content) {
+    return new ObjectMapper().writeValueAsString(Map.of("choices", List.of(Map.of(
+        "finish_reason", finish, "message", Map.of("content", content)))));
+  }
+
+  private static com.sun.net.httpserver.HttpServer localAiServer(
+      java.util.concurrent.atomic.AtomicReference<String> response,
+      java.util.concurrent.atomic.AtomicInteger status,
+      List<String> requests) throws Exception {
+    var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/chat/completions", exchange -> {
+      requests.add(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+      byte[] bytes = response.get().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      exchange.sendResponseHeaders(status.get(), bytes.length);
+      exchange.getResponseBody().write(bytes);
+      exchange.close();
+    });
+    return server;
+  }
+
+  private PetService localAiService(ReportRepository repository, com.sun.net.httpserver.HttpServer server) {
+    RuntimeConfig config = mock(RuntimeConfig.class);
+    when(config.get(anyString(), anyString())).thenAnswer(call -> call.getArgument(1));
+    when(config.get("AI_PROVIDER", "")).thenReturn("deepseek");
+    when(config.get("DEEPSEEK_API_KEY", "")).thenReturn("test-only-key");
+    when(config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+        .thenReturn("http://127.0.0.1:" + server.getAddress().getPort());
+    return new PetService(repository, new ReportService(null, null, null, new ObjectMapper()), config, new ObjectMapper());
   }
   @Test
   void aiConfigStatusNeverReturnsTheApiKey() {

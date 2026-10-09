@@ -28,7 +28,7 @@ const assert = require('node:assert/strict');
     const errors=[],requests=[];let configCalls=0;
     page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/api/pet/config',route=>{configCalls++;return route.fulfill({json:{configured:false,canManage:false}})});
-    await page.route('**/api/pet/chat',route=>{requests.push(route.request().postDataJSON());return route.fulfill({json:{mode:'local',reply:'当前页面帮助',notice:'AI 未配置'}})});
+    await page.route('**/api/pet/chat',route=>{requests.push(route.request().postDataJSON());return route.fulfill({json:{mode:'local',reply:'当前页面帮助\n\n| 指标 | 说明 |\n| --- | --- |\n| ROI | 收益除以成本 |',notice:'AI 未配置'}})});
     for(const file of files){
       const before=configCalls;
       await page.goto(`http://127.0.0.1:${server.address().port}/${file}`);
@@ -46,12 +46,22 @@ const assert = require('node:assert/strict');
         assert.equal(requests.length,count);assert.equal(configCalls,before);
         assert.ok(page.url().endsWith('/login.html'));
       }
-      if(file==='terminal.html'){
+      if(file!=='login.html'){
         await page.locator('.data-pet-input').fill('这个页面能做什么');await page.locator('.data-pet-send').click();
         await page.waitForFunction(()=>!document.querySelector('.data-pet-send').disabled);
-        assert.deepEqual(requests.at(-1).context,{mode:'page',pagePath:'/terminal.html'});
-        fs.mkdirSync(path.resolve(__dirname,'../.runtime'),{recursive:true});
-        await page.screenshot({path:path.resolve(__dirname,'../.runtime/pet-global-terminal.png')});
+        assert.deepEqual(requests.at(-1).context,{mode:'page',pagePath:`/${file}`});
+        assert.equal(await page.locator('.data-pet-input').evaluate(e=>e.getBoundingClientRect().height<=112),true,`${file}: host textarea styles must not expand composer`);
+        assert.equal(await page.locator('.data-pet-table table').evaluate(e=>getComputedStyle(e).display),'table',file);
+        assert.equal(await page.locator('.data-pet-table thead').evaluate(e=>getComputedStyle(e).display),'table-header-group',file);
+        assert.equal(await page.locator('.data-pet-table td').first().evaluate(e=>getComputedStyle(e).display),'table-cell',file);
+        assert.equal(await page.locator('.data-pet-messages').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true,`${file}: host table min-width must not overflow`);
+        await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:440});visualViewport.dispatchEvent(new Event('resize'));});
+        assert.ok(await page.locator('.data-pet-messages').evaluate(e=>e.clientHeight)>70,`${file}: keyboard leaves space for messages`);
+        await page.evaluate(()=>{delete visualViewport.height;visualViewport.dispatchEvent(new Event('resize'));});
+        if(file==='terminal.html'){
+          fs.mkdirSync(path.resolve(__dirname,'../.runtime'),{recursive:true});
+          await page.screenshot({path:path.resolve(__dirname,'../.runtime/pet-global-terminal.png')});
+        }
       }
     }
     assert.deepEqual(errors,[]);

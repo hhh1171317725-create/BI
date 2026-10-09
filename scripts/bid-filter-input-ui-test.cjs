@@ -70,6 +70,10 @@ const rows=Array.from({length:3000},(_,i)=>({promotion_id:String(10000+i),promot
   assert.equal(await page.locator('#pageLabel').innerText(),'第 1 / 1 页','Last page uses the newest matching row count');
   const context=await page.evaluate(()=>{const input=document.getElementById('search');input.value='目标计划 2000';input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));return window.getPetReportContext();});
   assert.equal(context.plans.length,1);assert.equal(context.plans[0]['计划'],'目标计划 2000');
+  assert.equal(context.plans[0]['注册成本'],21);
+  assert.equal(context.plans[0]['预估赔付'],2000);
+  assert.equal(context.summary['注册成本'],21);
+  assert.equal(context.summary['预估赔付'],2000);
   await page.locator('#clearBidSearch').click();
   await page.locator('#search').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'bid-search-desktop.png')});
   await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth);

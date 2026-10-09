@@ -485,7 +485,7 @@ $('#gapReload').onclick=()=>void loadGap();
 let reportTotalsSource=null,reportTotalsDate='',reportTotals=null;
 window.getPetReportContext=(summaryOnly=false)=>{
   if(summaryOnly!==true)reportFilterInput.flush();
-  const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',ecpm:'预估eCPM',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
+  const fields={statDate:'数据日期',id:'计划ID',name:'计划',platform:'平台',accountId:'账户ID',account:'账户',optimizer:'优化师',task:'任务',priceSource:'单价来源',cost:'消耗',cpa:'注册成本',ecpm:'预估eCPM',estimatedCompensation:'预估赔付',conversions:'转化数',overallConversions:'计划累计转化数',registrations:'注册数',commission:'佣金',cashCost:'现金消耗',profit:'现金利润',estimatedRoi:'预估ROI',bidProfitRate:'出价利润率',bid:'当前出价',gap:'gap',basePrice:'结算单价',price:'实际单价',externalAction:'转化目标',deepExternalAction:'深度转化目标',appType:'应用类型',plans:'计划数',accounts:'账户数',priced:'价格匹配计划数'};
   const pick=row=>{const profit=row.pricedCashCost!==undefined?row.profit:Number.isFinite(row.commission)&&Number.isFinite(row.cashCost)?row.commission-row.cashCost:null;const item={...row,profit};return Object.fromEntries(Object.entries(fields).filter(([key])=>item[key]!==undefined).map(([key,label])=>[label,item[key]]));};
   const totalsDate=today();
   if(reportTotalsSource!==filteredRows||reportTotalsDate!==totalsDate){

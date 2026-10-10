@@ -110,6 +110,28 @@ async function adminScenarios(browser,url){
   await page.evaluate(async()=>{await syncLoad(true);await syncRefresh();await syncRefresh();});
   assert.equal(await alertVisible(page),true,'Reading an old snapshot must not recover a failed pull');
   assert.equal(await notices(page),1,'Repeated status reads must not repeat the same incident notification');
+  const legacyFailureDate=await page.evaluate(value=>new Date(value).toLocaleString('zh-CN'),stamp(1));
+  assert.ok((await page.locator('#bidDataAlertMeta').innerText()).includes('最近失败：'+legacyFailureDate),'Older backends still display the incident failure timestamp');
+  const latestFailure=stamp(1).replace(':00Z',':30Z'),failureReason='字节 · 第 2 页：上游 HTTP 503（已尝试 3 次）';
+  const failureDate=await page.evaluate(value=>new Date(value).toLocaleString('zh-CN'),latestFailure);
+  state.status={...state.status,failureReason,lastFailureAt:latestFailure,failureCount:3};
+  await page.evaluate(()=>syncRefresh());
+  const diagnosticMeta=await page.locator('#bidDataAlertMeta').innerText();
+  assert.ok(diagnosticMeta.includes('最近失败：'+failureDate),'Banner displays the latest failed attempt, not just the incident start');
+  assert.match(diagnosticMeta,/连续失败：3次/);
+  assert.ok((await page.locator('#syncStatus').innerText()).includes('最近失败：'+failureDate));
+  assert.match(await page.locator('#syncStatus').innerText(),/连续失败：3次/);
+  assert.equal((await page.locator('#syncStatus').innerText()).split(failureReason).length-1,1,'Configuration displays the separate safe failure reason');
+  assert.equal((await page.locator('#bidDataAlertReason').innerText()).split(failureReason).length-1,1,'The banner displays the separate safe failure reason');
+  assert.equal(diagnosticMeta.includes(failureReason),false,'Metadata must not repeat the error category');
+  assert.equal(await notices(page),1,'More failed attempts within the same incident update diagnostics without notifying again');
+  state.status={...state.status,error:state.status.error+'；原因：'+failureReason};
+  await page.evaluate(()=>syncRefresh());
+  assert.equal((await page.locator('#syncStatus').innerText()).split(failureReason).length-1,1,'Configuration does not duplicate a reason already included in the error');
+  assert.equal((await page.locator('#bidDataAlertReason').innerText()).split(failureReason).length-1,1,'The banner does not duplicate a reason already included in the error');
+  await page.evaluate(value=>window.BidDataAlerts.syncStatus({...syncState,state:'ready',error:'',failureAt:null,lastSuccess:value,snapshotUpdatedAt:value}),stamp(1).replace(':00Z',':15Z'));
+  assert.equal(await alertVisible(page),true,'A committed timestamp after the first failure but before the latest failure cannot clear the incident');
+  await page.evaluate(value=>syncShow({...syncState,snapshotUpdatedAt:value}),state.snapshot.updatedAt);
   const unchangedWork=await page.evaluate(async()=>{
    let mutations=0,events=0;const observe=new MutationObserver(records=>{mutations+=records.length;}),count=()=>events++;
    observe.observe(document.getElementById('bidDataAlert'),{subtree:true,childList:true,characterData:true,attributes:true});
@@ -121,7 +143,7 @@ async function adminScenarios(browser,url){
   assert.deepEqual(unchangedWork,{mutations:0,events:0},'Unchanged sync polls must not rewrite the alert or publish redundant state');
   await checkLayout(page,'admin');
 
-  state.status={...state.status,state:'paused',enabled:false,error:'保存的凭据无法解密，请更新登录凭据后重新启用'};
+  state.status={...state.status,state:'paused',enabled:false,error:'保存的凭据无法解密，请更新登录凭据后重新启用',failureReason:'保存的凭据无法解密'};
   await page.evaluate(()=>syncRefresh());
   await page.waitForFunction(()=>document.getElementById('bidDataAlertRetry').textContent==='检查同步配置');
   await page.locator('#bidDataAlertRetry').click();
@@ -136,18 +158,21 @@ async function adminScenarios(browser,url){
   assert.equal(await alertVisible(page),true,'A queued retry is not a successful data commit');
   state.status={...state.status,state:'running'};await page.evaluate(()=>syncRefresh());
   assert.equal(await alertVisible(page),true);assert.equal(await notices(page),1);
+  assert.match(await page.locator('#bidDataAlertMeta').innerText(),/连续失败：3次/,'Starting a retry must not increment the failure count');
+  assert.match(await page.locator('#bidDataAlertReason').innerText(),/保存的凭据无法解密/,'Running retries retain the previous error until a commit');
   state.snapshot={...state.snapshot,updatedAt:stamp(2)};
-  state.status={...state.status,state:'ready',lastSuccess:stamp(2),error:''};delete state.status.failureAt;
+  state.status={...state.status,state:'ready',lastSuccess:stamp(2),error:'',failureReason:'',lastFailureAt:null,failureCount:0};delete state.status.failureAt;
   await page.evaluate(()=>syncRefresh());await waitClear(page);
   assert.doesNotMatch(await page.title(),/^⚠/);
-  state.status={...state.status,state:'retrying',error:'新一轮计划同步失败',failureAt:stamp(3)};
+  assert.doesNotMatch(await page.locator('#syncStatus').innerText(),/最近失败：|连续失败：/,'A successful commit clears failure diagnostics');
+  state.status={...state.status,state:'retrying',error:'新一轮计划同步失败',failureAt:stamp(3),lastFailureAt:stamp(3),failureCount:1};
   await page.evaluate(()=>syncRefresh());await waitAlert(page);assert.equal(await notices(page),2);
   state.status={...state.status,state:'ready',lastSuccess:stamp(1),error:''};delete state.status.failureAt;
   await page.evaluate(()=>syncRefresh());
   assert.equal(await alertVisible(page),true,'A stale ready response cannot clear a newer failure incident');
   assert.equal(await notices(page),2);
   state.snapshot={...state.snapshot,updatedAt:stamp(4)};
-  state.status={...state.status,state:'ready',lastSuccess:stamp(4),error:''};delete state.status.failureAt;
+  state.status={...state.status,state:'ready',lastSuccess:stamp(4),error:'',failureReason:'',lastFailureAt:null,failureCount:0};delete state.status.failureAt;
   await page.evaluate(()=>syncRefresh());await waitClear(page);
   console.log('PASS: admin background failure, durable banner, old-snapshot protection, one notice per incident, paused configuration and committed recovery');
 
@@ -219,10 +244,15 @@ async function memberScenarios(browser,url){
  const {page,state,errors,forbidden,requests}=await fixture(browser,url,{member:true,viewerId:'9',ownerId:'7'});
  try{
   const preserved=await rawData(page);
-  state.status={...state.status,state:'paused',enabled:false,error:'来源管理员的计划同步失败',failureAt:stamp(1)};
+  const latestFailure=stamp(1).replace(':00Z',':30Z');
+  const failureDate=await page.evaluate(value=>new Date(value).toLocaleString('zh-CN'),latestFailure);
+  state.status={...state.status,state:'paused',enabled:false,error:'来源管理员的计划同步失败',failureReason:'字节 · 第 2 页：上游 HTTP 503（已尝试 3 次）',failureAt:stamp(1),lastFailureAt:latestFailure,failureCount:3};
   await page.evaluate(()=>bidRefreshShared());await waitAlert(page);
   assert.equal(state.sharedReads.at(-1).snapshotNull,true,'New failure status arrives even when the snapshot is unchanged');
   assert.equal(await notices(page),1);assert.equal(await rawData(page),preserved);
+  assert.ok((await page.locator('#bidDataAlertMeta').innerText()).includes('最近失败：'+failureDate),'Shared viewers receive the latest diagnostic timestamp');
+  assert.match(await page.locator('#bidDataAlertMeta').innerText(),/连续失败：3次/);
+  assert.ok((await page.locator('#bidDataAlertReason').innerText()).includes(state.status.failureReason),'Shared viewers see the separate safe failure reason');
   assert.equal(await page.locator('#bidDataAlertRetry').innerText(),'重新读取共享状态');
   await page.locator('.section-nav a[href="#strategy-lab"]').click();assert.equal(await alertVisible(page),true);
   await page.locator('.section-nav a[href="#report"]').click();
@@ -230,7 +260,7 @@ async function memberScenarios(browser,url){
   await checkLayout(page,'member');
 
   // Snapshot and sync state are separate reads; a later commit may be represented by status first.
-  state.status={...state.status,state:'ready',enabled:true,error:'',lastSuccess:stamp(2)};delete state.status.failureAt;
+  state.status={...state.status,state:'ready',enabled:true,error:'',lastSuccess:stamp(2),failureReason:'',lastFailureAt:null,failureCount:0};delete state.status.failureAt;
   await page.evaluate(()=>bidRefreshShared());
   assert.equal(await alertVisible(page),true,'Old snapshotUpdatedAt plus newer lastSuccess must not clear prematurely');
   assert.equal(await rawData(page),preserved);
@@ -238,7 +268,7 @@ async function memberScenarios(browser,url){
   await page.evaluate(()=>bidRefreshShared());await waitClear(page);
 
   // Keep viewer identity fixed and change only report owner; the same timestamp is a new source incident.
-  state.status={...state.status,state:'retrying',error:'来源 7 再次同步失败',failureAt:stamp(3)};
+  state.status={...state.status,state:'retrying',error:'来源 7 再次同步失败',failureAt:stamp(3),lastFailureAt:stamp(3),failureCount:1};
   await page.evaluate(()=>bidRefreshShared());await waitAlert(page);assert.equal(await notices(page),2);
   state.ownerId='8';state.status={...state.status,userId:'8',error:'来源 8 同步失败'};
   await page.evaluate(()=>bidRefreshShared());await waitAlert(page);

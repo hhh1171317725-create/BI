@@ -22,6 +22,7 @@ class BidSharedReportTest {
         "taskRules",List.of(Map.of("name","shared-task","price","2")),"pricingRevision","p1",
         "strategies",List.of(Map.of("id","s1","name","测试策略","note","放量测试","accounts",List.of())),"strategyRevision","s1"));
     state.putAll(Map.of("state","paused","error","服务器同步失败（上游 code=-1），已暂停并保留旧快照", "failureAt","2026-10-10T01:00:00Z",
+        "failureReason","广点通 · 第 2 页：上游 HTTP 503（已尝试 3 次）","lastFailureAt","2026-10-10T01:10:00Z","failureCount",2L,
         "lastSuccess","2026-10-09T23:00:00Z","enabled",false,"dueAt",0L));
     state.putAll(Map.of("historyState","retrying","historyError","昨日历史归档失败，10 分钟后自动重试",
         "historyFailureAt","2026-10-10T00:30:00Z","historyLastDate","2026-10-08","historyLastSuccess","2026-10-09T00:30:00Z","historyRetryAt",123L));
@@ -34,6 +35,7 @@ class BidSharedReportTest {
     var status=(Map<?,?>)result.get("status");
     assertEquals("paused",status.get("state"));assertEquals(state.get("error"),status.get("error"));
     assertEquals(state.get("failureAt"),status.get("failureAt"));assertEquals(state.get("lastSuccess"),status.get("lastSuccess"));
+    for(String key:List.of("failureReason","lastFailureAt","failureCount"))assertEquals(state.get(key),status.get(key));
     assertEquals("time1",status.get("snapshotUpdatedAt"));assertFalse(status.toString().contains("secret"));
     for(String key:List.of("historyState","historyError","historyFailureAt","historyLastDate","historyLastSuccess","historyRetryAt"))
       assertEquals(state.get(key),status.get(key));
@@ -70,13 +72,17 @@ class BidSharedReportTest {
     when(config.get("BID_SHARED_OWNER_ID","")).thenReturn("7");when(accounts.findById(7)).thenReturn(Optional.of(user(7,"admin")));
     when(users.canUseTool(any(),eq("bidMonitor"))).thenReturn(true);
     when(snapshots.readOwnedSince(7,"7:2026-10-10T01:00:00Z")).thenReturn(new BidSnapshotController.SnapshotRead("7:2026-10-10T01:00:00Z",null));
-    when(store.get(7)).thenReturn(Map.of("state","retrying","enabled",true,"error","读取失败","failureAt","2026-10-10T02:00:00Z"),
+    when(store.get(7)).thenReturn(Map.of("state","retrying","enabled",true,"error","读取失败","failureAt","2026-10-10T02:00:00Z",
+        "failureReason","字节 · 第 2 页：网络请求超时","lastFailureAt","2026-10-10T02:10:00Z","failureCount",2L),
         Map.of("state","ready","enabled",true,"error","","lastSuccess","2026-10-10T01:00:00Z"));
     var controller=new BidSharedReportController(sessions,accounts,users,snapshots,store,config);
     var failed=controller.get(request,"7:2026-10-10T01:00:00Z");var recovered=controller.get(request,"7:2026-10-10T01:00:00Z");
     assertNull(failed.get("snapshot"));assertNull(recovered.get("snapshot"));
     assertEquals("读取失败",((Map<?,?>)failed.get("status")).get("error"));
+    assertEquals("字节 · 第 2 页：网络请求超时",((Map<?,?>)failed.get("status")).get("failureReason"));
+    assertEquals(2L,((Map<?,?>)failed.get("status")).get("failureCount"));
     var status=(Map<?,?>)recovered.get("status");assertEquals("",status.get("error"));assertFalse(status.containsKey("failureAt"));
+    for(String key:List.of("failureReason","lastFailureAt","failureCount"))assertFalse(status.containsKey(key));
     assertEquals("2026-10-10T01:00:00Z",status.get("snapshotUpdatedAt"));verify(store,never()).get(2);
   }
   @Test void adoptsExistingAdminSnapshotOnceInsteadOfChoosingEmptyAccount()throws Exception{

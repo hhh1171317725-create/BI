@@ -250,6 +250,8 @@ class BidServerSyncServiceTest {
     service.run(7);var status=service.status(7);
     assertEquals("retrying",status.get("state"));assertEquals(true,status.get("enabled"));
     assertEquals(true,status.get("configured"));assertFalse(status.toString().contains("private-test-cookie"));
+    assertEquals("字节 · 第 1 页：网络请求失败",status.get("failureReason"));assertEquals(1L,status.get("failureCount"));
+    assertEquals(status.get("failureAt"),status.get("lastFailureAt"));
     assertTrue(((Number)status.get("dueAt")).longValue()>System.currentTimeMillis()+590000);
     verify(snapshots,never()).write(any(),anyLong(),anyMap());
     service.run(7);verify(upstream,times(1)).page(anyMap());
@@ -260,22 +262,31 @@ class BidServerSyncServiceTest {
     when(upstream.page(anyMap())).thenThrow(new java.io.IOException("private-test-cookie"));
     service.run(7);var failed=service.status(7);String failureAt=failed.get("failureAt").toString();
     assertDoesNotThrow(()->java.time.Instant.parse(failureAt));assertEquals("old-snapshot",failed.get("lastSuccess"));
+    assertEquals(1L,failed.get("failureCount"));assertEquals(failureAt,failed.get("lastFailureAt"));
     verify(snapshots,never()).write(any(),anyLong(),anyMap());
     service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
     assertEquals(failureAt,service.status(7).get("failureAt"));
     var queued=service.command(7,"run");assertEquals(failed.get("error"),queued.get("error"));assertEquals(failureAt,queued.get("failureAt"));
+    assertEquals(failed.get("failureReason"),queued.get("failureReason"));assertEquals(failed.get("lastFailureAt"),queued.get("lastFailureAt"));
+    assertEquals(1L,queued.get("failureCount"));
     doAnswer(call->{
       assertEquals("running",service.status(7).get("state"));assertEquals(failureAt,service.status(7).get("failureAt"));
+      assertEquals(failed.get("failureReason"),service.status(7).get("failureReason"));
+      assertEquals(failed.get("lastFailureAt"),service.status(7).get("lastFailureAt"));assertEquals(1L,service.status(7).get("failureCount"));
       assertEquals(failed.get("error"),service.status(7).get("error"));throw new java.io.IOException("another private body");
     }).when(upstream).page(anyMap());
     service.run(7);assertEquals(failureAt,service.status(7).get("failureAt"));
+    assertEquals(2L,service.status(7).get("failureCount"));
+    assertDoesNotThrow(()->java.time.Instant.parse(service.status(7).get("lastFailureAt").toString()));
     service.command(7,"run");doReturn(Map.of("total",1,"rows",rows(0,1))).when(upstream).page(anyMap());
     service.run(7);var recovered=service.status(7);
     assertEquals("ready",recovered.get("state"));assertEquals("",recovered.get("error"));assertFalse(recovered.containsKey("failureAt"));
+    for(String key:List.of("failureReason","lastFailureAt","failureCount"))assertFalse(recovered.containsKey(key));
     assertNotEquals("old-snapshot",recovered.get("lastSuccess"));assertEquals("archive failure",recovered.get("historyError"));
     verify(snapshots).write(eq(store.connection),eq(7L),anyMap());
     service.command(7,"run");when(upstream.page(anyMap())).thenThrow(new java.io.IOException("new failure"));service.run(7);
     assertNotEquals(failureAt,service.status(7).get("failureAt"));
+    assertEquals(1L,service.status(7).get("failureCount"));
   }
   @Test void manualFetchFailurePreservesOldSnapshotAndIsVisibleUntilCommittedRecovery()throws Exception{
     var prepared=service.prepareQuery(7,input());
@@ -301,6 +312,7 @@ class BidServerSyncServiceTest {
     assertThrows(java.sql.SQLException.class,()->service.querySnapshot(7,Map.of("queryRevision",prepared.get("queryRevision"))));
     var status=service.status(7);assertEquals("retrying",status.get("state"));assertEquals("old-snapshot",status.get("lastSuccess"));
     assertNotNull(status.get("failureAt"));assertFalse(status.containsKey("progress"));assertFalse(status.toString().contains("private database body"));
+    assertEquals("数据库读写失败",status.get("failureReason"));assertEquals(1L,status.get("failureCount"));
   }
   @Test void currentQueryRejectsNewerSnapshotAndChangedCredentials()throws Exception{
     var prepared=service.prepareQuery(7,input());var query=Map.<String,Object>of("queryRevision",prepared.get("queryRevision"));
@@ -434,9 +446,11 @@ class BidServerSyncServiceTest {
     service.start(7,input());
     when(upstream.page(anyMap())).thenAnswer(call->{service.command(7,"stop");return Map.of("total",1,"rows",rows(0,1));});
     service.run(7);verify(snapshots,never()).write(any(),anyLong(),anyMap());assertEquals("stopped",service.status(7).get("state"));
+    assertFalse(service.status(7).containsKey("failureCount"));assertFalse(service.status(7).containsKey("lastFailureAt"));
     service.start(7,input());
     doAnswer(call->{service.start(7,input());return Map.of("total",1,"rows",rows(0,1));}).when(upstream).page(anyMap());
     service.run(7);verify(snapshots,never()).write(any(),anyLong(),anyMap());assertEquals("waiting",service.status(7).get("state"));
+    assertFalse(service.status(7).containsKey("failureCount"));assertFalse(service.status(7).containsKey("lastFailureAt"));
   }
   @Test void authFailurePausesAndDoesNotExposeSecretsOrOverwriteSnapshot()throws Exception{
     service.start(7,input());
@@ -452,6 +466,53 @@ class BidServerSyncServiceTest {
     when(users.canUseTool(any(),anyString())).thenReturn(true);service.start(7,input());
     when(upstream.page(anyMap())).thenAnswer(call->{when(users.canUseTool(any(),anyString())).thenReturn(false);return Map.of("total",1,"rows",rows(0,1));});
     service.run(7);verify(snapshots,never()).write(any(),anyLong(),anyMap());assertEquals("paused",service.status(7).get("state"));
+  }
+  @Test void changedTotalsAndShortPagesPersistProviderPageAndSafeCounts()throws Exception{
+    service.start(7,input());
+    when(upstream.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      return Map.of("total",page==1?300:301,"rows",rows((page-1)*100,100));
+    });
+    service.run(7);var changed=service.status(7);
+    assertEquals("字节 · 第 2 页：分页总数变化（300 → 301）",changed.get("failureReason"));
+    assertEquals("retrying",changed.get("state"));assertEquals(true,changed.get("enabled"));
+    service.command(7,"run");doReturn(Map.of("total",0,"rows",List.of())).when(upstream).page(anyMap());
+    when(gdt.page(anyMap())).thenAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      return Map.of("total",200,"rows",rows((page-1)*100,page==1?100:99));
+    });
+    service.run(7);var shortPage=service.status(7);
+    assertEquals("广点通 · 第 2 页：分页数据不完整（应有 100 条，实际 99 条）",shortPage.get("failureReason"));
+    assertEquals(2L,shortPage.get("failureCount"));assertEquals(changed.get("failureAt"),shortPage.get("failureAt"));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
+  }
+
+  @Test void safeFailureLogDoesNotAttachRawExceptionOrCredentials()throws Exception{
+    var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(BidServerSyncService.class);
+    var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+    appender.start();logger.addAppender(appender);
+    try{
+      service.start(7,input());when(upstream.page(anyMap())).thenThrow(new java.net.http.HttpTimeoutException("private-cookie-body"));
+      service.run(7);
+      assertEquals("字节 · 第 1 页：网络请求超时",service.status(7).get("failureReason"));
+      assertFalse(appender.list.isEmpty());
+      for(var event:appender.list){assertFalse(event.getFormattedMessage().contains("private-cookie-body"));assertNull(event.getThrowableProxy());}
+    }finally{logger.detachAppender(appender);appender.stop();}
+  }
+  @Test void exhaustedTransientHttpKeepsScheduleAndWrappedAuthenticationPauses()throws Exception{
+    service.start(7,input());
+    when(upstream.page(anyMap())).thenThrow(new BidUpstreamRequest.Failure("字节",BidUpstreamRequest.Kind.HTTP,503,3));
+    service.run(7);var transientFailure=service.status(7);
+    assertEquals("retrying",transientFailure.get("state"));assertEquals(true,transientFailure.get("enabled"));
+    assertEquals("字节 · 第 1 页：上游 HTTP 503（已尝试 3 次）",transientFailure.get("failureReason"));
+    service.command(7,"run");
+    doThrow(new BidUpstreamRequest.Failure("字节",BidUpstreamRequest.Kind.HTTP,401,1)).when(upstream).page(anyMap());
+    service.run(7);var authenticationFailure=service.status(7);
+    assertEquals("paused",authenticationFailure.get("state"));assertEquals(false,authenticationFailure.get("enabled"));
+    assertEquals("字节 · 第 1 页：上游 HTTP 401（已尝试 1 次）",authenticationFailure.get("failureReason"));
+    assertEquals(2L,authenticationFailure.get("failureCount"));
+    assertEquals(transientFailure.get("failureAt"),authenticationFailure.get("failureAt"));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
   }
   @Test void endpointsRejectSwitchedAndUnauthenticatedWebsiteUser()throws Exception{
     var sessions=mock(SessionService.class);var mockService=mock(BidServerSyncService.class);

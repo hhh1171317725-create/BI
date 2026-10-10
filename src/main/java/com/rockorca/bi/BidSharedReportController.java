@@ -54,7 +54,7 @@ public class BidSharedReportController {
     var snapshot=snapshots.readOwnedSince(owner.id(),after);var state=store.get(owner.id());
     String version=snapshot.version();
     var status=new LinkedHashMap<String,Object>();
-    for(String key:List.of("enabled","state","error","failureAt","lastSuccess","dueAt",
+    for(String key:List.of("enabled","state","error","failureAt","failureReason","lastFailureAt","failureCount","lastSuccess","dueAt",
         "historyState","historyError","historyFailureAt","historyLastDate","historyLastSuccess","historyRetryAt"))
       if(state.containsKey(key))status.put(key,state.get(key));
     status.put("snapshotUpdatedAt",version.substring(version.indexOf(':')+1));

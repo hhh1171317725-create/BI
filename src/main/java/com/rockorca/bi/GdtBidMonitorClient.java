@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 public class GdtBidMonitorClient {
   private static final URI ENDPOINT=URI.create("https://cli1.mobgi.com/MainPanelReport/AdReport/getReport");
   private final ObjectMapper mapper;
-  private final HttpClient client;
+  private final BidUpstreamRequest requests;
   private volatile boolean skipOpenUrlField;
 
   @Autowired
@@ -28,9 +28,13 @@ public class GdtBidMonitorClient {
         .followRedirects(HttpClient.Redirect.NEVER).build());
   }
 
-  GdtBidMonitorClient(ObjectMapper mapper,HttpClient client){this.mapper=mapper;this.client=client;}
+  GdtBidMonitorClient(ObjectMapper mapper,HttpClient client){this(mapper,new BidUpstreamRequest(client));}
+  GdtBidMonitorClient(ObjectMapper mapper,BidUpstreamRequest requests){this.mapper=mapper;this.requests=requests;}
 
   Map<String,Object> page(Map<String,Object> input)throws Exception{
+    return page(input,requests.begin());
+  }
+  private Map<String,Object> page(Map<String,Object> input,BidUpstreamRequest.Budget budget)throws Exception{
     if(skipOpenUrlField&&!Boolean.FALSE.equals(input.get("requestOpenUrl"))){
       input=new LinkedHashMap<>(input);input.put("requestOpenUrl",false);
     }
@@ -45,7 +49,8 @@ public class GdtBidMonitorClient {
       throw new IllegalArgumentException("请填写 Cookie、client-user 和 main-user-id");
     BidMonitorApiController.validateCookieUser(cookie,user);
     Map<String,Object> body=requestBody(input,start,end,page);
-    HttpRequest request=HttpRequest.newBuilder(ENDPOINT).timeout(Duration.ofSeconds(40))
+    String bodyJson=mapper.writeValueAsString(body);
+    HttpResponse<String> response=requests.send("广点通",timeout->HttpRequest.newBuilder(ENDPOINT).timeout(timeout)
         .header("Content-Type","application/json;charset=UTF-8")
         .header("Accept","application/json, text/plain, */*").header("Cookie",cookie)
         .header("Accept-Language","zh-CN,zh;q=0.9")
@@ -53,21 +58,21 @@ public class GdtBidMonitorClient {
         .header("Origin","https://cl.mobgi.com").header("Referer","https://cl.mobgi.com/")
         .header("client-user",user).header("main-user-id",main)
         .header("ff-request-id",BidMonitorApiController.requestId())
-        .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
-    HttpResponse<String> response=client.send(request,HttpResponse.BodyHandlers.ofString());
-    if(response.statusCode()!=200)throw new IllegalArgumentException("广点通接口 HTTP "+response.statusCode()+"，请检查登录凭据或网络");
+        .POST(HttpRequest.BodyPublishers.ofString(bodyJson)).build(),budget);
     Map<String,Object> result;
     try{result=mapper.readValue(response.body(),new TypeReference<Map<String,Object>>(){});}
     catch(Exception error){throw new IllegalArgumentException("广点通返回的不是 JSON，请重新登录");}
     if("-1".equals(text(result,"code"))&&((List<?>)body.get("base_infos")).contains("open_url")){
+      var rejected=rejection(result,cookie);
       var retry=new LinkedHashMap<>(input);retry.put("requestOpenUrl",false);
       try{
-        Map<String,Object> recovered=page(retry);
+        Map<String,Object> recovered=page(retry,budget);
         skipOpenUrlField=true;
         return recovered;
-      }catch(Exception ignored){
-        // A failed retry means the optional field was not the cause; retain the original error.
+      }catch(BidUpstreamRequest.Rejection fallback){
+        if(!rejected.code().equals(fallback.code()))throw fallback;
       }
+      throw rejected;
     }
     return parse(result,page,cookie);
   }
@@ -101,7 +106,7 @@ public class GdtBidMonitorClient {
 
   static Map<String,Object> parse(Map<String,Object> result,int page,String cookie){
     if(!List.of("0","200").contains(text(result,"code")))
-      throw new IllegalArgumentException(BidMonitorApiController.upstreamError(result,cookie).replaceFirst("创量拒绝请求","广点通拒绝请求"));
+      throw rejection(result,cookie);
     if(!(result.get("data") instanceof Map<?,?> data)||!(data.get("list") instanceof List<?> list))
       throw new IllegalArgumentException("广点通响应缺少计划列表，请提供脱敏的成功响应以核对字段");
     List<Map<String,Object>> rows=new ArrayList<>();
@@ -136,6 +141,7 @@ public class GdtBidMonitorClient {
     return text.isBlank()||"--".equals(text)||"-".equals(text)?null:text;
   }
   private static String id(Object value){return BidMonitorApiController.idText(value);}
+  private static BidUpstreamRequest.Rejection rejection(Map<String,Object> result,String cookie){return new BidUpstreamRequest.Rejection("广点通",text(result,"code"),BidMonitorApiController.upstreamError(result,cookie).replaceFirst("创量拒绝请求","广点通拒绝请求"));}
   private static Object first(Map<?,?> row,String... keys){for(String key:keys){Object value=row.get(key);if(value!=null&&!value.toString().isBlank())return value;}return "";}
   private static String text(Map<String,Object> values,String key){return ReportService.text(values.get(key));}
 }

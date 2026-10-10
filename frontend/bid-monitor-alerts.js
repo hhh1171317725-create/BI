@@ -24,7 +24,7 @@
   const safeReason=value=>String(value?.message||value||'请求失败，请稍后重试').slice(0,350);
   const newerSuccess=(stamp,failure)=>{
     if(!stamp||stamp===failure.lastSuccess)return false;
-    const next=Date.parse(stamp),previous=Date.parse(failure.lastSuccess),failed=Date.parse(failure.at);
+    const next=Date.parse(stamp),previous=Date.parse(failure.lastSuccess),failed=Date.parse(failure.lastFailureAt||failure.at);
     return Number.isFinite(next)&&(!Number.isFinite(previous)||next>previous)&&(!Number.isFinite(failed)||next>=failed);
   };
   function notify(text){
@@ -51,9 +51,12 @@
     if(first){
       title.textContent=names[channel]||'数据读取失败';reason.textContent=failure.error;
       const last=displayDate(lastSuccess),snapshot=displayDate(snapshotAt),time=displayDate(failure.at);
+      const latest=displayDate(failure.lastFailureAt)||time;
+      const failureTime=channel==='sync'?(latest?'最近失败：'+latest:''):(time?'失败时间：'+time:'');
+      const failureCount=channel==='sync'&&failure.failureCount>0?'连续失败：'+failure.failureCount+'次':'';
       const retainedNote=retained?'已保留当前数据，请勿当作更新成功。':'暂无已加载数据。';
       const syncNote=channel==='sync'?(['running','waiting'].includes(syncState.state)?'正在重试。':syncState.state==='paused'?'自动同步已暂停。':syncState.enabled?'后台将自动重试。':'自动同步未开启。'):'';
-      meta.textContent=[syncNote,retainedNote,last?'最近成功：'+last:'尚无成功同步记录',snapshot&&snapshot!==last?'当前快照：'+snapshot:'',time?'失败时间：'+time:''].filter(Boolean).join(' · ');
+      meta.textContent=[syncNote,retainedNote,last?'最近成功：'+last:'尚无成功同步记录',snapshot&&snapshot!==last?'当前快照：'+snapshot:'',failureTime,failureCount].filter(Boolean).join(' · ');
       summary.textContent='另有 '+(entries.length-1)+' 项读取异常';details.hidden=entries.length<2;
       list.replaceChildren(...entries.slice(1).map(([key,item])=>make('li','',(names[key]||key)+'：'+item.error)));
       retry.hidden=!handler;retry.textContent=label;retry.disabled=disabled;retry.dataset.channel=channel;
@@ -62,7 +65,10 @@
   }
   function fail(channel,error,options={}){
     const old=failures.get(channel),incident=options.incident||old?.incident||String(Date.now());
-    failures.set(channel,{error:safeReason(error),incident,at:options.at||old?.at||new Date().toISOString(),lastSuccess:options.lastSuccess??old?.lastSuccess??lastSuccess});
+    const sameIncident=old?.incident===incident;
+    failures.set(channel,{error:safeReason(error),incident,at:options.at||old?.at||new Date().toISOString(),lastSuccess:options.lastSuccess??old?.lastSuccess??lastSuccess,
+      lastFailureAt:options.lastFailureAt||(sameIncident?old?.lastFailureAt:'')||options.at||'',
+      failureCount:Number.isSafeInteger(options.failureCount)&&options.failureCount>0?options.failureCount:sameIncident?old?.failureCount||0:0});
     active.delete(channel);render();
     if(!old||old.incident!==incident)notify((names[channel]||'数据读取失败')+'，请查看页面顶部提示。');
   }
@@ -74,7 +80,9 @@
     if(result.lastSuccess)lastSuccess=result.lastSuccess;
     if(result.snapshotUpdatedAt)snapshotAt=result.snapshotUpdatedAt;
     if(result.error){
-      fail('sync',result.error,{incident:syncOwner+':'+(result.failureAt||'unresolved'),at:result.failureAt,lastSuccess:result.lastSuccess||''});
+      const diagnostic=typeof result.failureReason==='string'?result.failureReason.trim():'';
+      const error=String(result.error);
+      fail('sync',diagnostic&&!error.includes(diagnostic)?error+'；原因：'+diagnostic:error,{incident:syncOwner+':'+(result.failureAt||'unresolved'),at:result.failureAt,lastFailureAt:result.lastFailureAt,failureCount:result.failureCount,lastSuccess:result.lastSuccess||''});
     }else{
       const failure=failures.get('sync');
       // Reading a saved snapshot or saving credentials does not prove a new pull succeeded.

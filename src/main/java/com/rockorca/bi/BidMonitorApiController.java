@@ -28,7 +28,7 @@ public class BidMonitorApiController {
   static final int MAX_PLAN_ROWS = 100_000;
   private final ObjectMapper mapper;
   private volatile boolean skipOpenUrlField;
-  private final HttpClient client;
+  private final BidUpstreamRequest requests;
 
   @Autowired
   public BidMonitorApiController(ObjectMapper mapper) {
@@ -37,12 +37,20 @@ public class BidMonitorApiController {
   }
 
   BidMonitorApiController(ObjectMapper mapper, HttpClient client) {
+    this(mapper,new BidUpstreamRequest(client));
+  }
+
+  BidMonitorApiController(ObjectMapper mapper,BidUpstreamRequest requests){
     this.mapper = mapper;
-    this.client = client;
+    this.requests = requests;
   }
 
   @PostMapping("/page")
   public Map<String, Object> page(@RequestBody Map<String, Object> input) throws Exception {
+    return page(input,requests.begin());
+  }
+
+  private Map<String,Object> page(Map<String,Object> input,BidUpstreamRequest.Budget budget)throws Exception{
     if (skipOpenUrlField && !Boolean.FALSE.equals(input.get("requestOpenUrl"))) {
       input = new LinkedHashMap<>(input);
       input.put("requestOpenUrl", false);
@@ -60,34 +68,34 @@ public class BidMonitorApiController {
       throw new IllegalArgumentException("请填写 Cookie、client-user 和 main-user-id");
     validateCookieUser(cookie, user);
     Map<String,Object> body=requestBody(input,start,end,page);
-    HttpRequest request = HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
-        .timeout(Duration.ofSeconds(40)).header("Content-Type", "application/json;charset=UTF-8")
+    String bodyJson=mapper.writeValueAsString(body);
+    HttpResponse<String> response = requests.send("字节",timeout->HttpRequest.newBuilder(URI.create("https://cli1.mobgi.com/Toutiao/Promotion/getList"))
+        .timeout(timeout).header("Content-Type", "application/json;charset=UTF-8")
         .header("Accept", "application/json, text/plain, */*").header("Cookie", cookie)
         .header("Accept-Language", "zh-CN,zh;q=0.9")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
         .header("Origin", "https://cl.mobgi.com").header("Referer", "https://cl.mobgi.com/")
         .header("client-user", user).header("main-user-id", main)
         .header("ff-request-id", requestId())
-        .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
-    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    if (response.statusCode() != 200) throw new IllegalArgumentException("创量接口 HTTP " + response.statusCode() + "，请检查登录凭据或网络");
+        .POST(HttpRequest.BodyPublishers.ofString(bodyJson)).build(),budget);
     Map<String, Object> result;
     try { result = mapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {}); }
     catch (Exception error) { throw new IllegalArgumentException("创量返回的不是 JSON，请重新登录或导入报表"); }
     if (!List.of("0", "200").contains(text(result, "code"))) {
       String reason = upstreamError(result, cookie);
+      var rejected=new BidUpstreamRequest.Rejection("字节",text(result,"code"),reason);
       if ("-1".equals(text(result, "code")) && ((List<?>)body.get("select_kpi_fields")).contains("open_url")) {
         var retry = new LinkedHashMap<>(input);
         retry.put("requestOpenUrl", false);
         try {
-          Map<String,Object> recovered = page(retry);
+          Map<String,Object> recovered = page(retry,budget);
           skipOpenUrlField = true;
           return recovered;
-        } catch (Exception ignored) {
-          // Keep the original upstream error when removing the optional field does not help.
+        } catch (BidUpstreamRequest.Rejection fallback) {
+          if(!rejected.code().equals(fallback.code()))throw fallback;
         }
       }
-      throw new IllegalArgumentException(reason);
+      throw rejected;
     }
     Object data = result.get("data");
     Map<?, ?> container = data instanceof Map<?, ?> map ? map : result;

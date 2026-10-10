@@ -101,7 +101,12 @@ function syncShow(result,fresh=true){
   const next=result.enabled&&['ready','retrying'].includes(result.state)&&result.dueAt?'；下次查询：'+new Date(result.dueAt).toLocaleString('zh-CN'):'';
   const progress=syncProgressText(result.progress);
   const history=result.historyError?`；历史归档：${result.historyError}`:result.historyLastDate?`；历史归档：已保存 ${result.historyLastDate}`:'；历史归档：每天 00:30 保存昨天数据';
-  syncText(result.error?result.error+last+next:(names[result.state]||'未开启定时同步')+last+next+
+  const failedAt=result.lastFailureAt||result.failureAt;
+  const failure=result.error?(failedAt&&Number.isFinite(Date.parse(failedAt))?'；最近失败：'+new Date(failedAt).toLocaleString('zh-CN'):'')+
+    (Number.isSafeInteger(result.failureCount)&&result.failureCount>0?'；连续失败：'+result.failureCount+'次':''):'';
+  const diagnostic=typeof result.failureReason==='string'?result.failureReason.trim():'';
+  const error=result.error&&diagnostic&&!String(result.error).includes(diagnostic)?result.error+'；原因：'+diagnostic:result.error;
+  syncText(error?error+last+next+failure:(names[result.state]||'未开启定时同步')+last+next+
     (progress?'；'+progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划'+history:''),Boolean(result.error));
   if(fresh)window.BidDataAlerts?.syncStatus(result);
   else window.BidDataAlerts?.refresh();

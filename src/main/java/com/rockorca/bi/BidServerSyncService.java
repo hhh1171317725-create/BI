@@ -119,7 +119,7 @@ public class BidServerSyncService {
     output.put("userId",Long.toString(owner));
     output.put("configured",state.containsKey("credential"));
     output.put("enabled",Boolean.TRUE.equals(state.get("enabled")));
-    for (String key:List.of("clientUser","mainUserId","state","error","failureAt","lastSuccess","dueAt","progress",
+    for (String key:List.of("clientUser","mainUserId","state","error","failureAt","failureReason","lastFailureAt","failureCount","lastSuccess","dueAt","progress",
         "historyState","historyError","historyFailureAt","historyLastDate","historyLastSuccess","historyRetryAt"))
       if (state.containsKey(key)) output.put(key,state.get(key));
     output.put("minutes",10);
@@ -237,7 +237,7 @@ public class BidServerSyncService {
       try{
         store.update(owner,(connection,latest)->{
           if(current(latest,token)&&revision.equals(text(latest,"credentialRevision"))
-              &&Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess")))recordFailure(latest,error);
+              &&Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess")))recordFailure(owner,latest,error);
         });
       }catch(Exception ignored){LOG.warn("Bid manual query could not save failure status for user {}",owner);}
       throw error;
@@ -318,7 +318,7 @@ public class BidServerSyncService {
       try {
         store.update(owner,(connection,current)->{
           if(!current(current,token))return;
-          recordFailure(current,error);
+          recordFailure(owner,current,error);
         });
       } catch(Exception ignored){LOG.warn("Bid server sync could not save failure status for user {}",owner);}
     }
@@ -328,17 +328,23 @@ public class BidServerSyncService {
     return Boolean.TRUE.equals(state.get("enabled"))&&token.equals(state.get("token"));
   }
 
-  private static void recordFailure(Map<String,Object> state,Exception error){
+  private static void recordFailure(long owner,Map<String,Object> state,Exception error){
     boolean pause=requiresAttention(error);
     state.put("enabled",!pause);state.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
     state.put("state",pause?"paused":"retrying");
     state.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
     // Keep one durable incident identity through retries, restarts, and credential updates.
-    state.putIfAbsent("failureAt",Instant.now().toString());state.remove("progress");
+    String failedAt=Instant.now().toString(),reason=BidSyncDiagnostics.describe(error);
+    long previous=state.get("failureCount") instanceof Number number?number.longValue():0L;
+    long count=Math.min(Integer.MAX_VALUE-1L,Math.max(0L,previous))+1L;
+    state.putIfAbsent("failureAt",failedAt);state.put("lastFailureAt",failedAt);
+    state.put("failureReason",reason);state.put("failureCount",count);state.remove("progress");
+    LOG.warn("Bid sync failed for user {} (consecutive {}): {}",owner,count,reason);
   }
 
   private static void clearFailure(Map<String,Object> state){
-    state.put("error","");state.remove("failureAt");
+    state.put("error","");
+    for(String key:List.of("failureAt","failureReason","lastFailureAt","failureCount"))state.remove(key);
   }
 
   Map<String,Object> collect(Map<String,Object> state,String cookie) throws Exception {
@@ -507,6 +513,11 @@ public class BidServerSyncService {
   }
 
   private PageChunk fetchPage(Map<String,Object> base,String platform,int page,long expectedTotal)throws Exception{
+    try{return fetchPageData(base,platform,page,expectedTotal);}
+    catch(Exception error){throw new BidSyncDiagnostics.PageFailure(platform,page,error);}
+  }
+
+  private PageChunk fetchPageData(Map<String,Object> base,String platform,int page,long expectedTotal)throws Exception{
     if(page<1||page>BidMonitorApiController.MAX_PLAN_ROWS/BidMonitorApiController.PAGE_SIZE)
       throw new IllegalArgumentException("计划总数超过 100000 条，请缩小计划创建日期范围");
     var input=new LinkedHashMap<>(base);input.put("page",page);if(expectedTotal>=0)input.put("total",expectedTotal);
@@ -546,22 +557,11 @@ public class BidServerSyncService {
   }
 
   static String failure(Exception error) {
-    if("permission".equals(error.getMessage()))return "网站账户已停用或工具权限已撤销，同步已暂停";
-    if("credential".equals(error.getMessage())||Objects.toString(error.getMessage(),"").contains("保存的凭据无法解密"))
-      return "保存的凭据无法解密，请更新登录凭据后重新启用";
-    // Do not persist upstream bodies, cookies, or exception stacks in user-visible status.
-    String message=Objects.toString(error.getMessage(),"");
-    String platform=message.startsWith("广点通")?"广点通":message.startsWith("创量")?"字节":"";
-    var code=java.util.regex.Pattern.compile("code=([0-9-]{1,10})").matcher(message);
-    String source=platform.isBlank()?"上游":platform;
-    return "服务器同步失败"+(code.find()?"（"+source+" code="+code.group(1)+"）":"")
-        +"，已暂停并保留旧快照。请更新创量登录凭据并核对"+source+"接口权限及网络后重新启用。";
+    return BidSyncDiagnostics.failure(error);
   }
 
   static boolean requiresAttention(Exception error){
-    String message=Objects.toString(error.getMessage(),"");
-    return message.equals("permission")||message.equals("credential")||message.contains("保存的凭据无法解密")||message.contains("code=")
-        ||message.contains("HTTP 401")||message.contains("HTTP 403")||message.contains("返回的不是 JSON");
+    return BidSyncDiagnostics.requiresAttention(error);
   }
 
   private static String text(Map<String,Object> data,String key){return Objects.toString(data.get(key),"").trim();}

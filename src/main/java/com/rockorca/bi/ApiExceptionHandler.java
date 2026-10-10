@@ -19,8 +19,11 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Map<String, Object>> handleError(Exception error) {
-    Throwable source = error.getCause() == null ? error : error.getCause();
-    String message = source.getMessage();
+    // Page failures already contain a safe diagnosis; their cause can contain upstream secrets.
+    Throwable source = error instanceof BidSyncDiagnostics.PageFailure || error.getCause() == null
+        ? error : error.getCause();
+    String message = source instanceof BidUpstreamRequest.Rejection || source instanceof BidUpstreamRequest.Failure
+        ? BidSyncDiagnostics.describe(source) : source.getMessage();
     if (message == null || message.isBlank()) {
       message = "服务异常";
     }

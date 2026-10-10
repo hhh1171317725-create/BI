@@ -54,7 +54,10 @@ public class BidSharedReportController {
     var snapshot=snapshots.readOwnedSince(owner.id(),after);var state=store.get(owner.id());
     String version=snapshot.version();
     var status=new LinkedHashMap<String,Object>();
-    for(String key:List.of("enabled","state","lastSuccess","dueAt")) if(state.containsKey(key))status.put(key,state.get(key));
+    for(String key:List.of("enabled","state","error","failureAt","lastSuccess","dueAt",
+        "historyState","historyError","historyFailureAt","historyLastDate","historyLastSuccess","historyRetryAt"))
+      if(state.containsKey(key))status.put(key,state.get(key));
+    status.put("snapshotUpdatedAt",version.substring(version.indexOf(':')+1));
     boolean canManage=viewer.admin()&&viewer.id()==owner.id();
     return ReportService.mapOf("userId",Long.toString(viewer.id()),"sharedOwnerId",Long.toString(owner.id()),
         "sharedOwnerName",owner.username(),"canManage",canManage,"version",version,

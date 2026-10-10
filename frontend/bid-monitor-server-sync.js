@@ -53,7 +53,7 @@ async function syncLoad(manual=false){
   }
   const job={manual,rows:raw,revision:syncRevision};
   syncLoadPending=job;
-  job.promise=syncReadSnapshot(job);
+  job.promise=syncReadSnapshot(job).catch(error=>{if(raw===job.rows&&syncRevision===job.revision)window.BidDataAlerts?.fail('snapshot',error);throw error;});
   try{return await job.promise;}finally{if(syncLoadPending===job)syncLoadPending=null;}
 }
 async function syncReadSnapshot(job){
@@ -62,19 +62,21 @@ async function syncReadSnapshot(job){
   if(busy||raw!==job.rows||syncRevision!==job.revision)return false;
   syncIdentity(response.userId);
   const snapshot=response.snapshot;
-  if(!snapshot?.updatedAt){if(job.manual)syncText('当前网站账户还没有成功同步的数据');return false;}
-  if(!job.manual&&(snapshot.updatedAt===syncStamp||!followSync))return false;
+  if(!snapshot?.updatedAt){window.BidDataAlerts?.success('snapshot');if(job.manual)syncText('当前网站账户还没有成功同步的数据');return false;}
+  if(!job.manual&&(snapshot.updatedAt===syncStamp||!followSync)){window.BidDataAlerts?.success('snapshot');return false;}
   await receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
     (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
   syncStamp=snapshot.updatedAt;
+  window.BidDataAlerts?.snapshotLoaded(snapshot.updatedAt);
   if(job.manual&&followSync)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
   return true;
 }
 window.loadBidRealtime=()=>syncLoad(true);
 function syncShow(result){
   syncIdentity(result.userId);syncState=result;
+  window.BidDataAlerts?.syncStatus(result);
   if(!syncHydrated){
     if(!syncDirty)for(const [id,key] of [['clientUser','clientUser'],['mainUserId','mainUserId'],['syncMinutes','minutes'],['syncCreatedDays','createdDays']])
       if(result[key]!=null)$('#'+id).value=result[key];
@@ -113,12 +115,13 @@ async function syncRefresh(){
   if(syncPolling||syncAction||document.hidden||!document.body.classList.contains('ready'))return;
   void window.checkBidGapRevision?.();
   if(!bidCanManage){await bidRefreshShared();return;}
-  syncPolling=true;const revision=syncRevision;
+  syncPolling=true;const revision=syncRevision;let readingStatus=true;
   try{
     const result=await syncCommand('status');if(revision!==syncRevision)return;
     syncShow(result);
+    readingStatus=false;
     if(result.lastSuccess&&result.lastSuccess!==syncStamp)await syncLoad();
-  }catch(error){if(revision===syncRevision)syncText(error.message,true);}finally{syncPolling=false;}
+  }catch(error){if(revision===syncRevision){syncText(error.message,true);if(readingStatus)window.BidDataAlerts?.fail('status',error);}}finally{syncPolling=false;}
 }
 for(const [id,command] of [['syncStart','start'],['syncRun','run'],['syncStop','stop'],['syncForget','forget']])$('#'+id).onclick=async()=>{
   if(syncAction)return;
@@ -131,10 +134,23 @@ for(const [id,command] of [['syncStart','start'],['syncRun','run'],['syncStop','
     const result=await syncCommand(command);syncAction=false;syncShow(result);
     if(command==='start'||command==='forget')$('#cookie').value='';
     if(command==='forget')$('#cookie').closest('details').open=true;
-  }catch(error){syncAction=false;syncShow(syncState);syncText(error.message,true);}
+  }catch(error){syncAction=false;syncShow(syncState);syncText(error.message,true);if(command==='run')window.BidDataAlerts?.fail('status',error);}
   finally{syncAction=false;setTimeout(()=>void syncRefresh(),1000);}
 };
 $('#syncLoad').onclick=()=>syncLoad(true).catch(error=>syncText(error.message,true));
 setInterval(syncRefresh,2000);
 setTimeout(()=>void syncRefresh(),500);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void syncRefresh();});
+window.BidDataAlerts?.setRetry('sync',{
+  label:()=>!bidCanManage?'重新读取共享状态':!syncState.enabled||!syncState.configured?'检查同步配置':['running','waiting'].includes(syncState.state)?'正在重试…':'立即重试同步',
+  disabled:()=>bidCanManage&&(syncAction||['running','waiting'].includes(syncState.state)),
+  run:async()=>{
+    if(!bidCanManage){await bidRefreshShared(true);return;}
+    if(!syncState.enabled||!syncState.configured){location.hash='#sync-settings';$('#sync-settings>.config-details').open=true;$('#cookie').closest('details').open=true;requestAnimationFrame(()=>$('#cookie').focus());return;}
+    $('#syncRun').click();
+  }
+});
+window.BidDataAlerts?.setRetry('status',{label:'重新读取状态',run:syncRefresh});
+window.BidDataAlerts?.setRetry('snapshot',{label:'重新读取快照',run:()=>syncLoad(true)});
+window.BidDataAlerts?.setRetry('shared',{label:'重新读取共享报表',run:()=>bidRefreshShared(true)});
+window.BidDataAlerts?.setRetry('archive',{label:()=>bidCanManage?'查看同步配置':'重新读取共享状态',run:()=>{if(bidCanManage)location.hash='#sync-settings';else return bidRefreshShared(true);}});

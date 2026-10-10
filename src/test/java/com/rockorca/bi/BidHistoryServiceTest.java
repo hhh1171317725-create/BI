@@ -15,6 +15,7 @@ class BidHistoryServiceTest {
   private final BidServerSyncService sync=mock(BidServerSyncService.class);
   private final BidProviderRawStore raw=mock(BidProviderRawStore.class);
   private final BidHistoryStore history=mock(BidHistoryStore.class);
+  private BidCredentialCipher cipher;
   private BidHistoryService service;
 
   static class MemoryStore extends BidServerSyncStore {
@@ -29,7 +30,7 @@ class BidHistoryServiceTest {
 
   @BeforeEach void setup()throws Exception{
     var config=mock(RuntimeConfig.class);when(config.runtimeDir()).thenReturn(dir);
-    var cipher=new BidCredentialCipher(config);
+    cipher=new BidCredentialCipher(config);
     var state=new LinkedHashMap<String,Object>();state.put("enabled",true);state.put("credential",cipher.encrypt(7,"cookie"));
     state.put("credentialRevision","revision");state.put("clientUser","123");state.put("mainUserId","456");store.states.put(7L,state);
     when(sync.allowed(7)).thenReturn(true);
@@ -55,5 +56,47 @@ class BidHistoryServiceTest {
   @Test void nextCaptureIsNextBeijing0030(){
     long expected=LocalDate.of(2026,9,12).atTime(0,30).atZone(ReportService.BEIJING).toInstant().toEpochMilli();
     assertEquals(expected,BidHistoryService.nextCaptureAt(LocalDate.of(2026,9,11)));
+  }
+  @Test void archiveFailurePersistsAcrossRetriesAndRestartUntilArchiveCommitSucceeds()throws Exception{
+    var runDate=LocalDate.of(2026,9,11);
+    store.update(7,(connection,state)->{
+      state.put("historyLastDate","2026-09-09");state.put("historyLastSuccess","old-archive");
+      state.put("error","current snapshot failure");state.put("failureAt","current-incident");state.put("lastSuccess","current-snapshot");
+    });
+    doThrow(new java.io.IOException("private cookie body")).when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+    service.capture(7,runDate);var failed=store.get(7);String failureAt=failed.get("historyFailureAt").toString();
+    assertDoesNotThrow(()->java.time.Instant.parse(failureAt));assertEquals("retrying",failed.get("historyState"));
+    assertEquals("2026-09-09",failed.get("historyLastDate"));assertEquals("old-archive",failed.get("historyLastSuccess"));
+    assertFalse(failed.get("historyError").toString().contains("private cookie body"));verify(history,never()).replace(any(),anyLong(),any(),anyList());
+    service.close();service=new BidHistoryService(store,cipher,sync,raw,history);
+    assertEquals(failureAt,store.get(7).get("historyFailureAt"));store.update(7,(connection,state)->state.put("historyRetryAt",0L));
+    doAnswer(call->{
+      var current=store.get(7);assertEquals("running",current.get("historyState"));
+      assertEquals(failed.get("historyError"),current.get("historyError"));assertEquals(failureAt,current.get("historyFailureAt"));
+      throw new java.io.IOException("still failing");
+    }).when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+    service.capture(7,runDate);assertEquals(failureAt,store.get(7).get("historyFailureAt"));
+    store.update(7,(connection,state)->state.put("historyRetryAt",0L));
+    doReturn(Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123"))))
+        .when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+    service.capture(7,runDate);var recovered=store.get(7);
+    assertEquals("ready",recovered.get("historyState"));assertEquals("",recovered.get("historyError"));assertFalse(recovered.containsKey("historyFailureAt"));
+    assertEquals("2026-09-10",recovered.get("historyLastDate"));assertNotEquals("old-archive",recovered.get("historyLastSuccess"));
+    assertEquals("current snapshot failure",recovered.get("error"));assertEquals("current-incident",recovered.get("failureAt"));
+    assertEquals("current-snapshot",recovered.get("lastSuccess"));verify(history).archiveCommitted();
+  }
+  @Test void failedArchiveWriteKeepsIncidentAndPreviousSuccessMetadata()throws Exception{
+    store.update(7,(connection,state)->{
+      state.put("historyError","previous failure");state.put("historyFailureAt","2026-09-10T01:00:00Z");
+      state.put("historyLastDate","2026-09-09");state.put("historyLastSuccess","old-archive");
+    });
+    doAnswer(call->{
+      assertEquals("previous failure",store.get(7).get("historyError"));
+      assertEquals("2026-09-10T01:00:00Z",store.get(7).get("historyFailureAt"));throw new java.sql.SQLException("private database body");
+    }).when(history).replace(any(),eq(7L),any(),anyList());
+    service.capture(7,LocalDate.of(2026,9,11));var failed=store.get(7);
+    assertEquals("retrying",failed.get("historyState"));assertEquals("2026-09-10T01:00:00Z",failed.get("historyFailureAt"));
+    assertEquals("2026-09-09",failed.get("historyLastDate"));assertEquals("old-archive",failed.get("historyLastSuccess"));
+    assertFalse(failed.get("historyError").toString().contains("private database body"));verify(history,never()).archiveCommitted();
   }
 }

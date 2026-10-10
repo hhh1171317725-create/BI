@@ -44,7 +44,7 @@ public class BidHistoryService {
         if(reportDate.toString().equals(current.get("historyLastDate")))return;
         long retryAt=((Number)current.getOrDefault("historyRetryAt",0L)).longValue();
         if(retryAt>System.currentTimeMillis())return;
-        current.put("historyToken",token);current.put("historyState","running");current.put("historyError","");
+        current.put("historyToken",token);current.put("historyState","running");current.putIfAbsent("historyError","");
         current.put("historyRetryAt",System.currentTimeMillis()+180_000L);
       });
       if(!token.equals(state.get("historyToken")))return;
@@ -62,7 +62,7 @@ public class BidHistoryService {
         rawStore.replace(connection,owner,reportDate.toString(),rows);
         history.replace(connection,owner,reportDate,rows);
         current.put("historyLastDate",reportDate.toString());current.put("historyLastSuccess",Instant.now().toString());
-        current.put("historyState","ready");current.put("historyError","");current.remove("historyToken");
+        current.put("historyState","ready");current.put("historyError","");current.remove("historyFailureAt");current.remove("historyToken");
         current.put("historyRetryAt",nextCaptureAt(runDate));
       });
       history.archiveCommitted();
@@ -73,6 +73,7 @@ public class BidHistoryService {
           current.put("historyState","retrying");
           current.put("historyError",BidServerSyncService.requiresAttention(error)
               ?"昨日历史归档失败，请更新同步凭据":"昨日历史归档失败，10 分钟后自动重试");
+          current.putIfAbsent("historyFailureAt",Instant.now().toString());
           current.put("historyRetryAt",System.currentTimeMillis()+RETRY_MILLIS);current.remove("historyToken");
         });
       }catch(Exception ignored){LOG.warn("Bid history scheduler could not save failure status for user {}",owner);}

@@ -88,6 +88,7 @@ async function loadGap(){
   if(!range||historyMode)return;
   const generation=++gapGeneration,anchor=range.end;
   if(gapData?.anchor!==anchor)gapData=null;
+  window.BidDataAlerts?.begin('gap');
   render();$('#gapReload').disabled=true;$('#gapReload').textContent='正在更新…';
   $('#gapStatus').title='';$('#gapStatus').textContent=gapData?'正在更新任务、单价与 gap，当前显示上次关联结果…':'正在读取已保存的账户任务、单价与 gap…';
   try{
@@ -95,9 +96,10 @@ async function loadGap(){
     if(generation!==gapGeneration)return;
     if(result.anchor!==anchor||!result.accounts||typeof result.accounts!=='object')throw Error('gap返回格式异常');
     gapData=result;render();$('#gapStatus').textContent=`gap区间：${result.start} 至 ${result.end} · 有效日结算数合计 ÷ 注册数合计 · 单价查询起点：${result.priceDate||'未返回'} · 点击计划查看依据`;
+    window.BidDataAlerts?.success('gap');
     $('#gapStatus').title=(result.basis||'')+(result.preparedAt?'；预计算时间：'+new Date(result.preparedAt).toLocaleString('zh-CN'):'');
-  }catch(error){if(generation!==gapGeneration)return;render();$('#gapStatus').textContent='gap读取失败：'+error.message+(gapData?'；当前保留上次关联结果，请重试更新。':'；相关收益指标暂不计算，请重试。');}
-  finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='重算关联';}}
+  }catch(error){if(generation!==gapGeneration)return;window.BidDataAlerts?.fail('gap',error);render();$('#gapStatus').textContent='gap读取失败：'+error.message+(gapData?'；当前保留上次关联结果，请重试更新。':'；相关收益指标暂不计算，请重试。');}
+  finally{if(generation===gapGeneration){$('#gapReload').disabled=false;$('#gapReload').textContent='重算关联';}else if(historyMode)window.BidDataAlerts?.cancel('gap');}
 }
 let gapTitleSource=null,gapAccountIndex=new Map(),gapTaskIndex=new Map();
 function gapTitle(id,row){
@@ -195,6 +197,7 @@ window.refreshBidReferences=async revision=>{
     if(raw!==expected||!historyMode)return false;
     historyTaskReferences=refs;historyFinancialReady=Boolean(refs.complete);complete=historyFinancialReady;render();
     $('#historyStatus').textContent=complete?'日报已更新，当前历史报表的任务、单价与 gap 已同步。':'日报已更新，部分日期的 gap 同步失败，将自动重试。';
+    if(complete)window.BidDataAlerts?.success('references');else window.BidDataAlerts?.fail('references','部分数据日期的任务、单价与 gap 读取失败，将自动重试。');
   }else if(range&&raw.length){
     await loadGap();complete=gapData?.sourceRevision===revision;
   }
@@ -209,7 +212,8 @@ async function loadPriorPlanConversions(anchor,expectedRows,generation){
     if(!Array.isArray(data.rows))throw Error('历史累计转化接口返回格式异常');
     const currentPlans=new Set(expectedRows.map(B.planIdentity));priorConversionRows=(Array.isArray(data.rows)?data.rows:[]).map(B.normalize).filter(row=>currentPlans.has(B.planIdentity(row)));
     priorConversionStatus='ready';render();if(!$('#historyStart').value&&!$('#historyEnd').value)$('#historyStatus').textContent=`未选择日期，显示当日最新实时数据；预警判断已合并 ${data.startDate} 至 ${data.endDate} 同计划累计消耗和转化。`;
-  }catch{if(generation===priorConversionGeneration&&!historyMode){priorConversionStatus='error';render();}}
+    window.BidDataAlerts?.success('prior');
+  }catch(error){if(generation===priorConversionGeneration&&!historyMode){priorConversionStatus='error';window.BidDataAlerts?.fail('prior',error);render();}}
 }
 function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}
 function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!start||!end||start>end)throw Error('请选择有效的统计日期范围');return{start,end};}
@@ -330,9 +334,10 @@ function render(){
   document.dispatchEvent(new CustomEvent('bid:rendered'));
 }
 $('#fetch').onclick=async()=>{
-  if(busy)return;setBusy(true);abort=new AbortController();
+  if(busy)return;setBusy(true);abort=new AbortController();let attempted=false;
   try{
     const selected=dates(),payload={startDate:selected.start,endDate:selected.end,createdStart:$('#createdStart').value,createdEnd:$('#createdEnd').value};
+    attempted=true;window.BidDataAlerts?.begin('query');
     const prepared=await syncPrepareQuery(abort.signal);
     payload.expectedUserId=prepared.userId;payload.queryRevision=prepared.queryRevision;
     const current=today(),start=new Date(current+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-3);
@@ -342,9 +347,9 @@ $('#fetch').onclick=async()=>{
       const data=await api('/api/bid-monitor/server-sync/query-snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
       syncIdentity(data.userId);
       if(!data.snapshot?.updatedAt||!Array.isArray(data.snapshot.rows))throw Error('服务器未确认快照保存成功，请重新查询');
-      receive(data.snapshot.rows,'已保存同步快照 '+new Date(data.snapshot.updatedAt).toLocaleString('zh-CN')+
+      await receive(data.snapshot.rows,'已保存同步快照 '+new Date(data.snapshot.updatedAt).toLocaleString('zh-CN')+
         (data.snapshot.duplicateRows?` · 已去除 ${data.snapshot.duplicateRows} 条上游重复记录`:''),{start:data.snapshot.date,end:data.snapshot.date},true);
-      syncStamp=data.snapshot.updatedAt;return;
+      syncStamp=data.snapshot.updatedAt;window.BidDataAlerts?.snapshotLoaded(data.snapshot.updatedAt);window.BidDataAlerts?.success('query');return;
     }
     let all=[],combinedTotal=0,duplicates=0;const ids=new Set();
     for(const platform of ['byte','gdt']){
@@ -365,8 +370,9 @@ $('#fetch').onclick=async()=>{
     }
     if(all.length>100000)throw Error('字节与广点通计划合计超过 100000 条，请缩小计划创建日期范围');
     if(!all.length)throw Error('字节和广点通均未返回计划，保留原有结果');
-    receive(all,'创量查询 · 字节 + 广点通 · 全部 '+new Date().toLocaleTimeString('zh-CN')+(duplicates?` · 已去除 ${duplicates} 条上游重复记录`:'')+` · 上游 ${combinedTotal} 条 · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
-  }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);}finally{setBusy(false);}
+    await receive(all,'创量查询 · 字节 + 广点通 · 全部 '+new Date().toLocaleTimeString('zh-CN')+(duplicates?` · 已去除 ${duplicates} 条上游重复记录`:'')+` · 上游 ${combinedTotal} 条 · 计划创建 ${payload.createdStart||'不限'} 至 ${payload.createdEnd||'不限'}`,selected,live);
+    window.BidDataAlerts?.success('query');
+  }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);if(error.name==='AbortError')window.BidDataAlerts?.cancel('query');else if(attempted)window.BidDataAlerts?.fail('query',error);}finally{setBusy(false);}
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
 $('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
@@ -392,6 +398,7 @@ async function readHistoryRange(start,end,current){
     if(!Array.isArray(archived.rows))throw Error('历史归档接口返回格式异常');for(const row of archived.rows)rows.push(row);archivedCount=archived.rows.length;
   }
   if(end===current){
+    bidSharedAccess(shared);if(!bidCanManage)window.BidDataAlerts?.syncStatus(shared.status||{},shared.sharedOwnerId);
     const snapshot=shared.snapshot;
     if(!snapshot?.updatedAt||!Array.isArray(snapshot.rows))throw Error('当前还没有今日实时快照，请先读取最新快照');
     if(snapshot.date&&snapshot.date!==current)throw Error(`最新实时快照日期为 ${snapshot.date}，今日 ${current} 的数据尚未生成`);
@@ -406,23 +413,25 @@ async function loadHistory(){
   if(!start||!end){message('开始日期和结束日期需要同时选择；都留空则显示当日实时数据',true);return;}
   if(start>end||end>today()){message('请选择不晚于今天的有效日期范围',true);return;}
   busy=true;button.disabled=true;$('#historyStatus').textContent=end===today()&&start<end?'正在合并历史归档与今日实时数据…':'正在读取已归档数据…';
+  window.BidDataAlerts?.begin('history');
   try{
     const data=await fetchHistoryRange(start,end);
-    if(!data.rows.length){++gapGeneration;gapData=null;historyTaskReferences=null;historyFinancialReady=false;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
+    if(!data.rows.length){window.BidDataAlerts?.success('history');++gapGeneration;gapData=null;historyTaskReferences=null;historyFinancialReady=false;raw=[];range={start:data.startDate,end:data.endDate};source='每日 00:30 历史归档';followSync=false;historyMode=true;page=1;render();$('#historyStatus').textContent='所选日期尚无归档数据';message('所选日期尚无归档数据；首次归档会在启用同步后的 00:30 自动执行。');return;}
     historyTaskReferences=null;historyFinancialReady=false;
     const sourceLabel=data.includesToday?`历史归档 + 今日实时 · 历史 ${data.archivedCount} 条 / 今日 ${data.liveCount} 条`:`每日 00:30 历史归档 · ${data.count} 条计划日数据`;
     await receive(data.rows,sourceLabel,{start:data.startDate,end:data.endDate},false,true);
+    window.BidDataAlerts?.success('history');
     const todayNote=data.includesToday?` · 含今日实时 ${data.liveCount} 条` : '';
     $('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote}`;
     const expectedRows=raw;
-    void window.loadBidHistoricalReferences(expectedRows).then(references=>{if(historyMode&&raw===expectedRows){historyTaskReferences=references;historyFinancialReady=Boolean(references.complete);render();const coverage=`${references.size} / ${references.totalDates} 个数据日期`;$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote} · ${coverage} 已关联任务、单价与 gap`;message(historyFinancialReady?(data.includesToday?'历史归档、今日实时数据及逐日收益计算已完成':'历史数据及逐日收益计算已完成'):'历史投放数据已读取，部分日期的收益关联失败',!historyFinancialReady);}});
-  }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);}
+    void window.loadBidHistoricalReferences(expectedRows).then(references=>{if(historyMode&&raw===expectedRows){historyTaskReferences=references;historyFinancialReady=Boolean(references.complete);render();const coverage=`${references.size} / ${references.totalDates} 个数据日期`;$('#historyStatus').textContent=`已读取 ${data.startDate} 至 ${data.endDate}，共 ${data.count} 条计划日数据${todayNote} · ${coverage} 已关联任务、单价与 gap`;message(historyFinancialReady?(data.includesToday?'历史归档、今日实时数据及逐日收益计算已完成':'历史数据及逐日收益计算已完成'):'历史投放数据已读取，部分日期的收益关联失败',!historyFinancialReady);if(historyFinancialReady)window.BidDataAlerts?.success('references');else window.BidDataAlerts?.fail('references','部分数据日期的任务、单价与 gap 读取失败，请重新查询。');}});
+  }catch(error){$('#historyStatus').textContent='历史数据读取失败';message(error.message,true);window.BidDataAlerts?.fail('history',error);}
   finally{busy=false;button.disabled=false;}
 }
 async function loadRealtime(){
   if(busy)return;const button=$('#historyLoad');button.disabled=true;$('#historyStatus').textContent='正在读取当日最新实时数据…';
   try{const loaded=await window.loadBidRealtime?.();if(loaded===false)throw Error('当前账户还没有当日同步快照');$('#historyStatus').textContent='未选择日期，显示当日最新实时数据；选择完整日期范围后可查询每日归档。';message('已切换到当日最新实时数据');}
-  catch(error){$('#historyStatus').textContent='当日实时数据读取失败';message(error.message,true);}finally{button.disabled=false;}
+  catch(error){$('#historyStatus').textContent='当日实时数据读取失败';message(error.message,true);window.BidDataAlerts?.fail('snapshot',error);}finally{button.disabled=false;}
 }
 $('#historyLoad').onclick=()=>void loadHistory();
 $('#historyToday').onclick=()=>{$('#historyStart').value='';$('#historyEnd').value='';void loadRealtime();};
@@ -477,7 +486,13 @@ $('#export').onclick=()=>{
   const labels={plans:'计划明细',dates:'日期汇总',datePlatforms:'日期平台汇总',dateAccounts:'日期账户汇总',dateOptimizers:'日期优化师汇总',dateTasks:'日期任务汇总',dateConversionTargets:'日期转化目标汇总',platforms:'平台汇总',accounts:'账户汇总',optimizers:'优化师汇总',tasks:'任务汇总',optimizerTasks:'优化师任务汇总',conversionTargets:'转化目标组合汇总'};
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`出价监测_${labels[viewMode]}_${range.start}_${range.end}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
-(async()=>{try{const session=await api('/api/session');if(!session.authenticated){location.replace('/login');return;}const permissions=await api('/api/tool-visibility');if(permissions.bidMonitor!==true){location.replace('/');return;}const shared=await api('/api/bid-monitor/shared-report',{signal:AbortSignal.timeout(20000)});bidSharedAccess(shared);document.body.classList.add('ready');render();await bidApplyShared(shared);}catch(error){document.body.classList.add('ready');message(error.message,true);}})();
+(async()=>{try{const session=await api('/api/session');if(!session.authenticated){location.replace('/login');return;}const permissions=await api('/api/tool-visibility');if(permissions.bidMonitor!==true){location.replace('/');return;}const shared=await api('/api/bid-monitor/shared-report',{signal:AbortSignal.timeout(20000)});bidSharedAccess(shared);document.body.classList.add('ready');render();await bidApplyShared(shared);window.BidDataAlerts?.success('shared');}catch(error){document.body.classList.add('ready');message(error.message,true);window.BidDataAlerts?.fail('shared',error);}})();
+window.BidDataAlerts?.setRetry('query',{label:'查看查询配置',run:()=>{location.hash='#sync-settings';}});
+const retryHistoryRead=()=>{if($('#historyStart').value&&$('#historyEnd').value)return loadHistory();location.hash='#report';requestAnimationFrame(()=>$('#historyRangeButton')?.click());};
+window.BidDataAlerts?.setRetry('history',{label:'重新查询日期范围',run:retryHistoryRead});
+window.BidDataAlerts?.setRetry('references',{label:'重新关联收益数据',run:retryHistoryRead});
+window.BidDataAlerts?.setRetry('gap',{label:'重新关联任务与 gap',run:()=>historyMode?retryHistoryRead():loadGap()});
+window.BidDataAlerts?.setRetry('prior',{label:'重新读取累计数据',disabled:()=>historyMode||!range||!raw.length,run:()=>loadPriorPlanConversions(range.end,raw,priorConversionGeneration)});
 
 $('#gapReload').onclick=()=>void loadGap();
 

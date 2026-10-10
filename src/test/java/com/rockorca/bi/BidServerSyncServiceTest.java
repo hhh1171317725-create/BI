@@ -254,6 +254,54 @@ class BidServerSyncServiceTest {
     verify(snapshots,never()).write(any(),anyLong(),anyMap());
     service.run(7);verify(upstream,times(1)).page(anyMap());
   }
+  @Test void failureIncidentSurvivesRestartAndRetriesUntilACompleteSnapshotCommits()throws Exception{
+    service.start(7,input());
+    store.update(7,(connection,state)->{state.put("lastSuccess","old-snapshot");state.put("historyError","archive failure");});
+    when(upstream.page(anyMap())).thenThrow(new java.io.IOException("private-test-cookie"));
+    service.run(7);var failed=service.status(7);String failureAt=failed.get("failureAt").toString();
+    assertDoesNotThrow(()->java.time.Instant.parse(failureAt));assertEquals("old-snapshot",failed.get("lastSuccess"));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
+    service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);
+    assertEquals(failureAt,service.status(7).get("failureAt"));
+    var queued=service.command(7,"run");assertEquals(failed.get("error"),queued.get("error"));assertEquals(failureAt,queued.get("failureAt"));
+    doAnswer(call->{
+      assertEquals("running",service.status(7).get("state"));assertEquals(failureAt,service.status(7).get("failureAt"));
+      assertEquals(failed.get("error"),service.status(7).get("error"));throw new java.io.IOException("another private body");
+    }).when(upstream).page(anyMap());
+    service.run(7);assertEquals(failureAt,service.status(7).get("failureAt"));
+    service.command(7,"run");doReturn(Map.of("total",1,"rows",rows(0,1))).when(upstream).page(anyMap());
+    service.run(7);var recovered=service.status(7);
+    assertEquals("ready",recovered.get("state"));assertEquals("",recovered.get("error"));assertFalse(recovered.containsKey("failureAt"));
+    assertNotEquals("old-snapshot",recovered.get("lastSuccess"));assertEquals("archive failure",recovered.get("historyError"));
+    verify(snapshots).write(eq(store.connection),eq(7L),anyMap());
+    service.command(7,"run");when(upstream.page(anyMap())).thenThrow(new java.io.IOException("new failure"));service.run(7);
+    assertNotEquals(failureAt,service.status(7).get("failureAt"));
+  }
+  @Test void manualFetchFailurePreservesOldSnapshotAndIsVisibleUntilCommittedRecovery()throws Exception{
+    var prepared=service.prepareQuery(7,input());
+    store.update(7,(connection,state)->state.put("lastSuccess","old-snapshot"));
+    when(upstream.page(anyMap())).thenThrow(new IllegalArgumentException("创量 code=-1 private-test-cookie"));
+    assertThrows(IllegalArgumentException.class,()->service.querySnapshot(7,Map.of("queryRevision",prepared.get("queryRevision"))));
+    var failed=service.status(7);assertEquals("paused",failed.get("state"));assertEquals("old-snapshot",failed.get("lastSuccess"));
+    assertTrue(failed.get("error").toString().contains("字节 code=-1"));assertFalse(failed.toString().contains("private-test-cookie"));
+    verify(snapshots,never()).write(any(),anyLong(),anyMap());
+    var retried=service.prepareQuery(7,input());assertEquals(failed.get("failureAt"),retried.get("failureAt"));
+    assertEquals(failed.get("error"),retried.get("error"));
+    doAnswer(call->{
+      assertEquals(failed.get("error"),service.status(7).get("error"));return Map.of("total",1,"rows",rows(0,1));
+    }).when(upstream).page(anyMap());
+    service.querySnapshot(7,Map.of("queryRevision",retried.get("queryRevision")));var recovered=service.status(7);
+    assertEquals("ready",recovered.get("state"));assertEquals("",recovered.get("error"));assertFalse(recovered.containsKey("failureAt"));
+    assertNotEquals("old-snapshot",recovered.get("lastSuccess"));verify(snapshots).write(eq(store.connection),eq(7L),anyMap());
+  }
+  @Test void failedSnapshotWriteLeavesFailureVisibleAndDoesNotAdvanceLastSuccess()throws Exception{
+    var prepared=service.prepareQuery(7,input());store.update(7,(connection,state)->state.put("lastSuccess","old-snapshot"));
+    when(upstream.page(anyMap())).thenReturn(Map.of("total",1,"rows",rows(0,1)));
+    doThrow(new java.sql.SQLException("private database body")).when(snapshots).write(any(),eq(7L),anyMap());
+    assertThrows(java.sql.SQLException.class,()->service.querySnapshot(7,Map.of("queryRevision",prepared.get("queryRevision"))));
+    var status=service.status(7);assertEquals("retrying",status.get("state"));assertEquals("old-snapshot",status.get("lastSuccess"));
+    assertNotNull(status.get("failureAt"));assertFalse(status.containsKey("progress"));assertFalse(status.toString().contains("private database body"));
+  }
   @Test void currentQueryRejectsNewerSnapshotAndChangedCredentials()throws Exception{
     var prepared=service.prepareQuery(7,input());var query=Map.<String,Object>of("queryRevision",prepared.get("queryRevision"));
     when(upstream.page(anyMap())).thenAnswer(call->{store.update(7,(connection,state)->state.put("lastSuccess","newer"));return Map.of("total",1,"rows",rows(0,1));});

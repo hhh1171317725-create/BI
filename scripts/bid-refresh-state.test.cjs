@@ -5,7 +5,7 @@ const source=fs.readFileSync(path.join(__dirname,'../frontend/bid-monitor.js'),'
 
 test('failed gap refresh keeps same-date financial references but never carries them to a different date',async()=>{
  const elements=new Map(),previous={anchor:'2026-09-20',accounts:{a:{gap:.9}}};
- const context=vm.createContext({AbortSignal,range:{end:'2026-09-20'},historyMode:false,gapGeneration:0,gapData:previous,
+ const context=vm.createContext({window:{},AbortSignal,range:{end:'2026-09-20'},historyMode:false,gapGeneration:0,gapData:previous,
   render(){},B:{normalizeGapPayload:value=>value},api:async()=>{throw Error('timeout');},
   $:id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);}});
  vm.runInContext(source.slice(source.indexOf('async function loadGap('),source.indexOf('let gapTitleSource=')),context);
@@ -37,6 +37,19 @@ test('unchanged shared polls do not recompute the report or redraw strategy card
  await context.bidApplyShared({...data,snapshot:null,pricingRevision:'p2',rules:[{name:'task',price:2}]});
  assert.equal(renders,1);assert.equal(context.taskRules[0].price,2);
  await context.bidApplyShared(data,true);assert.equal(receives,2,'Explicit realtime refresh still works');
+});
+
+test('switching to history retires the superseded gap loading indicator',async()=>{
+ const active=new Set(),elements=new Map();let resolve;
+ const context=vm.createContext({AbortSignal,range:{end:'2026-09-20'},historyMode:false,gapGeneration:0,gapData:null,
+  window:{BidDataAlerts:{begin:channel=>active.add(channel),cancel:channel=>active.delete(channel)}},render(){},
+  B:{normalizeGapPayload:value=>value},api:()=>new Promise(done=>{resolve=done;}),
+  $:id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);}});
+ vm.runInContext(source.slice(source.indexOf('async function loadGap('),source.indexOf('let gapTitleSource=')),context);
+ const pending=context.loadGap();assert.equal(active.has('gap'),true);
+ context.historyMode=true;context.gapGeneration++;resolve({anchor:'2026-09-20',accounts:{}});await pending;
+ assert.equal(active.has('gap'),false,'A discarded realtime response must not leave historical reports permanently updating');
+ assert.equal(context.gapData,null);
 });
 
 test('out-of-order references cannot overwrite a newer historical query with the same end date',async()=>{

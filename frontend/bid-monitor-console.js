@@ -54,7 +54,8 @@
   let lastFailure=false;
   let coverageRows=null,coverageInfo={missing:0,noTask:0,noPrice:0,noGap:0};
   function updateDataStatus(){
-    const text=historyStatus.textContent+' '+gapStatus.textContent,failed=/失败|异常/.test(text),loading=/正在|读取中|更新中/.test(text);
+    const alerts=window.BidDataAlerts?.state;
+    const text=historyStatus.textContent+' '+gapStatus.textContent,failed=alerts?.failed||/失败|异常/.test(text),loading=alerts?.loading||/正在|读取中|更新中/.test(text);
     const rows=typeof filteredRows==='undefined'?[]:filteredRows;
     const financialReady=!historyMode||historyFinancialReady;
     if(coverageRows!==rows){
@@ -63,7 +64,7 @@
       coverageRows=rows;coverageInfo=counts;
     }
     const missing=financialReady?coverageInfo.missing:0;
-    const label=failed?'需要处理':loading||!financialReady?'更新中':missing?`收益待关联 ${missing} 条`:raw.length?'已加载':'等待数据';
+    const label=alerts?.failed?'更新失败 · 需要处理':failed?'需要处理':loading||!financialReady?'更新中':missing?`收益待关联 ${missing} 条`:raw.length?'已加载':'等待数据';
     if(statusIndicator.textContent!==label)statusIndicator.textContent=label;
     dataStatus.dataset.state=failed?'error':loading?'loading':'ready';
     if(failed&&!lastFailure)dataStatus.open=true;lastFailure=failed;
@@ -80,6 +81,7 @@
   for(const element of [historyStatus,gapStatus,document.getElementById('pricingCoverage')])statusObserver.observe(element,{childList:true,subtree:true,characterData:true});
   updateDataStatus();
   document.addEventListener('bid:rendered',updateDataStatus);
+  document.addEventListener('bid:data-status',updateDataStatus);
   const tabs=level.querySelector('.ocean-level-tabs');
   tabs.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const buttons=[...tabs.querySelectorAll('button')],index=buttons.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});
   const search=document.getElementById('search');search.type='search';

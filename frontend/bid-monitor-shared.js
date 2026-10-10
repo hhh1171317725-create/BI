@@ -19,6 +19,7 @@ async function bidApplyShared(data,force=false){
     document.dispatchEvent(new CustomEvent('bid:strategies-shared',{detail:window.bidStrategyBundle}));
   }
   if(bidCanManage)return;
+  window.BidDataAlerts?.syncStatus(data.status||{},data.sharedOwnerId);
   const rules=Array.isArray(data.rules)?data.rules:[],pricingKey=data.pricingRevision||JSON.stringify(rules),pricingChanged=bidSharedPricing!==pricingKey;
   if(pricingChanged){
     for(const option of document.getElementById('taskFilter').options)option.selected=false;
@@ -35,6 +36,7 @@ async function bidApplyShared(data,force=false){
     }
   }else if(pricingChanged)render();
   bidSharedVersion=data.version||'';
+  if(data.snapshot?.updatedAt)window.BidDataAlerts?.snapshotLoaded(data.snapshot.updatedAt);
 }
 async function bidRefreshShared(force=false){
   if(bidSharedLoading||document.hidden)return;
@@ -42,6 +44,7 @@ async function bidRefreshShared(force=false){
   try{
     const data=await api('/api/bid-monitor/shared-report?after='+encodeURIComponent(force?'':bidSharedVersion),{signal:AbortSignal.timeout(20000)});
     await bidApplyShared(data,force);
+    window.BidDataAlerts?.success('shared');
     return true;
-  }catch(error){message(error.message,true);return false;}finally{bidSharedLoading=false;}
+  }catch(error){message(error.message,true);window.BidDataAlerts?.fail('shared',error);return false;}finally{bidSharedLoading=false;}
 }

@@ -1,6 +1,7 @@
 package com.rockorca.bi;
 
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
@@ -118,8 +119,8 @@ public class BidServerSyncService {
     output.put("userId",Long.toString(owner));
     output.put("configured",state.containsKey("credential"));
     output.put("enabled",Boolean.TRUE.equals(state.get("enabled")));
-    for (String key:List.of("clientUser","mainUserId","state","error","lastSuccess","dueAt","progress",
-        "historyState","historyError","historyLastDate","historyLastSuccess","historyRetryAt"))
+    for (String key:List.of("clientUser","mainUserId","state","error","failureAt","lastSuccess","dueAt","progress",
+        "historyState","historyError","historyFailureAt","historyLastDate","historyLastSuccess","historyRetryAt"))
       if (state.containsKey(key)) output.put(key,state.get(key));
     output.put("minutes",10);
     output.put("createdDays",4);
@@ -198,49 +199,49 @@ public class BidServerSyncService {
     requireQueryRevision(state,revision);
     if(!allowed(owner))throw new IllegalStateException("permission");
     if(!current(state,token))throw new IllegalArgumentException("同步已停止，请重新启用查询");
-    String cookie;
-    try{cookie=cipher.decrypt(owner,text(state,"credential"));}
-    catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
-    long startedAt=System.currentTimeMillis();
-    store.update(owner,(connection,latest)->{
-      requireQueryRevision(latest,revision);
-      if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
-        throw new IllegalArgumentException("同步状态已变更，请重新查询");
-      latest.put("state","running");latest.put("error","");
-      latest.put("progress",progressValue(0,-1,startedAt));
-    });
-    Map<String,Object> snapshot;
     try{
-      snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,latest)->{
+      String cookie;
+      try{cookie=cipher.decrypt(owner,text(state,"credential"));}
+      catch(Exception error){throw new IllegalArgumentException("保存的凭据无法解密，请更新登录凭据");}
+      long startedAt=System.currentTimeMillis();
+      store.update(owner,(connection,latest)->{
+        requireQueryRevision(latest,revision);
+        if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+          throw new IllegalArgumentException("同步状态已变更，请重新查询");
+        latest.put("state","running");
+        latest.put("progress",progressValue(0,-1,startedAt));
+      });
+      var snapshot=collect(state,cookie,(done,total)->store.update(owner,(connection,latest)->{
         requireQueryRevision(latest,revision);
         if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
           throw new IllegalArgumentException("同步状态已变更，请重新查询");
         latest.put("progress",progressValue(done,total,startedAt));
       }));
-    }catch(Exception error){
+      snapshots.initialize();rawStore.initialize();
+      var saved=new LinkedHashMap<String,Object>();
       store.update(owner,(connection,latest)->{
-        if(current(latest,token)&&revision.equals(text(latest,"credentialRevision"))){
-          latest.put("state","ready");latest.remove("progress");
-        }
+        requireQueryRevision(latest,revision);
+        if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
+          throw new IllegalArgumentException("同步状态已变更，请重新查询");
+        var validated=BidSnapshotController.validate(snapshot);
+        rawStore.replace(connection,owner,String.valueOf(snapshot.get("date")),rawRows(snapshot));
+        snapshots.write(connection,owner,validated);
+        saved.putAll(validated);
+        // Retire overlapping queries/workers before publishing this complete snapshot.
+        latest.put("token",UUID.randomUUID().toString());latest.put("lastSuccess",validated.get("updatedAt"));
+        latest.put("state","ready");clearFailure(latest);latest.remove("progress");
+        latest.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
       });
+      return Map.of("userId",Long.toString(owner),"snapshot",saved);
+    }catch(Exception error){
+      try{
+        store.update(owner,(connection,latest)->{
+          if(current(latest,token)&&revision.equals(text(latest,"credentialRevision"))
+              &&Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess")))recordFailure(latest,error);
+        });
+      }catch(Exception ignored){LOG.warn("Bid manual query could not save failure status for user {}",owner);}
       throw error;
     }
-    snapshots.initialize();rawStore.initialize();
-    var saved=new LinkedHashMap<String,Object>();
-    store.update(owner,(connection,latest)->{
-      requireQueryRevision(latest,revision);
-      if(!current(latest,token)||!Objects.equals(state.get("lastSuccess"),latest.get("lastSuccess"))||!allowed(owner))
-        throw new IllegalArgumentException("同步状态已变更，请重新查询");
-      var validated=BidSnapshotController.validate(snapshot);
-      rawStore.replace(connection,owner,String.valueOf(snapshot.get("date")),rawRows(snapshot));
-      snapshots.write(connection,owner,validated);
-      saved.putAll(validated);
-      // Retire overlapping queries/workers before publishing this complete snapshot.
-      latest.put("token",UUID.randomUUID().toString());latest.put("lastSuccess",validated.get("updatedAt"));
-      latest.put("state","ready");latest.put("error","");latest.remove("progress");
-      latest.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
-    });
-    return Map.of("userId",Long.toString(owner),"snapshot",saved);
   }
 
   Map<String,Object> command(long owner,String action) throws Exception {
@@ -250,7 +251,7 @@ public class BidServerSyncService {
         if(!"running".equals(state.get("state")))queue(state);
       } else {
         state.put("token",UUID.randomUUID().toString());state.put("enabled",false);
-        state.put("dueAt",0L);state.put("state","stopped");state.put("error","");
+        state.put("dueAt",0L);state.put("state","stopped");state.putIfAbsent("error","");
         if(action.equals("forget")){state.remove("credential");state.remove("credentialRevision");}
       }
     });
@@ -259,7 +260,7 @@ public class BidServerSyncService {
 
   private static void queue(Map<String,Object> state) {
     state.put("token",UUID.randomUUID().toString());state.put("enabled",true);
-    state.put("dueAt",System.currentTimeMillis());state.put("state","waiting");state.put("error","");state.put("progress","");
+    state.put("dueAt",System.currentTimeMillis());state.put("state","waiting");state.putIfAbsent("error","");state.put("progress","");
   }
 
   boolean allowed(long owner) {
@@ -310,18 +311,14 @@ public class BidServerSyncService {
         rawStore.replace(connection,owner,String.valueOf(snapshot.get("date")),rawRows(snapshot));
         snapshots.write(connection,owner,validated);
         current.put("lastSuccess",validated.get("updatedAt"));current.put("state","ready");
-        current.put("minutes",10);current.put("error","");current.remove("progress");
+        current.put("minutes",10);clearFailure(current);current.remove("progress");
         current.put("dueAt",System.currentTimeMillis()+INTERVAL_MILLIS);
       });
     } catch(Exception error) {
       try {
         store.update(owner,(connection,current)->{
           if(!current(current,token))return;
-          boolean pause=requiresAttention(error);
-          current.put("enabled",!pause);current.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
-          current.put("state",pause?"paused":"retrying");
-          current.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
-          current.remove("progress");
+          recordFailure(current,error);
         });
       } catch(Exception ignored){LOG.warn("Bid server sync could not save failure status for user {}",owner);}
     }
@@ -329,6 +326,19 @@ public class BidServerSyncService {
 
   static boolean current(Map<String,Object> state,String token) {
     return Boolean.TRUE.equals(state.get("enabled"))&&token.equals(state.get("token"));
+  }
+
+  private static void recordFailure(Map<String,Object> state,Exception error){
+    boolean pause=requiresAttention(error);
+    state.put("enabled",!pause);state.put("dueAt",pause?0L:System.currentTimeMillis()+INTERVAL_MILLIS);
+    state.put("state",pause?"paused":"retrying");
+    state.put("error",pause?failure(error):"本次查询失败，已保留旧数据；10 分钟后自动重试，无需重复填写凭据");
+    // Keep one durable incident identity through retries, restarts, and credential updates.
+    state.putIfAbsent("failureAt",Instant.now().toString());state.remove("progress");
+  }
+
+  private static void clearFailure(Map<String,Object> state){
+    state.put("error","");state.remove("failureAt");
   }
 
   Map<String,Object> collect(Map<String,Object> state,String cookie) throws Exception {
@@ -537,7 +547,8 @@ public class BidServerSyncService {
 
   static String failure(Exception error) {
     if("permission".equals(error.getMessage()))return "网站账户已停用或工具权限已撤销，同步已暂停";
-    if("credential".equals(error.getMessage()))return "保存的凭据无法解密，请更新登录凭据后重新启用";
+    if("credential".equals(error.getMessage())||Objects.toString(error.getMessage(),"").contains("保存的凭据无法解密"))
+      return "保存的凭据无法解密，请更新登录凭据后重新启用";
     // Do not persist upstream bodies, cookies, or exception stacks in user-visible status.
     String message=Objects.toString(error.getMessage(),"");
     String platform=message.startsWith("广点通")?"广点通":message.startsWith("创量")?"字节":"";
@@ -549,7 +560,7 @@ public class BidServerSyncService {
 
   static boolean requiresAttention(Exception error){
     String message=Objects.toString(error.getMessage(),"");
-    return message.equals("permission")||message.equals("credential")||message.contains("code=")
+    return message.equals("permission")||message.equals("credential")||message.contains("保存的凭据无法解密")||message.contains("code=")
         ||message.contains("HTTP 401")||message.contains("HTTP 403")||message.contains("返回的不是 JSON");
   }
 

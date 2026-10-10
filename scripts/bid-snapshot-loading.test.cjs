@@ -5,7 +5,7 @@ const source=fs.readFileSync(path.join(__dirname,'../frontend/bid-monitor-server
 const loader=source.slice(source.indexOf('let syncLoadPending='),source.indexOf('window.loadBidRealtime='));
 function setup(){
   const requests=[],received=[];
-  const context=vm.createContext({AbortSignal,bidCanManage:true,busy:false,followSync:true,raw:[],syncRevision:0,syncStamp:'',
+  const context=vm.createContext({window:{},AbortSignal,bidCanManage:true,busy:false,followSync:true,raw:[],syncRevision:0,syncStamp:'',
     syncText(){},syncIdentity(){},api:()=>new Promise((resolve,reject)=>requests.push({resolve,reject})),
     receive:async rows=>{received.push(rows);context.raw=rows;context.followSync=true;}});
   vm.runInContext(loader,context);
@@ -38,4 +38,12 @@ test('failed shared request releases its slot so a manual retry can succeed',asy
   const checks=[assert.rejects(a,/offline/),assert.rejects(b,/offline/)];requests[0].reject(Error('offline'));await Promise.all(checks);
   const retry=context.syncLoad(true);assert.equal(requests.length,2);requests[1].resolve(snapshot);
   assert.equal(await retry,true);assert.equal(received.length,1);
+});
+
+test('late snapshot errors do not notify over a newer report',async()=>{
+  const {context,requests}=setup();let notifications=0;
+  context.window.BidDataAlerts={fail:()=>notifications++};
+  const pending=context.syncLoad(true);context.raw=[{history:true}];context.followSync=false;
+  const rejection=assert.rejects(pending,/offline/);requests[0].reject(Error('offline'));await rejection;
+  assert.equal(notifications,0);
 });

@@ -112,6 +112,16 @@ const sample=Array.from({length:105},(_,i)=>({promotion_id:String(10000+i),promo
   assert.equal(dingSent,1);
   await page.locator('#file').setInputFiles({name:'fixture.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('fixture')});
   await page.waitForFunction(()=>document.querySelector('#count').textContent==='105 条');assert.equal(await page.locator('#rows tr').count(),50);
+  const ruleContext=await page.evaluate(()=>window.getPetReportContext(false,true));
+  assert.equal(ruleContext.plans.length,30,'normal assistant detail stays bounded');
+  assert.equal(ruleContext.ruleData.plan.total,105,'rule checks cover more than top30');
+  assert.equal(ruleContext.ruleData.plan.rows.length,105);
+  assert.equal(ruleContext.ruleData.plan.rows[0]['消耗'],204);
+  assert.equal(ruleContext.ruleData.account.total,2);
+  assert.equal(ruleContext.ruleData.optimizer.total,2);
+  assert.equal(ruleContext.ruleData.account.rows.reduce((total,row)=>total+row['消耗'],0),15960);
+  assert.equal(ruleContext.summary['消耗'],15960);
+  assert.equal((await page.evaluate(()=>window.getPetReportContext())).ruleData,undefined,'drawing ordinary context does not build rule dimensions');
   await page.evaluate(()=>window.testTaskOption=document.querySelector('#taskFilter option'));
   await page.evaluate(()=>window.testSummaryCard=document.querySelector('#summaryCards').firstElementChild);
   await page.evaluate(()=>{window.testHeader=document.querySelector('#tableHead tr');window.testMetrics=document.querySelector('#metrics').firstElementChild;window.summaryCalls=0;window.originalSummary=BidMonitor.summarizeCash;BidMonitor.summarizeCash=(...args)=>{window.summaryCalls++;return window.originalSummary(...args);};});

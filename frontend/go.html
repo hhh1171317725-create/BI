@@ -4,7 +4,7 @@
 <script>fetch('/api/session',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(r=>{if(!r.authenticated)throw Error();window.currentSessionUser=r.user||{};if(r.user?.role==='admin')document.documentElement.classList.add('admin');document.documentElement.classList.add('authenticated');}).catch(()=>location.replace('/login'));</script>
 <script src="/report-visibility.js?v=3"></script><link rel="stylesheet" href="/app-ui.css?v=6"><script src="/app-ui.js?v=20261009-games" defer></script>
 <link rel="stylesheet" href="/games.css?v=20261009-online"><link rel="stylesheet" href="/go.css?v=1"><script src="/go-core.js?v=1" defer></script><script src="/go.js?v=1" defer></script>
-<script src="/pet-loader.js?v=20261009-assistant" defer></script></head>
+<script src="/pet-loader.js?v=20261009-rules" defer></script></head>
 <body data-page="games"><header><div class="header-row"><div class="brand"><span class="mark">棋</span><h1>围棋</h1></div><nav class="nav"><a href="/games.html">返回游戏大厅</a></nav></div></header>
 <main class="games-main"><div class="game-topbar"><div class="game-title"><h2>黑白之间，自有天地</h2><span class="game-tag">本地双人</span></div></div>
 <div class="gomoku-layout"><section class="gomoku-play-panel" aria-label="围棋对局"><div class="gomoku-status"><span id="goTurnStone" class="turn-stone" aria-hidden="true"></span><div><strong id="goStatus" role="status" aria-live="polite"></strong><p id="goHint"></p></div><span id="goMove" class="move-total"></span></div>

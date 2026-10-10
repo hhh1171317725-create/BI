@@ -4,11 +4,11 @@
   function loadPet() {
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = '/pet.css?v=20261009-assistant';
+  css.href = '/pet.css?v=20261009-rules';
   document.head.appendChild(css);
   const script = document.createElement('script');
   script.dataset.petLoader = 'true';
-  script.src = '/pet.js?v=20261009-assistant';
+  script.src = '/pet.js?v=20261009-rules';
   document.head.appendChild(script);
   }
   function schedule() {

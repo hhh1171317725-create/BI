@@ -32,6 +32,7 @@
             <div><div class="data-pet-name">初音未来 · 数据助手</div><div class="data-pet-mode">报表对话与数据分析</div></div>
           </div>
           <div class="data-pet-head-actions">
+            <button class="data-pet-rules-toggle" type="button" aria-label="分析规则" title="制定文字规则或指标条件">规则</button>
             <button class="data-pet-reset" type="button" aria-label="新对话" title="新对话：清除聊天与分析筛选">↺</button>
             <button class="data-pet-settings-toggle" type="button" aria-label="AI 设置" title="AI 设置" hidden>⚙</button>
             <button class="data-pet-close" type="button" aria-label="关闭对话">×</button>
@@ -50,7 +51,7 @@
         <div class="data-pet-messages" role="log" aria-label="对话记录" aria-live="polite"></div>
         <button class="data-pet-latest" type="button" hidden>查看新回复 ↓</button>
         <div class="data-pet-quick">
-          <button type="button" data-question="帮我总结当前报表">总结报表</button>
+          <button type="button" data-question="按保存的分析规则检查当前报表">规则分析</button>
           <button type="button" data-question="诊断当前报表的亏损并给出优化建议">诊断亏损</button>
           <button type="button" data-question="按利润给优化师排名">利润排名</button>
           <button type="button" data-question="对比上期，哪些指标变化最大？">对比上期</button>
@@ -79,6 +80,7 @@
   const mode = root.querySelector(".data-pet-mode");
   const settings = root.querySelector(".data-pet-settings");
   const settingsToggle = root.querySelector(".data-pet-settings-toggle");
+  const rulesToggle = root.querySelector(".data-pet-rules-toggle");
   const providerInput = root.querySelector(".data-pet-provider");
   const modelInput = root.querySelector(".data-pet-model");
   const apiKeyInput = root.querySelector(".data-pet-api-key");
@@ -335,6 +337,22 @@
       scope.textContent = `分析范围：${result.scope}`; card.append(scope);
     }
     card.append(renderAnswer(result.reply || '本次未返回回答，请重试。'));
+    if (Array.isArray(result.rulesApplied)) {
+      const rules = document.createElement('div'); rules.className = 'data-pet-rule-status';
+      const label = document.createElement('span');
+      label.textContent = result.rulesApplied.length
+        ? `启用 ${result.rulesApplied.length} 条规则 · v${result.rulesVersion ?? 0}`
+        : '当前报表没有启用的分析规则';
+      const view = document.createElement('button'); view.type = 'button'; view.textContent = '查看规则';
+      view.addEventListener('click', () => void openRules(view)); rules.append(label, view); card.append(rules);
+      if (result.mode === 'ai' && result.ruleChecks) {
+        const details = document.createElement('details'); details.className = 'data-pet-rule-checks';
+        const title = document.createElement('summary'); title.textContent = '查看条件判断依据';
+        // The server report is literal data, including administrator supplied rule titles.
+        const checks = document.createElement('div'); checks.textContent = result.ruleChecks;
+        details.append(title, checks); card.append(details);
+      }
+    }
     if (result.notice) { const note = document.createElement('div'); note.className = 'data-pet-notice'; note.textContent = result.notice; card.append(note); }
     const tools = document.createElement('div'); tools.className = 'data-pet-answer-tools';
     const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = '复制回答';
@@ -344,6 +362,54 @@
     });
     tools.append(copy); card.append(tools); messages.append(card); followMessages(follow);
   }
+
+  let rulesEditorLoading = null;
+  function loadRulesEditor() {
+    if (window.PetRules && document.querySelector('link[data-pet-rules-style]')?.dataset.petRulesReady === 'true') return Promise.resolve();
+    if (rulesEditorLoading) return rulesEditorLoading;
+    rulesEditorLoading = new Promise((resolve, reject) => {
+      let css = document.querySelector('link[data-pet-rules-style]');
+      let timer;
+      const script = document.createElement('script');
+      const fail = () => {
+        clearTimeout(timer); script.remove(); if (css && css.dataset.petRulesReady !== 'true') css.remove();
+        reject(new Error('分析规则组件加载失败，请重试'));
+      };
+      let styleReady = css?.dataset.petRulesReady === 'true', scriptReady = Boolean(window.PetRules);
+      const ready = () => {
+        if (styleReady && scriptReady) { clearTimeout(timer); window.PetRules ? resolve() : fail(); }
+      };
+      timer = setTimeout(fail, 15000);
+      if (!css) {
+        css = document.createElement('link'); css.rel = 'stylesheet';
+        css.dataset.petRulesStyle = 'true'; css.href = '/pet-rules.css?v=20261009-rules';
+        css.onload = () => { css.dataset.petRulesReady = 'true'; styleReady = true; ready(); }; css.onerror = fail;
+        document.head.append(css);
+      }
+      if (!scriptReady) {
+        script.src = '/pet-rules.js?v=20261009-rules';
+        script.onload = () => { scriptReady = true; ready(); }; script.onerror = fail;
+        document.head.append(script);
+      } else ready();
+    }).catch(error => { rulesEditorLoading = null; throw error; });
+    return rulesEditorLoading;
+  }
+
+  async function openRules(button) {
+    button.disabled = true;
+    try {
+      await loadRulesEditor(); button.disabled = false;
+      button.focus({preventScroll: true});
+      await window.PetRules.open();
+    }
+    catch (error) { addMessage('assistant', error.message || '分析规则暂时无法打开，请重试。', 'error', true); }
+    finally { button.disabled = false; }
+  }
+
+  rulesToggle.addEventListener('click', () => void openRules(rulesToggle));
+  window.addEventListener('pet:rules-saved', event => {
+    addMessage('assistant', `分析规则已保存（v${event.detail?.version ?? 0}）。下一次分析将使用新规则，历史回答保留原来的判断。`, '', true);
+  });
 
   function resizeInput() {
     input.style.height = 'auto';
@@ -415,7 +481,7 @@
     request.timer = setTimeout(() => { if (activeRequest === request) stopRequest('本次等待已超时，请重试或缩小报表日期范围。'); }, 60000);
     try {
       const capturedContext = typeof window.getPetReportContext === "function"
-        ? window.getPetReportContext()
+        ? window.getPetReportContext(false, true)
         : { mode: 'page', pagePath: location.pathname };
       // Daily metrics are recomputed on the server; send only the applied query scope.
       const context = capturedContext.mode === 'bid' || capturedContext.mode === 'page' ? capturedContext
@@ -582,7 +648,7 @@
 
   addMessage("assistant", reportPage ? "嗨，我是初音数据助手！可以问我当前报表的消耗、利润、ROI、有效订单、优化师排名或异常预警。" : loginPage ? "嗨，我是初音数据助手！登录后可在全站与我对话。" : "嗨，我是初音数据助手！可以询问当前页面用途、投放指标和分析方法。具体业绩分析请打开大航海或京东日报。");
   mode.textContent = "正在读取 AI 配置…";
-  if (loginPage) mode.textContent = '登录引导 · 登录后启用 AI';
+  if (loginPage) { mode.textContent = '登录引导 · 登录后启用 AI'; rulesToggle.hidden = true; }
   else loadAiConfig().catch(() => {
     mode.textContent = "AI 配置暂未读取 · 可继续提问";
   });

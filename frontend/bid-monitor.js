@@ -7,6 +7,7 @@ const creationDate=new Date(today()+'T00:00:00Z');creationDate.setUTCDate(creati
 $('#createdStart').value=creationDate.toISOString().slice(0,10);
 let raw=[],dailyAnalyzed=[],analyzed=[],visible=[],aggregateRows=[],taskRules=[],page=1,range=null,source='',busy=false,followSync=true,historyMode=false,abort,sortKey='cost',sortDirection='desc',priorConversionRows=[];
 let gapData=null,gapGeneration=0,selectedAccount=null,historyTaskReferences=null,historyFinancialReady=false,priorConversionGeneration=0;
+let reportLoadGeneration=0,realtimeLoadPending=null;
 let compensationOnly=false,compensationCandidates=[];
 let priorConversionStatus='ready';
 const compensationWarningsReady=()=>historyMode||priorConversionStatus==='ready';
@@ -215,7 +216,7 @@ async function loadPriorPlanConversions(anchor,expectedRows,generation){
     window.BidDataAlerts?.success('prior');
   }catch(error){if(generation===priorConversionGeneration&&!historyMode){priorConversionStatus='error';window.BidDataAlerts?.fail('prior',error);render();}}
 }
-function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;}
+function setBusy(value){busy=value;$('#fetch').disabled=$('#import').disabled=value;$('#cancel').disabled=!value;$('#historyLoad').disabled=value||realtimeLoadPending?.generation===reportLoadGeneration;}
 function dates(){const start=$('#startDate').value,end=$('#endDate').value;if(!start||!end||start>end)throw Error('请选择有效的统计日期范围');return{start,end};}
 function receive(rows,label,datesValue,live=false,historical=false){
   if(!rows.length)throw Error('返回 0 条计划，保留原有结果');const next=rows.map(B.normalize);for(const row of next)if(!row.statDate)row.statDate=datesValue?.end||'';
@@ -334,7 +335,7 @@ function render(){
   document.dispatchEvent(new CustomEvent('bid:rendered'));
 }
 $('#fetch').onclick=async()=>{
-  if(busy)return;setBusy(true);abort=new AbortController();let attempted=false;
+  if(busy)return;++reportLoadGeneration;setBusy(true);abort=new AbortController();let attempted=false;
   try{
     const selected=dates(),payload={startDate:selected.start,endDate:selected.end,createdStart:$('#createdStart').value,createdEnd:$('#createdEnd').value};
     attempted=true;window.BidDataAlerts?.begin('query');
@@ -375,7 +376,7 @@ $('#fetch').onclick=async()=>{
   }catch(error){message(error.name==='AbortError'?'已取消查询，原结果未改变':error.message,true);if(error.name==='AbortError')window.BidDataAlerts?.cancel('query');else if(attempted)window.BidDataAlerts?.fail('query',error);}finally{setBusy(false);}
 };
 $('#cancel').onclick=()=>abort?.abort();$('#import').onclick=()=>$('#file').click();
-$('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
+$('#file').onchange=async()=>{if(!$('#file').files.length||busy)return;++reportLoadGeneration;setBusy(true);try{const selected=dates(),file=$('#file').files[0],form=new FormData();form.append('file',file);message('正在读取 Excel…');const data=await api('/api/bid-monitor/import',{method:'POST',body:form});receive(data.rows,`导入 ${file.name}`,selected);}catch(error){message(error.message,true);}finally{$('#file').value='';setBusy(false);}};
 const historyRangePending=new Map();
 async function fetchHistoryRange(start,end){
   const current=today();if(!start||!end||start>end||end>current)throw Error('请选择不晚于今天的有效日期范围');
@@ -412,7 +413,7 @@ async function loadHistory(){
   if(!start&&!end){await loadRealtime();return;}
   if(!start||!end){message('开始日期和结束日期需要同时选择；都留空则显示当日实时数据',true);return;}
   if(start>end||end>today()){message('请选择不晚于今天的有效日期范围',true);return;}
-  busy=true;button.disabled=true;$('#historyStatus').textContent=end===today()&&start<end?'正在合并历史归档与今日实时数据…':'正在读取已归档数据…';
+  ++reportLoadGeneration;busy=true;button.disabled=true;$('#historyStatus').textContent=end===today()&&start<end?'正在合并历史归档与今日实时数据…':'正在读取已归档数据…';
   window.BidDataAlerts?.begin('history');
   try{
     const data=await fetchHistoryRange(start,end);
@@ -429,9 +430,19 @@ async function loadHistory(){
   finally{busy=false;button.disabled=false;}
 }
 async function loadRealtime(){
-  if(busy)return;const button=$('#historyLoad');button.disabled=true;$('#historyStatus').textContent='正在读取当日最新实时数据…';
-  try{const loaded=await window.loadBidRealtime?.();if(loaded===false)throw Error('当前账户还没有当日同步快照');$('#historyStatus').textContent='未选择日期，显示当日最新实时数据；选择完整日期范围后可查询每日归档。';message('已切换到当日最新实时数据');}
-  catch(error){$('#historyStatus').textContent='当日实时数据读取失败';message(error.message,true);window.BidDataAlerts?.fail('snapshot',error);}finally{button.disabled=false;}
+  if(busy)return false;
+  if(realtimeLoadPending?.generation===reportLoadGeneration)return realtimeLoadPending.promise;
+  const job={generation:++reportLoadGeneration},button=$('#historyLoad');realtimeLoadPending=job;
+  button.disabled=true;$('#historyStatus').textContent='正在读取当日最新实时数据…';
+  job.promise=(async()=>{
+    try{
+      const loaded=await window.loadBidRealtime?.();if(job.generation!==reportLoadGeneration)return false;
+      if(loaded===false)throw Error('当前账户还没有当日同步快照');
+      $('#historyStatus').textContent='未选择日期，显示当日最新实时数据；选择完整日期范围后可查询每日归档。';message('已切换到当日最新实时数据');return true;
+    }catch(error){if(job.generation===reportLoadGeneration){$('#historyStatus').textContent='当日实时数据读取失败';message(error.message,true);window.BidDataAlerts?.fail('snapshot',error);}return false;}
+    finally{if(job.generation===reportLoadGeneration)button.disabled=false;if(realtimeLoadPending===job)realtimeLoadPending=null;}
+  })();
+  return job.promise;
 }
 $('#historyLoad').onclick=()=>void loadHistory();
 $('#historyToday').onclick=()=>{$('#historyStart').value='';$('#historyEnd').value='';void loadRealtime();};

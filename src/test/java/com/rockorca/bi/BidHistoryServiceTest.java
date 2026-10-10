@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,12 +21,17 @@ class BidHistoryServiceTest {
 
   static class MemoryStore extends BidServerSyncStore {
     final Map<Long,Map<String,Object>> states=new HashMap<>();
+    final Map<Long,Integer> updateCalls=new HashMap<>();
     final Connection connection=mock(Connection.class);
+    volatile List<Long> dueOwners=List.of();
     MemoryStore(){super(null,null);}
     @Override synchronized Map<String,Object> get(long owner){return new LinkedHashMap<>(states.getOrDefault(owner,Map.of()));}
     @Override synchronized Map<String,Object> update(long owner,Update action)throws Exception{
+      updateCalls.merge(owner,1,Integer::sum);
       var state=get(owner);action.apply(connection,state);states.put(owner,state);return get(owner);
     }
+    @Override List<Long> historyDue(String reportDate,long now){return dueOwners;}
+    synchronized int updates(long owner){return updateCalls.getOrDefault(owner,0);}
   }
 
   @BeforeEach void setup()throws Exception{
@@ -98,5 +104,73 @@ class BidHistoryServiceTest {
     assertEquals("retrying",failed.get("historyState"));assertEquals("2026-09-10T01:00:00Z",failed.get("historyFailureAt"));
     assertEquals("2026-09-09",failed.get("historyLastDate"));assertEquals("old-archive",failed.get("historyLastSuccess"));
     assertFalse(failed.get("historyError").toString().contains("private database body"));verify(history,never()).archiveCommitted();
+  }
+
+  @Test void obsoleteCredentialFailureCannotDelayOrMarkTheReplacementConfiguration()throws Exception{
+    doAnswer(call->{
+      store.update(7,(connection,state)->{
+        state.put("credentialRevision","replacement");state.put("historyState","waiting");
+        state.put("historyError","");state.put("historyRetryAt",0L);
+      });
+      throw new IllegalArgumentException("code=-1 obsolete credential");
+    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    service.capture(7,LocalDate.of(2026,9,11));
+    var state=store.get(7);assertEquals("replacement",state.get("credentialRevision"));
+    assertEquals("waiting",state.get("historyState"));assertEquals("",state.get("historyError"));
+    assertEquals(0L,state.get("historyRetryAt"));assertFalse(state.containsKey("historyFailureAt"));
+    verifyNoInteractions(raw,history);
+  }
+
+  @Test void stoppedCaptureFailureCannotRestoreRetryingStatus()throws Exception{
+    doAnswer(call->{
+      store.update(7,(connection,state)->{
+        state.put("enabled",false);state.put("historyState","stopped");state.put("historyRetryAt",0L);
+      });
+      throw new java.io.IOException("obsolete response after stop");
+    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    service.capture(7,LocalDate.of(2026,9,11));
+    var state=store.get(7);assertEquals(false,state.get("enabled"));assertEquals("stopped",state.get("historyState"));
+    assertEquals(0L,state.get("historyRetryAt"));assertEquals("",state.get("historyError"));
+    assertFalse(state.containsKey("historyFailureAt"));verifyNoInteractions(raw,history);
+  }
+
+  @Test void discardedCaptureDoesNotWriteRowsOrClearCommittedHistoryCache()throws Exception{
+    doAnswer(call->{
+      store.update(7,(connection,state)->state.put("credentialRevision","replacement"));
+      return Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123")));
+    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    service.capture(7,LocalDate.of(2026,9,11));
+    verify(raw,never()).replace(any(),anyLong(),anyString(),anyList());
+    verify(history,never()).replace(any(),anyLong(),any(),anyList());verify(history,never()).archiveCommitted();
+    assertFalse(store.get(7).containsKey("historyLastDate"));
+  }
+
+  @Test void slowOwnerDoesNotAccumulateDuplicateQueuedCapturesAndCanBeScheduledAgain()throws Exception{
+    var started=new CountDownLatch(1);var release=new CountDownLatch(1);var drained=new CountDownLatch(1);
+    for(long owner:List.of(7L,8L,9L)){
+      var state=new LinkedHashMap<>(store.get(7));state.put("credential",cipher.encrypt(owner,"cookie"));
+      state.put("clientUser",Long.toString(owner));store.states.put(owner,state);
+    }
+    when(sync.allowed(anyLong())).thenReturn(true);
+    doAnswer(call->{
+      Map<String,Object> state=call.getArgument(0);String owner=state.get("clientUser").toString();
+      if(owner.equals("7")){started.countDown();assertTrue(release.await(5,TimeUnit.SECONDS));}
+      if(owner.equals("9"))drained.countDown();
+      return Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123")));
+    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    var now=LocalDate.of(2026,9,11).atTime(0,30).atZone(ReportService.BEIJING);
+    store.dueOwners=List.of(7L,8L);service.dispatch(now);
+    try{
+      assertTrue(started.await(2,TimeUnit.SECONDS));
+      // Pending owner 8 has not claimed its retry lease yet; expired owner 7 may be due again too.
+      for(int i=0;i<4;i++)service.dispatch(now);
+      store.dueOwners=List.of(9L);service.dispatch(now);
+    }finally{release.countDown();}
+    assertTrue(drained.await(3,TimeUnit.SECONDS));
+    assertEquals(2,store.updates(7));assertEquals(2,store.updates(8));
+    verify(sync,times(1)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any());
+    store.update(8,(connection,state)->{state.remove("historyLastDate");state.put("historyRetryAt",0L);});
+    store.dueOwners=List.of(8L);service.dispatch(now);
+    verify(sync,timeout(2000).times(2)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any());
   }
 }

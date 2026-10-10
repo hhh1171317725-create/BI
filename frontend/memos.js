@@ -2,7 +2,7 @@
   'use strict';
   const $ = selector => document.querySelector(selector);
   let current = null, baseline = '', busy = false, ready = false, view = 'all', offset = 0;
-  let listRequest = 0, detailRequest = 0, listController, searchTimer;
+  let listRequest = 0, detailRequest = 0, metaRequest = 0, listController, searchTimer;
   let draftPrefix = '', draftTimer, offeredDraft = null, draftSaved = false;
   const values = () => ({title: $('#title').value, content: $('#content').value, tags: $('#tags').value, pinned: $('#pinned').checked});
   const dirty = () => !$('#editor').hidden && JSON.stringify(values()) !== baseline;
@@ -120,13 +120,17 @@
     }
   }
   async function meta() {
-    const data = await api('/meta');
-    $('#totalCount').textContent = data.total; $('#pinCount').textContent = data.pinned; $('#trashCount').textContent = data.trash;
-    const selected = $('#tagFilter').value;
-    $('#tagFilter').replaceChildren(new Option('全部标签',''));
-    Object.entries(data.tags).forEach(([tag,count]) => $('#tagFilter').add(new Option(`${tag} (${count})`,tag)));
-    if (selected && !Object.hasOwn(data.tags,selected)) $('#tagFilter').add(new Option(selected,selected));
-    $('#tagFilter').value = selected;
+    const request = ++metaRequest;
+    try {
+      const data = await api('/meta');
+      if (request !== metaRequest) return;
+      $('#totalCount').textContent = data.total; $('#pinCount').textContent = data.pinned; $('#trashCount').textContent = data.trash;
+      const selected = $('#tagFilter').value;
+      $('#tagFilter').replaceChildren(new Option('全部标签',''));
+      Object.entries(data.tags).forEach(([tag,count]) => $('#tagFilter').add(new Option(`${tag} (${count})`,tag)));
+      if (selected && !Object.hasOwn(data.tags,selected)) $('#tagFilter').add(new Option(selected,selected));
+      $('#tagFilter').value = selected;
+    } catch (error) { if (request === metaRequest) throw error; }
   }
   async function refresh() { await Promise.all([list(),meta().catch(error => message(error.message,true))]); }
   async function save(event) {

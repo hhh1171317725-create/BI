@@ -1,6 +1,6 @@
 'use strict';
 let syncStamp='',syncOwner='',syncPolling=false,syncAction=false,syncRevision=0,syncHydrated=false,syncDirty=false,syncState={};
-function syncText(value,bad=false){$('#syncStatus').textContent=value;$('#syncStatus').className=bad?'error':'muted';}
+function syncText(value,bad=false){const el=$('#syncStatus'),cls=bad?'error':'muted';if(el.textContent!==value)el.textContent=value;if(el.className!==cls)el.className=cls;}
 for(const id of ['cookie','clientUser','mainUserId','syncMinutes','syncCreatedDays'])$('#'+id).addEventListener('input',()=>{syncDirty=true;});
 function syncIdentity(id){
   if(!id)throw Error('服务器未返回当前网站账户，请重新登录');
@@ -35,7 +35,7 @@ async function syncPrepareQuery(signal){
   }catch(error){failure=error;$('#cookie').closest('details').open=true;throw error;}
   finally{
     syncAction=false;for(const el of inputs)el.disabled=false;
-    if(syncState.userId)syncShow(syncState);
+    if(syncState.userId)syncShow(syncState,false);
     if(failure)syncText(failure.message,true);
   }
 }
@@ -48,35 +48,43 @@ async function syncLoad(manual=false){
   }
   if(busy||(!manual&&!followSync))return false;
   if(syncLoadPending){
+    if(syncLoadPending.generation!==reportLoadGeneration||syncLoadPending.revision!==syncRevision){
+      if(!manual)return false;
+      const generation=reportLoadGeneration,revision=syncRevision;
+      await syncLoadPending.promise.catch(()=>{});
+      if(busy||generation!==reportLoadGeneration||revision!==syncRevision)return false;
+      return syncLoad(true);
+    }
     syncLoadPending.manual ||= manual;
     return syncLoadPending.promise;
   }
-  const job={manual,rows:raw,revision:syncRevision};
+  const job={manual,rows:raw,revision:syncRevision,generation:reportLoadGeneration};
   syncLoadPending=job;
-  job.promise=syncReadSnapshot(job).catch(error=>{if(raw===job.rows&&syncRevision===job.revision)window.BidDataAlerts?.fail('snapshot',error);throw error;});
+  job.promise=syncReadSnapshot(job).catch(error=>{if(raw===job.rows&&syncRevision===job.revision&&reportLoadGeneration===job.generation)window.BidDataAlerts?.fail('snapshot',error);throw error;});
   try{return await job.promise;}finally{if(syncLoadPending===job)syncLoadPending=null;}
 }
 async function syncReadSnapshot(job){
   const response=await api('/api/bid-monitor/snapshot',{signal:AbortSignal.timeout(15000)});
   // A later query or configuration change takes precedence over an older response.
-  if(busy||raw!==job.rows||syncRevision!==job.revision)return false;
+  if(busy||raw!==job.rows||syncRevision!==job.revision||reportLoadGeneration!==job.generation)return false;
   syncIdentity(response.userId);
   const snapshot=response.snapshot;
   if(!snapshot?.updatedAt){window.BidDataAlerts?.success('snapshot');if(job.manual)syncText('当前网站账户还没有成功同步的数据');return false;}
   if(!job.manual&&(snapshot.updatedAt===syncStamp||!followSync)){window.BidDataAlerts?.success('snapshot');return false;}
-  await receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
+  const loading=receive(snapshot.rows,'字节 + 广点通同步快照 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+
     (snapshot.selection==='created_window_all'?' · 全部计划（'+snapshot.rows.length+' 条）':snapshot.selection==='spend_desc_top_400'?' · 历史前 400 条快照':snapshot.selection==='spend_desc_top_200'?' · 历史前 200 条快照':' · 历史数据')+
     (snapshot.duplicateRows?' · 已去除 '+snapshot.duplicateRows+' 条上游重复记录':'')+
     (snapshot.createdStart?' · 计划创建 '+snapshot.createdStart+' 至 '+snapshot.createdEnd:''),{start:snapshot.date,end:snapshot.date},true);
+  const appliedRows=raw;await loading;
+  if(busy||raw!==appliedRows||syncRevision!==job.revision||reportLoadGeneration!==job.generation)return false;
   syncStamp=snapshot.updatedAt;
   window.BidDataAlerts?.snapshotLoaded(snapshot.updatedAt);
   if(job.manual&&followSync)syncText('已读取 '+new Date(snapshot.updatedAt).toLocaleString('zh-CN')+' 的快照');
   return true;
 }
 window.loadBidRealtime=()=>syncLoad(true);
-function syncShow(result){
+function syncShow(result,fresh=true){
   syncIdentity(result.userId);syncState=result;
-  window.BidDataAlerts?.syncStatus(result);
   if(!syncHydrated){
     if(!syncDirty)for(const [id,key] of [['clientUser','clientUser'],['mainUserId','mainUserId'],['syncMinutes','minutes'],['syncCreatedDays','createdDays']])
       if(result[key]!=null)$('#'+id).value=result[key];
@@ -95,6 +103,8 @@ function syncShow(result){
   const history=result.historyError?`；历史归档：${result.historyError}`:result.historyLastDate?`；历史归档：已保存 ${result.historyLastDate}`:'；历史归档：每天 00:30 保存昨天数据';
   syncText(result.error?result.error+last+next:(names[result.state]||'未开启定时同步')+last+next+
     (progress?'；'+progress:'')+(result.enabled?'；间隔 '+result.minutes+' 分钟；前 3 天至今天创建的全部计划'+history:''),Boolean(result.error));
+  if(fresh)window.BidDataAlerts?.syncStatus(result);
+  else window.BidDataAlerts?.refresh();
 }
 function syncProgressText(progress){
   if(!progress)return '';
@@ -134,7 +144,7 @@ for(const [id,command] of [['syncStart','start'],['syncRun','run'],['syncStop','
     const result=await syncCommand(command);syncAction=false;syncShow(result);
     if(command==='start'||command==='forget')$('#cookie').value='';
     if(command==='forget')$('#cookie').closest('details').open=true;
-  }catch(error){syncAction=false;syncShow(syncState);syncText(error.message,true);if(command==='run')window.BidDataAlerts?.fail('status',error);}
+  }catch(error){syncAction=false;syncShow(syncState,false);syncText(error.message,true);if(command==='run')window.BidDataAlerts?.fail('status',error);}
   finally{syncAction=false;setTimeout(()=>void syncRefresh(),1000);}
 };
 $('#syncLoad').onclick=()=>syncLoad(true).catch(error=>syncText(error.message,true));

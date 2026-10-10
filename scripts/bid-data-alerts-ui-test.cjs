@@ -19,7 +19,7 @@ async function fixture(browser,url,{member=false,viewerId=member?'2':'1',ownerId
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],forbidden=[],requests=[];
  const state={ownerId,viewerId,member,snapshot:{date:today,updatedAt:stamp(0),rows,selection:'created_window_all'},
   status:{userId:ownerId,configured:true,enabled:true,state:'ready',lastSuccess:stamp(0),minutes:10,createdDays:4,clientUser:'123',mainUserId:'456'},
-  queryMode:'ok',gapFailed:false,historyFailed:false,sharedFailed:false,statusFailed:false,snapshotFailed:false,sharedReads:[],commands:[]};
+  queryMode:'ok',commandFailed:false,gapFailed:false,historyFailed:false,sharedFailed:false,statusFailed:false,snapshotFailed:false,sharedReads:[],commands:[]};
  page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/pet-loader.js*',route=>route.fulfill({body:''}));
  await page.route('**/api/**',async route=>{
@@ -42,6 +42,7 @@ async function fixture(browser,url,{member=false,viewerId=member?'2':'1',ownerId
    if(state.gapFailed)return fail('日报任务与 gap 连接失败');
    data={sourceRevision:'daily-v1',anchor:requestUrl.searchParams.get('endDate'),start:daysAgo(4),end:daysAgo(2),priceDate:daysAgo(2),
     accounts:{111:{gap:.8,validDays:3,days:[]}},basis:'测试口径'};
+   if(state.gapHold){state.heldGap={route,data};return;}
   }else if(pathname==='/api/bid-monitor/history/conversions')data={startDate:daysAgo(4),endDate:daysAgo(1),rows:[]};
   else if(pathname==='/api/bid-monitor/history'){
    if(state.historyFailed)return fail('历史归档连接失败');
@@ -68,6 +69,9 @@ async function fixture(browser,url,{member=false,viewerId=member?'2':'1',ownerId
    data=input.platform==='gdt'?{total:0,rows:[]}:{total:rows.length,rows};
   }else if(pathname==='/api/bid-monitor/server-sync/run'){
    state.commands.push(request.postDataJSON());state.status={...state.status,state:'waiting'};data=state.status;
+  }else if(pathname==='/api/bid-monitor/server-sync/stop'){
+   if(state.commandFailed)return fail('同步配置保存失败');
+   state.status={...state.status,state:'stopped',enabled:false};data=state.status;
   }else{forbidden.push(pathname);return route.fulfill({status:404,json:{error:'unmocked '+pathname}});}
   return route.fulfill({json:data});
  });
@@ -93,7 +97,7 @@ async function checkLayout(page,label){
 }
 
 async function adminScenarios(browser,url){
- const {page,state,errors,forbidden}=await fixture(browser,url);
+ const {page,state,errors,forbidden,requests}=await fixture(browser,url);
  try{
   const preserved=await rawData(page);
   state.status={...state.status,state:'retrying',error:'本次查询失败，已保留旧数据；10 分钟后自动重试',failureAt:stamp(1)};
@@ -106,6 +110,15 @@ async function adminScenarios(browser,url){
   await page.evaluate(async()=>{await syncLoad(true);await syncRefresh();await syncRefresh();});
   assert.equal(await alertVisible(page),true,'Reading an old snapshot must not recover a failed pull');
   assert.equal(await notices(page),1,'Repeated status reads must not repeat the same incident notification');
+  const unchangedWork=await page.evaluate(async()=>{
+   let mutations=0,events=0;const observe=new MutationObserver(records=>{mutations+=records.length;}),count=()=>events++;
+   observe.observe(document.getElementById('bidDataAlert'),{subtree:true,childList:true,characterData:true,attributes:true});
+   document.addEventListener('bid:data-status',count);
+   for(let i=0;i<20;i++)syncShow({...syncState});
+   await new Promise(resolve=>setTimeout(resolve,0));observe.disconnect();document.removeEventListener('bid:data-status',count);
+   return{mutations,events};
+  });
+  assert.deepEqual(unchangedWork,{mutations:0,events:0},'Unchanged sync polls must not rewrite the alert or publish redundant state');
   await checkLayout(page,'admin');
 
   state.status={...state.status,state:'paused',enabled:false,error:'保存的凭据无法解密，请更新登录凭据后重新启用'};
@@ -162,7 +175,15 @@ async function adminScenarios(browser,url){
   assert.match(await page.locator('#bidDataAlertTitle').innerText(),/gap 更新失败/);
   assert.equal(await rawData(page),beforeGap);assert.equal(await page.evaluate(()=>gapData.accounts['111'].gap),.8);
   assert.match(await page.locator('#gapStatus').innerText(),/保留上次关联结果/);
-  state.gapFailed=false;await page.locator('#bidDataAlertRetry').click();await waitClear(page);
+  state.gapFailed=false;state.gapHold=true;
+  const retryRequest=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/bid-monitor/gap');
+  const gapReads=requests.filter(value=>value==='/api/bid-monitor/gap').length;
+  await page.locator('#bidDataAlertRetry').click();await retryRequest;
+  await page.evaluate(()=>syncRefresh());
+  assert.equal(await page.locator('#bidDataAlertRetry').isDisabled(),true,'Fresh status polls must not unlock a retry that is still reading data');
+  await page.locator('#bidDataAlertRetry').evaluate(button=>button.click());
+  assert.equal(requests.filter(value=>value==='/api/bid-monitor/gap').length,gapReads+1,'Repeated clicks cannot duplicate the pending retry');
+  state.gapHold=false;await state.heldGap.route.fulfill({json:state.heldGap.data});await waitClear(page);
   const beforeHistory=await rawData(page);state.historyFailed=true;
   await page.evaluate(({start,end})=>{document.getElementById('historyStart').value=start;document.getElementById('historyEnd').value=end;},{start:daysAgo(2),end:daysAgo(1)});
   await page.evaluate(()=>loadHistory());await waitAlert(page);
@@ -182,6 +203,13 @@ async function adminScenarios(browser,url){
   state.status={...state.status,historyState:'ready',historyError:'',historyLastSuccess:stamp(6),historyLastDate:daysAgo(1)};delete state.status.historyFailureAt;
   await page.evaluate(()=>syncRefresh());await waitClear(page);
   console.log('PASS: daily archive failure remains visible through retries and clears only after a successful archive commit');
+  state.statusFailed=true;await page.evaluate(()=>syncRefresh());await waitAlert(page);
+  assert.match(await page.locator('#bidDataAlertTitle').innerText(),/同步状态读取失败/);
+  state.commandFailed=true;await page.locator('.section-nav a[href="#sync-settings"]').click();await page.locator('#syncStop').click();
+  await page.waitForFunction(()=>document.getElementById('syncStatus').textContent==='同步配置保存失败');
+  assert.equal(await alertVisible(page),true,'Restoring cached controls after a failed command must not clear a real status-read failure');
+  state.statusFailed=false;state.commandFailed=false;await page.evaluate(()=>syncRefresh());await waitClear(page);
+  console.log('PASS: cached control restoration preserves status failures, and unchanged polls do not redraw alerts');
   assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);
  }finally{await page.close();}
 }

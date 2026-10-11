@@ -1,0 +1,60 @@
+name: bi-personal-life
+services:
+  postgres:
+    image: postgres:17-bookworm
+    user: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-personal_life}
+      POSTGRES_USER: ${POSTGRES_USER:-life_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random database password in .env}
+    volumes:
+      - health_database:/var/lib/postgresql/data
+    networks: [database]
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-life_app}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-personal_life}?schema=public
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3100}:3000'
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [database, outbound]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/.next/cache:rw,nosuid,size=64m,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          'fetch("http://127.0.0.1:3000/api/healthz").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))',
+        ]
+      start_period: 45s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+volumes:
+  health_database:
+networks:
+  database: { internal: true }
+  outbound:

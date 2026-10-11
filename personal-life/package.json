@@ -1,0 +1,47 @@
+{
+  "name": "personal-life",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "prisma generate",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:integration": "tsx scripts/integration.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "bootstrap": "tsx scripts/bootstrap.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "next": "16.4.0",
+    "openai": "^6.0.0",
+    "prisma": "6.19.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.3.0",
+    "tsx": "^4.20.0",
+    "zod": "^4.1.0"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2",
+      "effect": "3.20.0"
+    }
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.0"
+  }
+}

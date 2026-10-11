@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String               @id @default(cuid())
+  username      String               @unique
+  passwordHash  String
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(3)
+  settings      Json                 @default("{}")
+  sessions      Session[]
+  imports       HealthRawImport[]
+  samples       HealthSample[]
+  sleep         SleepSession[]
+  workouts      Workout[]
+  summaries     DailyHealthSummary[]
+  logs          SyncLog[]
+  conversations AIConversation[]
+}
+
+model Session {
+  tokenHash String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
+model HealthRawImport {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source        String
+  payloadHash   String
+  payload       Json
+  receivedAt    DateTime @default(now()) @db.Timestamptz(3)
+  processStatus String   @default("awaiting_mapping")
+  errorMessage  String?
+
+  @@unique([userId, source, payloadHash])
+  @@index([userId, receivedAt])
+}
+
+model HealthSample {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metricType     String
+  value          Float
+  unit           String
+  startTime      DateTime @db.Timestamptz(3)
+  endTime        DateTime @db.Timestamptz(3)
+  source         String
+  sourceRecordId String?
+  fingerprint    String
+  metadata       Json
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, metricType, endTime])
+}
+
+model SleepSession {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime       DateTime @db.Timestamptz(3)
+  endTime         DateTime @db.Timestamptz(3)
+  durationMinutes Float
+  source          String
+  fingerprint     String
+  metadata        Json
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, endTime])
+}
+
+model Workout {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutType     String
+  startTime       DateTime @db.Timestamptz(3)
+  endTime         DateTime @db.Timestamptz(3)
+  durationMinutes Float
+  calories        Float?
+  source          String
+  fingerprint     String
+  metadata        Json
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, endTime])
+}
+
+model DailyHealthSummary {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date             String
+  sleepMinutes     Float?
+  steps            Float?
+  restingHeartRate Float?
+  activeCalories   Float?
+  workoutMinutes   Float?
+  metadata         Json
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, date])
+}
+
+model SyncLog {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         String
+  status         String
+  receivedCount  Int
+  insertedCount  Int
+  duplicateCount Int
+  errorMessage   String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+model RateBucket {
+  key       String   @id
+  count     Int
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}

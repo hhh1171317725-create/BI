@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 个人生活管理 · 工具中心</title>
+  <style>html:not(.authenticated) body{visibility:hidden}*{box-sizing:border-box}body{margin:0;background:#f5f8fb;color:#172b4d;font:14px/1.65 "Microsoft YaHei",sans-serif}main{max-width:840px;margin:48px auto;padding:0 20px}.box{padding:30px;background:#fff;border:1px solid #d9e2ec;border-radius:16px}h1{margin:0;font-size:26px}.muted{color:#667085}a{color:#1677ff}label{display:grid;gap:8px;margin:22px 0 12px}input{font:inherit;padding:12px;border:1px solid #c7d3df;border-radius:8px;width:100%}button,.button{display:inline-block;border:0;border-radius:8px;padding:10px 18px;background:#1677ff;color:#fff;font:inherit;text-decoration:none;cursor:pointer}.notice{padding:14px;background:#f0f6ff;border-radius:8px;margin-top:20px}.features{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}.features div{border:1px solid #e2e8f0;border-radius:10px;padding:16px}.error{color:#b42318}code{overflow-wrap:anywhere}@media(max-width:600px){main{margin:20px auto}.box{padding:20px}.features{grid-template-columns:1fr}}</style>
+  <script>fetch('/api/session',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(r=>{if(!r.authenticated)throw Error();document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
+</head>
+<body><main><p><a href="/tools.html">← 返回工具中心</a></p><section class="box"><h1>AI 个人生活管理</h1><p class="muted">Personal Life · 独立健康数据空间</p><p>查看睡眠与运动趋势，按需授权生活助手分析。健康数据服务使用独立登录，不与 BI 的广告业务数据库混用。</p><form id="connect"><label for="origin">已部署的健康工作台 HTTPS 地址<input id="origin" type="url" required placeholder="https://你的健康子域名" autocomplete="url"></label><button type="submit">保存地址并打开 →</button><p id="message" class="error" role="alert"></p></form><div class="notice">首次使用需部署仓库中的 <code>personal-life/</code> 独立服务，配置数据库、强密码与接收密钥，再填写地址。不要把 API Key 输入这里。地址仅保存到当前浏览器。</div><div class="features"><div><strong>自动同步</strong><p class="muted">Health Auto Export 主动推送；安全保存原始批次、去重、历史补传。</p></div><div><strong>睡眠分析</strong><p class="muted">7/30 天趋势、入睡与起床时间、工作日对比和规律性。</p></div><div><strong>运动分析</strong><p class="muted">步数、运动次数与时长、活动热量和体重趋势。</p></div><div><strong>私人 AI 助手</strong><p class="muted">只发送必要摘要；没有数据时不编造，健康建议不作为医学诊断。</p></div></div><p class="muted">真实导出格式完成验证前，只保存原始批次，不将未经映射的数据当作指标。</p></section></main>
+<script>
+  const input=document.getElementById('origin'),message=document.getElementById('message'),key='bi-personal-life-origin-v1';
+  try{input.value=localStorage.getItem(key)||''}catch{}
+  document.getElementById('connect').addEventListener('submit',event=>{
+    event.preventDefault();message.textContent='';
+    try{const url=new URL(input.value.trim());if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('请输入不含凭据、查询参数或路径的 HTTPS 域名地址。');try{localStorage.setItem(key,url.origin)}catch{}location.assign(url.origin+'/');}catch(error){message.textContent=error.message||'地址无效';}
+  });
+</script></body></html>

@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+.test-runtime/
+backups/
+next-env.d.ts
+*.tsbuildinfo

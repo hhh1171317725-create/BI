@@ -26,6 +26,7 @@ export function exportResponse(userId: string) {
           });
           const collections: [string, (cursor?: string) => Promise<{ id: string }[]>][] = [
             ['imports', (c) => tx.healthRawImport.findMany({ ...args(c), take: 1 })],
+            ['sourceRecords', (c) => tx.healthSourceRecord.findMany(args(c))],
             ['samples', (c) => tx.healthSample.findMany(args(c))],
             ['sleep', (c) => tx.sleepSession.findMany(args(c))],
             ['workouts', (c) => tx.workout.findMany(args(c))],

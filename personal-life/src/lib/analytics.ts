@@ -10,6 +10,7 @@ import {
   disjoint,
   localDay,
   selectSource,
+  sourceRank,
   settingsSchema,
   TZ,
 } from './domain';
@@ -155,11 +156,10 @@ export async function report(userId: string, start: string, end: string, setting
   const heartRate = [...new Set(heartRows.map((r) => r.date))].map((date) => {
     const rows = heartRows.filter((r) => r.date === date);
     const source = [...new Set(rows.map((r) => r.source))].sort((a, b) => {
-      const rank = (s: string) =>
-        settings.sourcePriority.includes(s)
-          ? settings.sourcePriority.indexOf(s)
-          : settings.sourcePriority.length;
-      return rank(a) - rank(b) || a.localeCompare(b);
+      return (
+        sourceRank(a, settings.sourcePriority) - sourceRank(b, settings.sourcePriority) ||
+        a.localeCompare(b)
+      );
     })[0];
     return rows.find((r) => r.source === source)!;
   });
@@ -277,7 +277,7 @@ export async function rebuildDays(
         create: { userId, ...values, metadata: { ...values.metadata, workoutCount } },
         update: { ...values, metadata: { ...values.metadata, workoutCount } },
       });
-    }
+    } else await tx.dailyHealthSummary.deleteMany({ where: { userId, date } });
   }
 }
 function selectWeight(rows: HealthSample[], settings: Settings) {
@@ -296,7 +296,7 @@ export async function syncStatus(userId: string) {
   const [lastUpload, lastSuccess, lastFailure, latest, logs, imports, pending] = await Promise.all([
     db.syncLog.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } }),
     db.syncLog.findFirst({
-      where: { userId, status: 'processed' },
+      where: { userId, status: { in: ['processed', 'processed_with_gaps'] } },
       orderBy: { createdAt: 'desc' },
     }),
     db.syncLog.findFirst({ where: { userId, status: 'failed' }, orderBy: { createdAt: 'desc' } }),
@@ -314,12 +314,40 @@ export async function syncStatus(userId: string) {
     where: { userId },
     orderBy: { endTime: 'desc' },
   });
+  const coverageRecords = await db.healthSourceRecord.findMany({
+    where: { userId, source: 'Hozz', recordId: { startsWith: 'coverage:' } },
+    orderBy: { recordId: 'asc' },
+  });
+  const observedTypes = await db.healthSourceRecord.groupBy({
+    by: ['recordType'],
+    where: { userId, source: 'Hozz', recordId: { not: { startsWith: 'coverage:' } } },
+  });
+  const hozzCoverage = coverageRecords.map((r) => {
+    const p = r.payload as Record<string, unknown>;
+    return {
+      type: r.recordId.slice(9),
+      complete: p.complete === true,
+      state: String(p.state),
+      observedAt: r.observedAt,
+    };
+  });
+  for (const row of observedTypes)
+    if (!hozzCoverage.some((r) => r.type === row.recordType)) {
+      hozzCoverage.push({
+        type: row.recordType,
+        complete: false,
+        state: 'unknown',
+        observedAt: null,
+      });
+    }
   const latestRecord =
     latestWorkout && (!latest || latestWorkout.endTime > latest.endTime) ? latestWorkout : latest;
   const uploadAge = lastUpload ? (Date.now() - lastUpload.createdAt.getTime()) / 3600000 : null,
     measurementAge = latestRecord ? (Date.now() - latestRecord.endTime.getTime()) / 3600000 : null;
   return {
     lastUpload,
+    hozzCoverage,
+    hozzHistoryIncomplete: hozzCoverage.some((r) => !r.complete),
     lastSuccess,
     lastFailure,
     latestMeasurement: latestRecord

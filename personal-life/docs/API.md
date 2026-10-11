@@ -33,6 +33,10 @@
 
 ## 健康接收
 
+Hozz schema-v1 JSON数组通过独立解析层写入指标与版本记录，无需开启内部normalized-v1测试开关。详见 [Hozz](HOZZ.md)。200 processed或processed_with_gaps表示处理完成；后者含仅留存记录，数量在retainedCount。Hozz的insertedCount表示新增/更新来源记录数，不是派生会话数；同步日志相同。202是留存待映射，422是格式无效。通过批次hash和记录稳定身份/版本去重，不盲信Idempotency-Key丢弃数据；拆分批次不会互相覆盖。
+
+连接测试对象 `{ "kind":"hozzConnectionTest", "schemaVersion":1 }` 必须通过同样的ingest key认证，响应200 `{ok:true,status:"connection_ok"}`，不生成测量、不改变同步时间。上传密钥不能读取用户数据。
+
 请求 `Content-Type: application/json`。Header二选一：
 
 ```text

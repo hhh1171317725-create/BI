@@ -22,6 +22,7 @@ model User {
   summaries     DailyHealthSummary[]
   logs          SyncLog[]
   conversations AIConversation[]
+  sourceRecords HealthSourceRecord[]
 }
 
 model Session {
@@ -126,10 +127,32 @@ model SyncLog {
   receivedCount  Int
   insertedCount  Int
   duplicateCount Int
+  retainedCount  Int      @default(0)
   errorMessage   String?
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([userId, createdAt])
+}
+
+// Stable source identity and tombstones prevent retries from reviving deleted measurements.
+model HealthSourceRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source        String
+  recordId      String
+  recordType    String
+  recordVersion Int
+  deleted       Boolean  @default(false)
+  payload       Json
+  startTime     DateTime? @db.Timestamptz(3)
+  endTime       DateTime? @db.Timestamptz(3)
+  observedAt    DateTime? @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, source, recordId])
+  @@index([userId, source, observedAt])
+  @@index([userId, source, recordType])
 }
 
 model AIConversation {

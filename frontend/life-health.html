@@ -6,12 +6,46 @@
   <style>html:not(.authenticated) body{visibility:hidden}*{box-sizing:border-box}body{margin:0;background:#f5f8fb;color:#172b4d;font:14px/1.65 "Microsoft YaHei",sans-serif}main{max-width:840px;margin:48px auto;padding:0 20px}.box{padding:30px;background:#fff;border:1px solid #d9e2ec;border-radius:16px}h1{margin:0;font-size:26px}.muted{color:#667085}a{color:#1677ff}label{display:grid;gap:8px;margin:22px 0 12px}input{font:inherit;padding:12px;border:1px solid #c7d3df;border-radius:8px;width:100%}button,.button{display:inline-block;border:0;border-radius:8px;padding:10px 18px;background:#1677ff;color:#fff;font:inherit;text-decoration:none;cursor:pointer}.notice{padding:14px;background:#f0f6ff;border-radius:8px;margin-top:20px}.features{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}.features div{border:1px solid #e2e8f0;border-radius:10px;padding:16px}.error{color:#b42318}code{overflow-wrap:anywhere}@media(max-width:600px){main{margin:20px auto}.box{padding:20px}.features{grid-template-columns:1fr}}</style>
   <script>fetch('/api/session',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(r=>{if(!r.authenticated)throw Error();document.documentElement.classList.add('authenticated')}).catch(()=>location.replace('/login'));</script>
 </head>
-<body><main><p><a href="/tools.html">← 返回工具中心</a></p><section class="box"><h1>AI 个人生活管理</h1><p class="muted">Personal Life · 独立健康数据空间</p><p>查看睡眠与运动趋势，按需授权生活助手分析。健康数据服务使用独立登录，不与 BI 的广告业务数据库混用。</p><form id="connect"><label for="origin">已部署的健康工作台 HTTPS 地址<input id="origin" type="url" required placeholder="https://你的健康子域名" autocomplete="url"></label><button type="submit">保存地址并打开 →</button><p id="message" class="error" role="alert"></p></form><div class="notice">首次使用需部署仓库中的 <code>personal-life/</code> 独立服务，配置数据库、强密码与接收密钥，再填写地址。不要把 API Key 输入这里。地址仅保存到当前浏览器。</div><div class="features"><div><strong>自动同步</strong><p class="muted">Health Auto Export 主动推送；安全保存原始批次、去重、历史补传。</p></div><div><strong>睡眠分析</strong><p class="muted">7/30 天趋势、入睡与起床时间、工作日对比和规律性。</p></div><div><strong>运动分析</strong><p class="muted">步数、运动次数与时长、活动热量和体重趋势。</p></div><div><strong>私人 AI 助手</strong><p class="muted">只发送必要摘要；没有数据时不编造，健康建议不作为医学诊断。</p></div></div><p class="muted">真实导出格式完成验证前，只保存原始批次，不将未经映射的数据当作指标。</p></section></main>
+<body><main><p><a href="/tools.html">← 返回工具中心</a></p><section class="box">
+<h1>AI 个人生活管理</h1><p class="muted">Personal Life · 独立健康数据空间</p>
+<p>查看睡眠与运动趋势，按需授权生活助手分析。独立登录、独立数据库，不与 BI 广告业务混用。</p>
+<div class="notice"><strong>先部署，再连接手机</strong><p>这个页面是入口，不是健康服务本身。首次使用按下面三步完成配置；已部署的用户直接填写地址即可。</p></div>
+<details style="margin-top:20px"><summary style="cursor:pointer;font-weight:600">① 首次部署 · 展开服务器操作</summary>
+<p>在宝塔为健康服务新建独立子域名，例如 <code>health.huanghaha.fun</code>，解析到服务器并申请 HTTPS 证书。这个示例地址不会自动创建，也不会自动修改 BI 站点。</p>
+<p>服务器需安装 Docker 与 Compose v2。以下命令初始化一个新服务，不覆盖已有 .env，不重启现有 Java：</p>
+<pre style="white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f8fb;padding:14px;border-radius:8px"><code>cd /www/wwwroot/BI
+git pull --ff-only origin main
+cd personal-life
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -w /work node:24-bookworm-slim node scripts/configure.mjs https://health.huanghaha.fun
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps</code></pre>
+<p>如使用其他域名，替换上述域名。已有 .env 时跳过初始化命令，在服务器私有编辑器中核对 APP_ORIGIN。</p>
+<p>新健康站点反向代理到 <code>http://127.0.0.1:3100</code>，HTTPS 转发头、上传限制及日志配置见仓库 <code>personal-life/deploy/nginx.conf.example</code>。数据库不开放公网端口。</p>
+<p class="muted">初始化会生成强密码和独立上传密钥，仅写入服务器 personal-life/.env，不在网页或日志中显示。证书、DNS 和服务器启动完成前，不要在手机开启上传。</p>
+</details>
+<form id="connect"><label for="origin">② 已部署的健康工作台 HTTPS 地址<input id="origin" type="url" required placeholder="https://你的健康子域名" autocomplete="url"></label><button type="submit">保存地址并打开 →</button><p id="message" class="error" role="alert"></p></form>
+<div class="notice">这里只保存服务域名，不保存任何密码或密钥。打开工作台后使用 .env 中的独立账号密码登录。</div>
+<section style="margin-top:24px"><h2 style="font-size:18px">③ Hozz 手机自动同步</h2>
+<p>Automatic → Add a destination → Web address。</p>
+<p>Web address：<code id="ingest-address">填写上面的已部署地址后，这里显示接收接口</code></p>
+<button type="button" id="copy-ingest" disabled>复制接收地址</button>
+<p>Authorization header：<code>Bearer 你的INGEST_API_KEY</code>，Bearer 后有一个空格。请从服务器私有配置复制到手机，不要发到聊天或截图。</p>
+<p>Format 选 <strong>JSON</strong>，How often 选 <strong>When new data arrives</strong>。首次从 7 天前开始；若有请求大小限制，选 1 MB。先测试连接，再同步。</p>
+<p class="muted">实际睡眠阶段会转换为时长，卧床不算睡眠；重复上传不会重复累计。iOS 后台调度与锁屏会延迟同步，不保证实时。</p>
+</section>
+<div class="features"><div><strong>自动同步</strong><p class="muted">支持 Hozz JSON v1；安全留存、去重、更新与删除、历史补传。</p></div><div><strong>睡眠分析</strong><p class="muted">7/30 天趋势、入睡与起床时间、实际睡眠区间与规律性。</p></div><div><strong>运动分析</strong><p class="muted">步数、运动次数与时长、活动热量和体重趋势。</p></div><div><strong>私人 AI 助手</strong><p class="muted">只发送授权的必要摘要；没有数据不编造，不作为医学诊断。</p></div></div>
+<p class="muted">未支持的类型或版本只留存原始数据，页面会提示；不会把未知数据当作指标。</p>
+</section></main>
 <script>
   const input=document.getElementById('origin'),message=document.getElementById('message'),key='bi-personal-life-origin-v1';
   try{input.value=localStorage.getItem(key)||''}catch{}
+  function serviceOrigin(){const url=new URL(input.value.trim());if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('请输入不含凭据、查询参数或路径的 HTTPS 域名地址。');return url.origin;}
+  function updateEndpoint(){try{document.getElementById('ingest-address').textContent=serviceOrigin()+'/api/health/ingest';document.getElementById('copy-ingest').disabled=false;}catch{document.getElementById('ingest-address').textContent='填写上面的已部署地址后，这里显示接收接口';document.getElementById('copy-ingest').disabled=true;}}
+  input.addEventListener('input',updateEndpoint);updateEndpoint();
+  document.getElementById('copy-ingest').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(serviceOrigin()+'/api/health/ingest');message.textContent='接收地址已复制；请先确认服务已部署并可访问。';}catch{message.textContent='无法复制，请手动复制上方地址。';}});
   document.getElementById('connect').addEventListener('submit',event=>{
     event.preventDefault();message.textContent='';
-    try{const url=new URL(input.value.trim());if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('请输入不含凭据、查询参数或路径的 HTTPS 域名地址。');try{localStorage.setItem(key,url.origin)}catch{}location.assign(url.origin+'/');}catch(error){message.textContent=error.message||'地址无效';}
+    try{const origin=serviceOrigin();try{localStorage.setItem(key,origin)}catch{}location.assign(origin+'/');}catch(error){message.textContent=error.message||'地址无效';}
   });
 </script></body></html>

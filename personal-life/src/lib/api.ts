@@ -20,6 +20,7 @@ import { readSettings, report, syncStatus, rebuildDays } from './analytics';
 import { ingest, lockUser } from './ingest';
 import { answer, healthContext } from './assistant';
 import { exportResponse } from './export';
+import { isHozz, probeSchema } from './hozz';
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
 const loginSchema = z
@@ -37,6 +38,7 @@ function importResponse(result: Awaited<ReturnType<typeof ingest>>, requestId: s
 export async function handle(request: Request) {
   const requestId = randomBytes(8).toString('hex');
   let ingestOwnerId: string | undefined;
+  let ingestSource = 'Health Auto Export';
   try {
     const route = new URL(request.url).pathname,
       method = request.method;
@@ -48,12 +50,18 @@ export async function handle(request: Request) {
     if (route === '/api/health/ingest' && method === 'POST') {
       const user = await ingestUser(request);
       ingestOwnerId = user.id;
+      ingestSource = request.headers.has('hozz-format') ? 'Hozz' : 'Health Auto Export';
       await rateLimit('ingest:' + user.id, 60);
       const payload = await readJson(
         request,
         Math.min(Number(process.env.MAX_INGEST_BYTES) || 5242880, 10485760),
       );
-      const result = await ingest(user.id, payload);
+      ingestSource =
+        request.headers.has('hozz-format') || isHozz(payload) ? 'Hozz' : 'Health Auto Export';
+      // An authenticated connectivity probe contains no health measurements. Never seed the DB.
+      if (probeSchema.safeParse(payload).success)
+        return json({ ok: true, status: 'connection_ok' });
+      const result = await ingest(user.id, payload, undefined, ingestSource);
       return importResponse(result, requestId);
     }
     if (route === '/api/auth/login' && method === 'POST') {
@@ -122,7 +130,7 @@ export async function handle(request: Request) {
         .parse(await readJson(request));
       const raw = await db.healthRawImport.findFirst({ where: { id: importId, userId: user.id } });
       if (!raw) throw new ApiError(404, 'IMPORT', '批次不存在');
-      const result = await ingest(user.id, raw.payload, raw.id);
+      const result = await ingest(user.id, raw.payload, raw.id, raw.source);
       return importResponse(result, requestId);
     }
     if (route === '/api/export' && method === 'GET') {
@@ -140,6 +148,7 @@ export async function handle(request: Request) {
         await lockUser(tx, user.id);
         const where = { userId: user.id };
         await tx.healthRawImport.deleteMany({ where });
+        await tx.healthSourceRecord.deleteMany({ where });
         await tx.healthSample.deleteMany({ where });
         await tx.sleepSession.deleteMany({ where });
         await tx.workout.deleteMany({ where });
@@ -246,7 +255,7 @@ export async function handle(request: Request) {
         .create({
           data: {
             userId: ingestOwnerId,
-            source: 'Health Auto Export',
+            source: ingestSource,
             status: 'failed',
             receivedCount: 0,
             insertedCount: 0,

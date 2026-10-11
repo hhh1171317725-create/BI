@@ -58,6 +58,7 @@ type Log = {
   receivedCount: number;
   insertedCount: number;
   duplicateCount: number;
+  retainedCount: number;
   errorMessage: string | null;
 };
 type Import = {
@@ -77,6 +78,8 @@ type Sync = {
   unsyncedDays: number | null;
   uploadDelayed: boolean;
   pendingMapping: number;
+  hozzCoverage: { type: string; state: string; complete: boolean; observedAt: string | null }[];
+  hozzHistoryIncomplete: boolean;
   logs: Log[];
   imports: Import[];
 };
@@ -132,6 +135,7 @@ const day = (offset = 0) =>
   );
 const labels: Record<string, string> = {
   processed: '已处理',
+  processed_with_gaps: '已处理 · 部分记录仅留存',
   awaiting_mapping: '待格式映射',
   failed: '处理失败',
 };
@@ -438,13 +442,19 @@ export default function Workspace({ screen }: { screen: string }) {
         {data?.sync.uploadDelayed && (
           <div className="notice">
             {data.sync.lastUpload ? '超过 24 小时未收到上传请求。' : '尚未收到健康数据上传。'}
-            可在手机解锁后检查 Health Auto Export。数据上传与新测量时间分别记录。
+            可在手机解锁后打开 Hozz 检查同步。数据上传与新测量时间分别记录。
           </div>
         )}
         {!!data?.sync.pendingMapping && (
           <div className="notice">
             {data.sync.pendingMapping}{' '}
             个原始批次已保存，等待真实格式映射。当前不会据此生成健康指标。
+          </div>
+        )}
+        {data?.sync.hozzHistoryIncomplete && (
+          <div className="notice">
+            Hozz
+            历史读取尚未确认完整：以下指标只反映已收到的记录，缺少数据不代表没有运动或睡眠。请在手机解锁时继续同步。
           </div>
         )}
         {data && screen === '/' && (
@@ -890,11 +900,42 @@ export default function Workspace({ screen }: { screen: string }) {
         )}
         {data && screen === '/settings/sync' && (
           <>
+            <section className="panel">
+              <h2>Hozz 手机连接</h2>
+              <p className="muted">Automatic → Add a destination → Web address，填写以下内容。</p>
+              <p>
+                Web address：
+                <code style={{ overflowWrap: 'anywhere' }}>{origin}/api/health/ingest</code>
+              </p>
+              <button
+                className="secondary"
+                onClick={() =>
+                  void action(async () => {
+                    await navigator.clipboard.writeText(origin + '/api/health/ingest');
+                    setNotice('接收地址已复制');
+                  })
+                }
+              >
+                复制接收地址
+              </button>
+              <p>
+                Authorization header：<code>Bearer 你的INGEST_API_KEY</code>（Bearer
+                后有一个空格）。密钥在服务器的 personal-life/.env 内，不在网页显示。
+              </p>
+              <p>
+                Format：<strong>JSON</strong>，不要选择 NDJSON 或 Metrics JSON。How often：When new
+                data arrives。首次建议 Start from 7 days ago；若版本提供请求大小限制，选择 1 MB。
+              </p>
+              <p className="tiny">
+                先测试连接，再保存并在手机解锁时同步。iOS 决定后台运行时间；关闭 App
+                后需要重新打开。不承诺实时同步。
+              </p>
+            </section>
             <div className="stats">
               <Card
                 title="最近处理成功"
                 value={date(data.sync.lastSuccess?.createdAt)}
-                source="规范化指标写入"
+                source="来源记录处理完成"
                 updated={data.sync.lastSuccess?.createdAt}
               />
               <Card
@@ -904,7 +945,7 @@ export default function Workspace({ screen }: { screen: string }) {
                 updated={data.sync.lastFailure?.createdAt}
               />
               <Card
-                title="最新测量覆盖"
+                title="最近收到的测量"
                 value={data.sync.latestMeasurement?.date || '暂无数据'}
                 source={data.sync.latestMeasurement?.source}
                 updated={updated}
@@ -917,6 +958,36 @@ export default function Workspace({ screen }: { screen: string }) {
                 updated={updated}
               />
             </div>
+            {!!data.sync.hozzCoverage.length && (
+              <section className="panel">
+                <h2>Hozz 历史读取状态</h2>
+                <p className="muted">
+                  收到最新日期的记录不代表历史已经全部传完。未确认完整时，不把缺失值当作零。
+                </p>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>指标类型</th>
+                        <th>完整性</th>
+                        <th>手机报告状态</th>
+                        <th>报告时间</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.sync.hozzCoverage.map((r) => (
+                        <tr key={r.type}>
+                          <td>{r.type.replace(/^HK(Quantity|Category)TypeIdentifier/, '')}</td>
+                          <td>{r.complete ? '已确认读取完整' : '尚未确认完整'}</td>
+                          <td>{r.state}</td>
+                          <td>{date(r.observedAt ?? undefined)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
             <section className="panel">
               <h2>原始批次</h2>
               <p className="muted">
@@ -975,8 +1046,9 @@ export default function Workspace({ screen }: { screen: string }) {
                       <th>时间</th>
                       <th>状态</th>
                       <th>收到</th>
-                      <th>写入</th>
+                      <th>新增 / 更新</th>
                       <th>重复</th>
+                      <th>仅留存</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -990,6 +1062,7 @@ export default function Workspace({ screen }: { screen: string }) {
                         <td>{l.status === 'awaiting_mapping' ? '待解析' : l.receivedCount}</td>
                         <td>{l.insertedCount}</td>
                         <td>{l.duplicateCount}</td>
+                        <td>{l.retainedCount || 0}</td>
                       </tr>
                     ))}
                   </tbody>

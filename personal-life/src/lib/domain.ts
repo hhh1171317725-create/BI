@@ -147,15 +147,18 @@ export function daysBack(days: number, now = new Date()) {
   return { start: localDay(new Date(now.getTime() - (days - 1) * 86400000)), end };
 }
 export type Timed = { source: string; startTime: Date; endTime: Date; createdAt?: Date };
+export function sourceRank(source: string, priority: string[]) {
+  const label = source.toLowerCase();
+  const index = priority.findIndex(
+    (p) => label === p.toLowerCase() || label.startsWith(p.toLowerCase() + ' '),
+  );
+  return index < 0 ? priority.length : index;
+}
 // Select one source per metric/day; never add Garmin and iPhone totals together.
 export function selectSource<T extends Timed>(rows: T[], priority: string[]): T[] {
   if (!rows.length) return [];
   const sources = [...new Set(rows.map((r) => r.source))].sort((a, b) => {
-    const rank = (s: string) => {
-      const i = priority.indexOf(s);
-      return i < 0 ? priority.length : i;
-    };
-    return rank(a) - rank(b) || a.localeCompare(b);
+    return sourceRank(a, priority) - sourceRank(b, priority) || a.localeCompare(b);
   });
   return rows.filter((r) => r.source === sources[0]);
 }

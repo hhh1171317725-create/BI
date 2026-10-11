@@ -4,8 +4,10 @@
 
 ## 当前交付边界
 
+- **Hozz JSON v1 已接入**：健康指标、睡眠区间计算、稳定 ID 去重、版本/删除、读取完整性。详见 [Hozz 手机连接与部署](docs/HOZZ.md)。真实手机与云服务器端到端仍需验证；示例域名不代表已经上线。
+
 - 已实现：独立认证、原始 JSON 安全接收、批次幂等、规范化适配器契约、数据库唯一约束、来源冲突处理、日汇总、历史补传、睡眠/运动/体重/心率统计、中文深色仪表盘、同步监控、失败重处理、授权 AI 查询、数据导出和删除、迁移、备份及 Docker 配置。
-- **尚未取得 Health Auto Export 的脱敏真实样本。默认只保存原始批次，返回 `202 awaiting_mapping`，不会猜测其字段或在生产数据库写入示例健康数据。** 页面会明确显示待映射状态。
+- **Health Auto Export 尚未取得脱敏真实样本，该格式默认只保存原始批次，返回 `202 awaiting_mapping`，不猜测字段或写入示例健康数据。** 不影响已单独核对的 Hozz JSON v1 适配器。
 - `normalized-v1` 是本项目的内部适配契约和自动化测试格式，**不是** Health Auto Export 官方格式。默认关闭。真实格式验证前，不要在生产开启它来冒充已完成设备接入。
 - 真实 Apple Health 同步仍受 iOS 解锁状态、后台调度、Health Auto Export 版本/权限影响，不保证实时。此服务不直接访问 Apple/Garmin 私有接口，不模拟登录 Garmin。
 - AI 使用官方 SDK 的 Responses API、`store:false`；需要服务端 Key、模型配置及用户授权。OpenAI 网络可达性由部署环境决定。
@@ -13,7 +15,7 @@
 ## 目录与架构
 
 ```text
-Apple Health → Health Auto Export → /api/health/ingest
+Apple Health → Hozz JSON / Health Auto Export → /api/health/ingest
                                    ↓ 独立 ingest key
                              HealthRawImport（隔离原始数据）
                                    ↓ 已验证适配层

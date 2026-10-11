@@ -6,6 +6,8 @@ import { spawnSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import assert from 'node:assert/strict';
 import { fixture, sleep } from '../tests/fixtures';
+import { testHozz } from '../tests/hozz-integration';
+import { hozzFixture } from '../tests/hozz-fixtures';
 
 async function freePort() {
   const server = createServer();
@@ -82,7 +84,12 @@ try {
     ['node_modules/prisma/build/index.js', 'migrate', 'deploy'],
     { env: process.env, encoding: 'utf8' },
   );
-  assert.equal(migration.status, 0, 'Prisma migration failed');
+  assert.equal(
+    migration.status,
+    0,
+    'Prisma migration failed: ' +
+      (migration.stderr + migration.stdout).replaceAll(password, '[redacted]'),
+  );
   console.log('PASS PostgreSQL migration');
   const { db } = await import('../src/lib/db');
   disconnect = () => db.$disconnect();
@@ -470,6 +477,7 @@ try {
     db.user.create({ data: { username: 'synthetic-owner', passwordHash: 'not-used' } }),
   );
   console.log('PASS export / scoped deletion / revoked sessions / database constraints');
+  await testHozz(db, handle, passwordHash);
   // Optional production server HTTP and browser QA, against this isolated empty database.
   if (process.env.TEST_HTTP === 'true') {
     const webPort = await freePort();
@@ -507,6 +515,22 @@ try {
       body: JSON.stringify(fixture),
     });
     assert.equal(syntheticUpload.status, 200);
+    const hozzUpload = await fetch(process.env.APP_ORIGIN + '/api/health/ingest', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + process.env.INGEST_API_KEY,
+        'content-type': 'application/json',
+        'hozz-format': 'json',
+      },
+      body: JSON.stringify(hozzFixture),
+    });
+    assert.equal(hozzUpload.status, 200);
+    const hozzSummary = await fetch(
+      process.env.APP_ORIGIN + '/api/health/summary?start=2026-10-08&end=2026-10-08',
+      { headers: { cookie: httpCookie } },
+    );
+    assert.equal((await hozzSummary.json()).days[0].sleepMinutes, 435);
+    console.log('PASS Hozz production HTTP JSON ingest / sleep summary');
     for (const path of ['/', '/sleep', '/fitness', '/assistant', '/settings', '/settings/sync']) {
       const pageResponse: Response = await fetch(process.env.APP_ORIGIN + path, {
         headers: { cookie: httpCookie },
@@ -553,6 +577,17 @@ try {
           ]) {
             await page.goto(process.env.APP_ORIGIN + path);
             await page.getByRole('heading', { name: navTitle(path), exact: true }).waitFor();
+            if (path === '/settings/sync') {
+              await page.getByRole('heading', { name: 'Hozz 手机连接', exact: true }).waitFor();
+              assert.equal(
+                await page.getByRole('button', { name: '复制接收地址', exact: true }).count(),
+                1,
+              );
+              await page.screenshot({
+                path: resolve('.test-runtime/sync-' + viewport.width + '.png'),
+                fullPage: true,
+              });
+            }
             await page.waitForTimeout(400);
             assert.equal(
               await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

@@ -26,6 +26,24 @@ MAX_DAYS = 90
 MAX_ACTIVITIES = 2000
 MAX_MFA_ATTEMPTS = 3
 EXPECTED_VERSION = "0.3.17"
+DETAIL_METHODS = {
+    "steps": "get_steps_data", "floors": "get_floors", "stress": "get_all_day_stress",
+    "battery_events": "get_body_battery_events", "hydration": "get_hydration_data",
+    "respiration": "get_respiration_data", "spo2": "get_spo2_data", "intensity": "get_intensity_minutes_data",
+    "training_readiness": "get_training_readiness", "training_status": "get_training_status",
+    "training_load": "get_training_four_week_load_balance", "daily_training": "get_daily_training_status",
+    "vo2max": "get_max_metrics", "fitness_age": "get_fitnessage_data",
+    "endurance": "get_endurance_score", "hill": "get_hill_score", "move_iq": "get_all_day_events",
+    "lifestyle": "get_lifestyle_logging_data", "menstrual": "get_menstrual_data_for_date",
+    "nutrition": "get_nutrition_daily_food_log", "meals": "get_nutrition_daily_meals",
+}
+ACTIVITY_METHODS = {
+    "overview": "get_activity", "splits": "get_activity_splits", "typed_splits": "get_activity_typed_splits",
+    "split_summaries": "get_activity_split_summaries", "weather": "get_activity_weather",
+    "heart_zones": "get_activity_hr_in_timezones", "power_zones": "get_activity_power_in_timezones",
+    "exercise_sets": "get_activity_exercise_sets", "gear": "get_activity_gear",
+}
+PRIVATE_KEY = re.compile(r"password|token|secret|cookie|authorization|email|displayname|username|profileimage", re.I)
 _protocol_output = None
 
 
@@ -208,6 +226,68 @@ def activity_time(value: Any) -> str | None:
     return parsed.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def detail_record(raw: Any) -> dict[str, Any]:
+    """Bounded read-only health fields, including negative samples/sentinels, never credentials."""
+    budget = [18000]
+    clipped = [False]
+    def clean(value: Any, depth: int = 0) -> Any:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > 12 or (depth == 12 and isinstance(value, (list, dict))):
+            clipped[0] = True
+            return None
+        if value is None or isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value if math.isfinite(value) else None
+        if isinstance(value, str):
+            if len(value) > 500:
+                clipped[0] = True
+            return text(value, 500)
+        if isinstance(value, dict):
+            result = {}
+            for key, item in list(value.items())[:500]:
+                if budget[0] <= 0:
+                    clipped[0] = True
+                    break
+                if isinstance(key, str) and len(key) <= 100 and not PRIVATE_KEY.search(key):
+                    result[key] = clean(item, depth + 1)
+            clipped[0] |= len(value) > 500
+            return result
+        if isinstance(value, list):
+            clipped[0] |= len(value) > 5000
+            result = []
+            for item in value[:5000]:
+                if budget[0] <= 0:
+                    clipped[0] = True
+                    break
+                result.append(clean(item, depth + 1))
+            return result
+        return None
+    value = clean(raw)
+    # Keep scalar metrics; thin oversized sample arrays with an explicit truncation flag.
+    while len(json.dumps(value, ensure_ascii=True)) > 120000:
+        arrays = []
+        def find(node):
+            if isinstance(node, list):
+                if len(node) > 30:
+                    arrays.append(node)
+                for child in node:
+                    find(child)
+            elif isinstance(node, dict):
+                for child in node.values():
+                    find(child)
+        find(value)
+        clipped[0] = True
+        if not arrays:
+            value = None
+            break
+        largest = max(arrays, key=len)
+        largest[:] = largest[::2]
+    return {"state": "available" if value not in (None, {}, []) else "unavailable",
+            "value": value, "truncated": clipped[0],
+            "collectedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")}
+
+
 def normalize_activity(raw: dict[str, Any]) -> dict[str, Any] | None:
     activity_id = raw.get("activityId")
     if isinstance(activity_id, bool) or not isinstance(activity_id, (int, str)) or not re.fullmatch(r"[0-9]{1,30}", str(activity_id)):
@@ -221,6 +301,7 @@ def normalize_activity(raw: dict[str, Any]) -> dict[str, Any] | None:
         "distanceMeters": number(raw.get("distance"), maximum=10000000),
         "calories": number(raw.get("calories"), maximum=100000),
         "averageHeartRate": number(raw.get("averageHR"), maximum=300, minimum=1),
+        "overview": detail_record(raw),
     }
 
 
@@ -285,7 +366,11 @@ def normalize_day(day: str, stats: dict[str, Any], sleep: Any, heart: Any, hrv: 
         "weightKg": weight_kg(weight),
         "workoutSeconds": workout_seconds,
     }
-    return {"summary": summary, "activities": activities or [], "warnings": sorted(set(warnings))}
+    day_battery = [entry for entry in battery or [] if isinstance(entry, dict) and entry.get("date") == day] if isinstance(battery, list) else None
+    details = {key: detail_record(value) for key, value in {
+        "daily": stats, "sleep": sleep, "heart": heart, "hrv": hrv, "weight": weight, "battery": day_battery,
+    }.items()}
+    return {"summary": summary, "activities": activities or [], "warnings": sorted(set(warnings)), "details": details}
 
 
 def optional_call(callback: Callable[[], Any], label: str, warnings: list[str]) -> Any:
@@ -349,6 +434,11 @@ def sync(command: dict[str, Any], factory: Callable[..., Any], *, pause: Callabl
     if command.get("region") not in ("global", "cn"):
         raise WorkerError("PROTOCOL")
     start, end = date_range(command)
+    if "includeDetails" in command and not isinstance(command["includeDetails"], bool):
+        raise WorkerError("PROTOCOL")
+    activity_id = command.get("activityId")
+    if activity_id is not None and (not isinstance(activity_id, str) or not re.fullmatch(r"[1-9][0-9]{0,29}", activity_id) or start != end):
+        raise WorkerError("PROTOCOL")
     token_path = session_dir(command.get("sessionDir"), connecting=False)
     client = factory(is_cn=command["region"] == "cn", retry_attempts=1)
     client.login(str(token_path))
@@ -386,6 +476,50 @@ def sync(command: dict[str, Any], factory: Callable[..., Any], *, pause: Callabl
             if isinstance(response, dict) and response.get("calendarDate") not in (None, day):
                 raise WorkerError("PROTOCOL")
         payload = normalize_day(day, stats, sleep, heart, hrv, weight, battery, by_day.get(day, []) if raw_activities is not None else None, warnings)
+        if command.get("includeDetails") is True:
+            callbacks = {key: (lambda method=method: getattr(client, method)(day)) for key, method in DETAIL_METHODS.items()}
+            callbacks.update({
+                "composition": lambda: client.get_body_composition(day, day),
+                "blood_pressure": lambda: client.get_blood_pressure(day, day),
+                "race_predictions": lambda: client.get_race_predictions(day, day, "daily"),
+                "running_tolerance": lambda: client.get_running_tolerance(day, day, "daily"),
+                "ftp": lambda: {"running": optional_call(lambda: client.get_functional_threshold_power_range(day, day, sport="RUNNING"), "ftp", warnings),
+                                "cycling": optional_call(lambda: client.get_functional_threshold_power_range(day, day, sport="CYCLING"), "ftp", warnings)},
+                "lactate_threshold": lambda: client.get_lactate_threshold(latest=False, start_date=day, end_date=day, aggregation="daily"),
+            })
+            for key, callback in callbacks.items():
+                value = optional_call(callback, key, warnings)
+                if isinstance(value, dict) and value.get("calendarDate") not in (None, day):
+                    raise WorkerError("PROTOCOL")
+                payload["details"][key] = detail_record(value)
+                pause(0.1)
+        if activity_id is not None:
+            activity = next((item for item in payload["activities"] if item["id"] == activity_id), None)
+            if activity is None:
+                raise WorkerError("PROTOCOL")
+            calls = {key: (lambda method=method: getattr(client, method)(activity_id)) for key, method in ACTIVITY_METHODS.items()}
+            calls["samples"] = lambda: client.get_activity_details(activity_id, maxchart=1000, maxpoly=1000)
+            activity["details"] = {}
+            for key, callback in calls.items():
+                raw = optional_call(callback, "activities", warnings)
+                if isinstance(raw, dict) and raw.get("activityId") is not None and str(raw["activityId"]) != activity_id:
+                    raise WorkerError("PROTOCOL")
+                activity["details"][key] = detail_record(raw)
+                pause(0.1)
+        # Enforce the Java line bound even when a day contains many workouts or samples.
+        records = list(payload["details"].values())
+        for activity in payload["activities"]:
+            if activity.get("overview"):
+                records.append(activity["overview"])
+            records.extend(activity.get("details", {}).values())
+        size = len(json.dumps(payload, ensure_ascii=True))
+        for record in sorted(records, key=lambda record: len(json.dumps(record["value"], ensure_ascii=True)), reverse=True):
+            if size <= 1800000:
+                break
+            size -= len(json.dumps(record["value"], ensure_ascii=True)) - 4
+            record.update(value=None, state="unavailable", truncated=True)
+        if size > 1800000:
+            raise WorkerError("PROTOCOL")
         emit({"type": "day", "date": day, "data": payload})
         if offset + 1 < days:
             pause(0.25)

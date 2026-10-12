@@ -8,7 +8,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 (async()=>{
   let owner='user-1',status={userId:'user-1',connected:false,region:'global',state:'idle',available:true,error:'',lastSuccess:null,settings:{autoSync:false,intervalHours:1,days:7}};
-  let rows=[],dataError=false,dataDelay=0,statusReads=0,dataReads=0,invalidMfa=true,accessDenied=false;
+  let rows=[],dataError=false,dataDelay=0,dayDelay=0,statusReads=0,dataReads=0,dayReads=0,invalidMfa=true,accessDenied=false;
   const mutations=[],errors=[];
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost'),json=(value,code=200)=>{res.writeHead(code,{'Content-Type':'application/json;charset=utf-8'});res.end(JSON.stringify(value));};
@@ -16,6 +16,11 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     if(url.pathname==='/api/report-visibility'){json({dhh:false,jd:false,jdLowActivity:false,adpflux:false});return;}
     if(url.pathname==='/api/tool-visibility'){json({garmin:true});return;}
     if(url.pathname==='/api/garmin/status'){statusReads++;if(accessDenied)json({error:'佳明工具权限已关闭'},403);else json(status);return;}
+    if(url.pathname==='/api/garmin/day'){
+      dayReads++;const savedOwner=owner,date=url.searchParams.get('date'),row=JSON.parse(JSON.stringify(rows.find(row=>row.date===date)||null));const pause=dayDelay;dayDelay=0;if(pause)await delay(pause);
+      if(accessDenied){json({error:'佳明工具权限已关闭'},403);return;}
+      if(!row){json({error:'这一天尚未保存记录'},404);return;}json({userId:savedOwner,day:row});return;
+    }
     if(url.pathname==='/api/garmin/data'){
       dataReads++;const savedOwner=owner,startDate=url.searchParams.get('startDate'),endDate=url.searchParams.get('endDate');
       const savedRows=JSON.parse(JSON.stringify(rows)),pause=dataDelay;dataDelay=0;
@@ -81,7 +86,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     assert.deepEqual(mutations.at(-1).payload,{autoSync:true,intervalHours:24,days:30,expectedUserId:'user-1'});
     await page.locator('#autoSync').uncheck();await page.locator('#saveSettings').click();await page.waitForFunction(()=>document.getElementById('autoSyncState').textContent==='关闭');
     await page.locator('#syncButton').click();await page.waitForFunction(()=>document.getElementById('jobStatus').textContent.includes('1 / 7'));
-    assert.deepEqual(mutations.at(-1).payload,{startDate:start,endDate:end,expectedUserId:'user-1'});
+    assert.deepEqual(mutations.at(-1).payload,{startDate:start,endDate:end,includeDetails:true,expectedUserId:'user-1'});
     const beforePoll=statusReads;await page.waitForTimeout(250);assert.ok(statusReads>beforePoll,'active job should poll');
     await page.evaluate(()=>{window.__garminActive=false;document.dispatchEvent(new Event('visibilitychange'));});
     const paused=statusReads;await page.waitForTimeout(350);assert.equal(statusReads,paused,'inactive page must not poll');
@@ -102,6 +107,36 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     assert.ok((await page.locator('#dailyRows tr').first().locator('td').nth(5).getAttribute('title')).includes('23:00:00'));
     await page.locator('#activitiesPanel summary').click();assert.equal(await page.locator('#activitiesList img').count(),0);
     assert.equal(await page.locator('#activitiesList h3').textContent(),'<img src=x onerror=alert(1)>');
+    const record=value=>({state:'available',collectedAt:'2026-10-12T02:00:00Z',truncated:false,value});
+    rows[0].details={daily:record({totalSteps:1000,dailyStepGoal:8000,newProviderMetric:88}),sleep:record({dailySleepDTO:{deepSleepSeconds:3600,sleepScores:{overall:{value:90}}}}),heart:record({heartRateValues:[[Date.parse(end),60],[Date.parse(end)+60000,-1],[Date.parse(end)+120000,80],[Date.parse(end)+180000,70]]}),spo2:{state:'unavailable',collectedAt:'2026-10-12T02:00:00Z',value:null},training_readiness:record([{score:65,description:'<img src=x onerror=alert(1)>'}])};
+    rows[0].activities[0].id='123';rows[0].activities[0].overview=record({averagePower:200,elevationGain:42});rows[0].activities[0].details={splits:record([{distance:1000,duration:360}])};
+    assert.equal(dayReads,0,'details must not be fetched for the daily table');
+    await page.locator('#dailyRows tr').first().getByRole('button').click();await page.waitForFunction(()=>document.getElementById('detailStatus').textContent.includes('已采集 5 类'));
+    assert.ok((await page.locator('#detailContent').textContent()).includes('步数目标'));
+    assert.ok((await page.locator('#detailContent').textContent()).includes('newProviderMetric'));
+    await page.locator('#detailSearch').fill('newProviderMetric');await page.waitForFunction(()=>document.getElementById('detailContent').textContent.includes('匹配 1 个字段'));
+    assert.ok((await page.locator('#detailContent').textContent()).includes('88'));
+    await page.locator('#detailSearch').fill('no-such-field');await page.waitForFunction(()=>document.getElementById('detailContent').textContent.includes('没有匹配字段'));
+    await page.locator('#detailSearch').fill('');await page.waitForFunction(()=>document.getElementById('detailContent').textContent.includes('每日统计'));
+    assert.equal(await page.locator('#dayDialog img').count(),0);
+    const downloadEvent=page.waitForEvent('download');await page.locator('#exportDetail').click();const exported=await downloadEvent;assert.equal(exported.suggestedFilename(),`garmin-${end}.json`);
+    await page.locator('#detailTabs').getByRole('button',{name:'睡眠',exact:true}).click();assert.ok((await page.locator('#detailContent').textContent()).includes('深睡'));
+    await page.locator('#detailTabs').getByRole('button',{name:'心率与恢复'}).click();assert.equal(await page.locator('#detailContent svg').count(),1);
+    assert.ok((await page.locator('#detailContent').textContent()).includes('佳明未提供记录'));
+    assert.ok((await page.locator('#detailContent').textContent()).includes('尚未采集'));
+    await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:path.resolve(__dirname,'../.runtime/garmin-details-desktop.png')});
+    await page.setViewportSize({width:390,height:844});assert.equal(await page.locator('#dayDialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+    await page.screenshot({path:path.resolve(__dirname,'../.runtime/garmin-details-mobile.png')});await page.keyboard.press('Escape');assert.equal(await page.locator('#dayDialog').evaluate(node=>node.open),false);await page.setViewportSize({width:1440,height:1000});
+    await page.locator('#dailyRows tr').first().getByRole('button').click();await page.waitForFunction(()=>!document.getElementById('exportDetail').disabled);
+    await page.locator('#detailTabs').getByRole('button',{name:'运动详情'}).click();assert.ok((await page.locator('#detailContent').textContent()).includes('分段'));
+    await page.getByRole('button',{name:'补采本次运动详情'}).click();assert.deepEqual(mutations.at(-1).payload,{startDate:end,endDate:end,activityId:'123',includeDetails:false,expectedUserId:'user-1'});
+    await page.waitForFunction(()=>document.getElementById('pageMessage').textContent.includes('补采任务已提交'));
+    await page.locator('#closeDetail').click();status={...status,state:'ready'};await page.locator('#refreshStatus').click();
+    dayDelay=350;const beforeDay=dayReads;await page.locator('#dailyRows tr').first().getByRole('button').click();while(dayReads===beforeDay)await delay(10);
+    await page.locator('#detailDate').selectOption(start);await page.waitForFunction(()=>document.getElementById('detailStatus').textContent.includes('已采集 0 类'));await page.waitForTimeout(450);
+    assert.equal(await page.locator('#detailTitle').textContent(),start+' 的健康记录');assert.equal((await page.locator('#detailContent').textContent()).includes('newProviderMetric'),false);
+    await page.locator('#syncDetail').click();assert.deepEqual(mutations.at(-1).payload,{startDate:start,endDate:start,includeDetails:true,expectedUserId:'user-1'});
+    await page.locator('#closeDetail').click();status={...status,state:'ready'};await page.locator('#refreshStatus').click();
     await page.locator('#warningsPanel summary').click();assert.equal((await page.locator('#warningsList').textContent()).includes('unknown_private_code'),false);
     const beforeInvalid=mutations.length;await page.locator('#startDate').fill(new Date(Date.parse(end)-90*86400000).toISOString().slice(0,10));await page.locator('#syncButton').click();
     assert.ok((await page.locator('#pageMessage').textContent()).includes('最多查询或同步 90 天'));assert.equal(mutations.length,beforeInvalid);
@@ -133,9 +168,11 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     owner='user-3';await page.locator('#queryButton').click();await page.waitForFunction(()=>document.getElementById('pageMessage').textContent.includes('网站登录账户已更换'));
     assert.equal(await page.locator('#dailyRows tr').count(),0);assert.equal(await page.locator('#lastSuccess').textContent(),'最近成功：尚无记录');
     status={...status,userId:owner};rows=[{date:end,summary:{steps:88},activities:[],warnings:[]}];await page.reload();await page.waitForFunction(()=>document.querySelector('#dailyRows tr td')?.textContent==='88');
+    await page.locator('#dailyRows tr').first().getByRole('button').click();await page.waitForFunction(()=>!document.getElementById('exportDetail').disabled);await page.locator('#closeDetail').click();
     await page.locator('#connectionPanel summary').click();await page.locator('#email').fill('revoked@example.invalid');await page.locator('#password').fill('revoked-synthetic-secret');
     dataDelay=350;const beforeDenied=dataReads;await page.locator('#queryButton').click();while(dataReads===beforeDenied)await delay(10);
     accessDenied=true;await page.locator('#refreshStatus').click();await page.waitForFunction(()=>document.getElementById('pageMessage').textContent.includes('请联系网站管理员'));
+    assert.equal(await page.locator('#dayDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#detailContent').textContent(),'');
     assert.equal((await page.locator('#pageMessage').textContent()).includes('更换'),false);assert.equal(await page.locator('#dailyRows tr').count(),0);
     assert.equal(await page.locator('#password').inputValue(),'');assert.equal(await page.locator('#email').inputValue(),'');
     assert.equal(await page.locator('#connectButton').isDisabled(),true);assert.equal(await page.locator('#queryButton').isDisabled(),true);assert.equal(await page.locator('#refreshStatus').isDisabled(),true);

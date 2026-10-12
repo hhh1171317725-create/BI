@@ -214,6 +214,93 @@ class WorkerTests(unittest.TestCase):
         self.assertNotIn("secret-provider-response", output.getvalue() + error_output.getvalue())
         self.assertNotIn("library-private-value", output.getvalue())
 
+    def test_details_preserve_health_fields_and_remove_nested_secrets(self):
+        record = worker.detail_record({"score": 0, "unknownMetric": 42, "samples": [[1, -1], [2, 80]],
+                                       "nested": {"accessToken": "secret", "email": "private", "bodyFat": 12.5}})
+        self.assertEqual(record["state"], "available")
+        self.assertEqual(record["value"]["unknownMetric"], 42)
+        self.assertEqual(record["value"]["score"], 0)
+        self.assertEqual(record["value"]["nested"], {"bodyFat": 12.5})
+        self.assertNotIn("secret", json.dumps(record))
+        self.assertEqual(worker.detail_record(None)["state"], "unavailable")
+
+    def test_detail_bounds_are_explicit_and_valid_json(self):
+        record = worker.detail_record({"samples": [[i, i % 100] for i in range(12000)], "score": 55})
+        self.assertTrue(record["truncated"])
+        self.assertEqual(record["value"]["score"], 55)
+        self.assertLessEqual(len(record["value"]["samples"]), 5000)
+        self.assertLessEqual(len(json.dumps(record["value"], ensure_ascii=True)), 120000)
+        self.assertIsNone(worker.detail_record({"value": float("nan")})["value"]["value"])
+        nested = {"score": 42}
+        for _ in range(30):
+            nested = {"nested": nested}
+        bounded = worker.detail_record(nested)
+        self.assertTrue(bounded["truncated"])
+        node = bounded["value"]
+        for _ in range(12):
+            node = node["nested"]
+        self.assertIsNone(node)
+
+    def detailed_client(self):
+        self.path.mkdir()
+        (self.path / "garmin_tokens.json").write_text("fixture", encoding="utf-8")
+        client = MagicMock()
+        client.connectapi.return_value = []
+        client.get_body_battery.return_value = []
+        client.get_stats.side_effect = lambda day: {"calendarDate": day, "totalSteps": 10}
+        for method in ["get_sleep_data", "get_heart_rates", "get_hrv_data", "get_daily_weigh_ins", *worker.DETAIL_METHODS.values(),
+                       "get_body_composition", "get_blood_pressure", "get_race_predictions", "get_running_tolerance",
+                       "get_functional_threshold_power_range", "get_lactate_threshold"]:
+            getattr(client, method).return_value = {"score": 50, "newProviderField": 88}
+        return client
+
+    def test_full_sync_collects_all_supported_categories_and_exact_daily_ranges(self):
+        client = self.detailed_client()
+        command = self.command("sync") | {"includeDetails": True}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        details = events[0]["data"]["details"]
+        self.assertEqual(len(details), 33)
+        self.assertEqual(details["spo2"]["value"]["newProviderField"], 88)
+        client.get_race_predictions.assert_any_call("2026-01-01", "2026-01-01", "daily")
+        client.get_running_tolerance.assert_any_call("2026-01-01", "2026-01-01", "daily")
+        client.get_functional_threshold_power_range.assert_any_call("2026-01-01", "2026-01-01", sport="CYCLING")
+        client.get_lactate_threshold.assert_any_call(latest=False, start_date="2026-01-01", end_date="2026-01-01", aggregation="daily")
+        self.assertEqual(events[-1]["type"], "done")
+
+    def test_full_sync_optional_unsupported_gap_but_auth_failure_aborts(self):
+        client = self.detailed_client()
+        command = self.command("sync") | {"includeDetails": True}
+        client.get_spo2_data.side_effect = HttpError(404)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[0])["data"]["details"]["spo2"]["state"], "unavailable")
+        client.get_spo2_data.side_effect = HttpError(401)
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(HttpError):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+
+    def test_activity_detail_is_only_fetched_for_a_returned_activity(self):
+        client = self.detailed_client()
+        command = self.command("sync") | {"endDate": "2026-01-01", "activityId": "123"}
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(worker.WorkerError):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+        client.get_activity.assert_not_called()
+        client.connectapi.return_value = [{"activityId": 123, "startTimeLocal": "2026-01-01T08:00:00", "startTimeGMT": "2026-01-01T00:00:00", "duration": 100}]
+        for method in [*worker.ACTIVITY_METHODS.values(), "get_activity_details"]:
+            getattr(client, method).return_value = {"metric": 12}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+        activity = json.loads(output.getvalue().splitlines()[0])["data"]["activities"][0]
+        self.assertEqual(len(activity["details"]), 10)
+        client.get_activity_details.assert_called_once_with("123", maxchart=1000, maxpoly=1000)
+        client.get_activity.return_value = {"activityId": 999}
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(worker.WorkerError):
+            worker.sync(command, MagicMock(return_value=client), pause=lambda _: None)
+
     def test_protocol_size_and_invalid_json(self):
         for line in ("x" * (worker.MAX_INPUT + 1), "{", "[]", ""):
             with patch("sys.stdin", io.StringIO(line)), self.assertRaises(worker.WorkerError):

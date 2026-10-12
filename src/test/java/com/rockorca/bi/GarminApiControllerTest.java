@@ -18,8 +18,8 @@ class GarminApiControllerTest {
   final MockHttpServletRequest request=new MockHttpServletRequest();
   @BeforeEach void setup(){when(sessions.currentUser(request)).thenReturn(new UserRepository.UserAccount(7,"owner","hash","user",true,1,null,null,null));when(users.canUseTool(any(),eq("garmin"))).thenReturn(true);}
   @Test void healthEndpointsUseOnlyTheAuthenticatedOwner(){
-    controller.status(request);controller.data(request,"2026-10-01","2026-10-02");controller.sync(request,Map.of("expectedUserId","7","userId","8"));
-    verify(service).status(7);verify(service).data(7,"2026-10-01","2026-10-02");verify(service).sync(eq(7L),anyMap());verify(service,never()).status(8);
+    controller.status(request);controller.data(request,"2026-10-01","2026-10-02");controller.day(request,"2026-10-01");controller.sync(request,Map.of("expectedUserId","7","userId","8"));
+    verify(service).status(7);verify(service).data(7,"2026-10-01","2026-10-02");verify(service).day(7,"2026-10-01");verify(service).sync(eq(7L),anyMap());verify(service,never()).status(8);
   }
   @Test void missingInactiveAndDisabledActorsCannotReadOrMutateHealthData(){
     when(sessions.currentUser(request)).thenReturn(null);assertEquals(401,assertThrows(ResponseStatusException.class,()->controller.status(request)).getStatusCode().value());

@@ -27,6 +27,11 @@ public class GarminSyncService {
       "heartRateAverage","heartRateMin","heartRateMax","sleepSeconds","deepSleepSeconds","lightSleepSeconds","remSleepSeconds",
       "awakeSleepSeconds","sleepScore","stress","bodyBattery","hrvMs","weightKg","workoutSeconds");
   private static final Set<String> WARNING_CODES=Set.of("steps","heart_rate","sleep","stress","body_battery","hrv","weight","activities","workout");
+  private static final Set<String> DETAIL_CODES=Set.of("daily","sleep","heart","hrv","weight","battery","steps","floors","stress","battery_events",
+      "hydration","respiration","spo2","intensity","training_readiness","training_status","training_load","daily_training","vo2max","fitness_age",
+      "endurance","hill","move_iq","lifestyle","menstrual","nutrition","meals","composition","blood_pressure","race_predictions","running_tolerance","ftp","lactate_threshold");
+  private static final Set<String> ACTIVITY_DETAIL_CODES=Set.of("overview","splits","typed_splits","split_summaries","weather","heart_zones","power_zones","exercise_sets","gear","samples");
+  private static final java.util.regex.Pattern PRIVATE_KEY=java.util.regex.Pattern.compile("password|token|secret|cookie|authorization|email|displayname|username|profileimage",java.util.regex.Pattern.CASE_INSENSITIVE);
   private final RuntimeConfig config;
   private final UserService users;
   private final ObjectMapper mapper;
@@ -122,10 +127,20 @@ public class GarminSyncService {
     requireAllowed(id);var owner=owner(id);synchronized(owner){
       if(!Boolean.TRUE.equals(owner.disk.get("connected")))throw problem(HttpStatus.CONFLICT,"请先连接佳明账户");
       var range=range(text(input,"startDate"),text(input,"endDate"),integer(owner.disk.get("days"),7));
+      if(input.containsKey("includeDetails")&&!(input.get("includeDetails") instanceof Boolean))throw problem(HttpStatus.BAD_REQUEST,"详情同步设置无效");
+      String activityId=text(input,"activityId");
+      if(input.containsKey("activityId")){
+        if(!activityId.matches("[1-9][0-9]{0,29}")||!range[0].equals(range[1]))throw problem(HttpStatus.BAD_REQUEST,"请选择一天内已保存的运动记录");
+        var cached=day(id,range[0].toString());
+        if(!(((Map<?,?>)cached.get("day")).get("activities") instanceof List<?> items)
+            ||items.stream().noneMatch(item->item instanceof Map<?,?> map&&activityId.equals(map.get("id"))))throw problem(HttpStatus.BAD_REQUEST,"该运动不属于当前日期的已保存记录");
+      }
       var job=new Job("sync",text(owner.disk,"region"),text(owner.disk,"fingerprint"),text(owner.disk,"tokenId"),UUID.randomUUID().toString(),
           owner.revision,System.currentTimeMillis()+syncTimeout,range[0],range[1]);
       var request=new LinkedHashMap<String,Object>(Map.of("action","sync","region",job.region,"sessionDir",session(owner,job.tokenId).toString(),
           "startDate",job.start.toString(),"endDate",job.end.toString()));
+      request.put("includeDetails",Boolean.TRUE.equals(input.get("includeDetails")));
+      if(!activityId.isBlank())request.put("activityId",activityId);
       begin(owner,job,request);return view(owner);
     }
   }
@@ -175,10 +190,24 @@ public class GarminSyncService {
         for(LocalDate date=dates[0];!date.isAfter(dates[1]);date=date.plusDays(1)){
           Path path=dataId.isBlank()?null:cache(owner,dataId).resolve(date+".json");
           if(path==null||!Files.isRegularFile(path)){missing.add(date.toString());continue;}
-          var day=mapper.readValue(path.toFile(),Map.class);days.add(normalizeDay(date.toString(),day));
+          Path index=path.resolveSibling(date+".summary.json");
+          var raw=mapper.readValue((Files.isRegularFile(index)?index:path).toFile(),Map.class);
+          var normalized=normalizeDay(date.toString(),raw);var light=lightDay(normalized);
+          if(Files.isRegularFile(index))light.put("detailCount",integer(raw.get("detailCount"),0));days.add(light);
         }
       }catch(Exception error){throw problem(HttpStatus.INTERNAL_SERVER_ERROR,"佳明本地数据读取失败，旧缓存已保留");}
       return Map.of("userId",Long.toString(id),"startDate",dates[0].toString(),"endDate",dates[1].toString(),"days",days,"missingDates",missing,"lastSuccess",text(owner.disk,"lastSuccess"));
+    }
+  }
+
+  Map<String,Object> day(long id,String date){
+    if(date==null||!date.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}"))throw problem(HttpStatus.BAD_REQUEST,"请选择有效的详情日期");
+    var owner=owner(id);synchronized(owner){
+      var dates=range(date,date,1);String dataId=text(owner.disk,"dataId");
+      Path file=dataId.isBlank()?null:cache(owner,dataId).resolve(dates[0]+".json");
+      if(file==null||!Files.isRegularFile(file))throw problem(HttpStatus.NOT_FOUND,"这一天尚未保存记录，请先同步");
+      try{return Map.of("userId",Long.toString(id),"day",normalizeDay(dates[0].toString(),mapper.readValue(file.toFile(),Map.class)));}
+      catch(Exception error){throw problem(HttpStatus.INTERNAL_SERVER_ERROR,"每日详情读取失败");}
     }
   }
 
@@ -209,7 +238,12 @@ public class GarminSyncService {
             case "day"->{
               String date=text(event,"date");if(!job.action.equals("sync")||!date.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}"))throw new WorkerFailure("PROTOCOL");
               LocalDate day=LocalDate.parse(date);if(day.isBefore(job.start)||day.isAfter(job.end)||!seen.add(date)||!(event.get("data") instanceof Map<?,?> payload))throw new WorkerFailure("PROTOCOL");
-              atomic(cache(owner,job.dataId).resolve(date+".json"),normalizeDay(date,payload));job.done=seen.size();
+              var normalized=normalizeDay(date,payload);
+              String previous=text(owner.disk,"dataId");Path old=previous.isBlank()?null:cache(owner,previous).resolve(date+".json");
+              if(old!=null&&Files.isRegularFile(old))normalized=mergeDetails(normalizeDay(date,mapper.readValue(old.toFile(),Map.class)),normalized);
+              boundDetails(normalized);
+              atomic(cache(owner,job.dataId).resolve(date+".json"),normalized);
+              atomic(cache(owner,job.dataId).resolve(date+".summary.json"),lightDay(normalized));job.done=seen.size();
             }
             case "done"->{
               if(!job.action.equals("sync")||!job.start.toString().equals(text(event,"startDate"))||!job.end.toString().equals(text(event,"endDate"))
@@ -287,10 +321,55 @@ public class GarminSyncService {
     var workouts=new ArrayList<Map<String,Object>>();for(Object value:activities){
       if(!(value instanceof Map<?,?> activity))throw new WorkerFailure("PROTOCOL");var item=new LinkedHashMap<String,Object>();
       for(String key:List.of("id","name","type","startTime")){Object field=activity.get(key);String text=field==null?"":field.toString();if(text.length()>200||text.chars().anyMatch(c->c<32))throw new WorkerFailure("PROTOCOL");item.put(key,text);}
-      for(String key:List.of("durationSeconds","distanceMeters","calories","averageHeartRate"))item.put(key,metric(activity.get(key)));workouts.add(item);
+      for(String key:List.of("durationSeconds","distanceMeters","calories","averageHeartRate"))item.put(key,metric(activity.get(key)));
+      if(activity.get("overview") instanceof Map<?,?> record)item.put("overview",detail(record));
+      item.put("details",details(activity.get("details"),ACTIVITY_DETAIL_CODES));workouts.add(item);
     }
     var warnings=new ArrayList<String>();if(raw.get("warnings") instanceof List<?> list)for(Object warning:list)if(WARNING_CODES.contains(String.valueOf(warning)))warnings.add(warning.toString());
-    return Map.of("date",date,"summary",summary,"activities",workouts,"warnings",warnings);
+    return Map.of("date",date,"summary",summary,"activities",workouts,"warnings",warnings,"details",details(raw.get("details"),DETAIL_CODES));
+  }
+  private Map<String,Object> details(Object raw,Set<String> codes)throws WorkerFailure{
+    var result=new LinkedHashMap<String,Object>();if(raw instanceof Map<?,?> map)for(String key:codes)if(map.get(key) instanceof Map<?,?> record)result.put(key,detail(record));return result;
+  }
+  private Map<String,Object> detail(Map<?,?> record)throws WorkerFailure{
+    String state=Objects.toString(record.get("state"),"");if(!Set.of("available","unavailable").contains(state))throw new WorkerFailure("PROTOCOL");
+    String collected=Objects.toString(record.get("collectedAt"),"");try{OffsetDateTime.parse(collected);}catch(Exception error){throw new WorkerFailure("PROTOCOL");}
+    var result=new LinkedHashMap<String,Object>();result.put("state",state);result.put("collectedAt",collected);
+    result.put("truncated",Boolean.TRUE.equals(record.get("truncated")));result.put("value",healthValue(record.get("value"),0,new int[]{18000}));return result;
+  }
+  private Object healthValue(Object value,int depth,int[] budget)throws WorkerFailure{
+    if(--budget[0]<0||depth>12)throw new WorkerFailure("PROTOCOL");
+    if(value==null||value instanceof Boolean)return value;
+    if(value instanceof Number number){if(!Double.isFinite(number.doubleValue()))throw new WorkerFailure("PROTOCOL");return number;}
+    if(value instanceof String string){if(string.length()>500||string.chars().anyMatch(c->c<32))throw new WorkerFailure("PROTOCOL");return string;}
+    if(value instanceof Map<?,?> map){if(map.size()>500)throw new WorkerFailure("PROTOCOL");var result=new LinkedHashMap<String,Object>();
+      for(var entry:map.entrySet())if(entry.getKey() instanceof String key&&key.length()<=100&&!PRIVATE_KEY.matcher(key).find())result.put(key,healthValue(entry.getValue(),depth+1,budget));return result;}
+    if(value instanceof List<?> list){if(list.size()>5000)throw new WorkerFailure("PROTOCOL");var result=new ArrayList<Object>();for(Object item:list)result.add(healthValue(item,depth+1,budget));return result;}
+    throw new WorkerFailure("PROTOCOL");
+  }
+  private Map<String,Object> mergeDetails(Map<String,Object> previous,Map<String,Object> fresh){
+    var merged=new LinkedHashMap<String,Object>((Map<String,Object>)previous.get("details"));merged.putAll((Map<String,Object>)fresh.get("details"));
+    var result=new LinkedHashMap<String,Object>(fresh);result.put("details",merged);
+    var oldActivities=new HashMap<String,Map<?,?>>();for(Object item:(List<?>)previous.get("activities")){var map=(Map<?,?>)item;oldActivities.put(map.get("id").toString(),map);}
+    for(Object item:(List<?>)fresh.get("activities")){var map=(Map<String,Object>)item;var old=oldActivities.get(map.get("id"));
+      if(old!=null){var extra=new LinkedHashMap<String,Object>((Map<String,Object>)old.get("details"));extra.putAll((Map<String,Object>)map.get("details"));map.put("details",extra);}}
+    return result;
+  }
+  private Map<String,Object> lightDay(Map<String,Object> day){
+    var result=new LinkedHashMap<String,Object>(day);result.remove("details");result.put("detailCount",((Map<?,?>)day.get("details")).size());
+    var activities=new ArrayList<Map<String,Object>>();for(Object item:(List<?>)day.get("activities")){
+      var workout=new LinkedHashMap<String,Object>((Map<String,Object>)item);workout.remove("overview");workout.remove("details");activities.add(workout);}
+    result.put("activities",activities);return result;
+  }
+  private void boundDetails(Map<String,Object> day){
+    var records=new ArrayList<Map<String,Object>>();for(Object record:((Map<?,?>)day.get("details")).values())records.add((Map<String,Object>)record);
+    for(Object item:(List<?>)day.get("activities")){var workout=(Map<?,?>)item;
+      if(workout.get("overview") instanceof Map<?,?> record)records.add((Map<String,Object>)record);
+      for(Object record:((Map<?,?>)workout.get("details")).values())records.add((Map<String,Object>)record);}
+    records.sort(Comparator.comparingInt((Map<String,Object> record)->mapper.writeValueAsString(record.get("value")).length()).reversed());
+    int size=mapper.writeValueAsBytes(day).length;
+    for(var record:records){if(size<=1_800_000)break;int removed=mapper.writeValueAsBytes(record.get("value")).length-4;
+      record.put("value",null);record.put("state","unavailable");record.put("truncated",true);size-=removed;}
   }
   private static Object metric(Object value)throws WorkerFailure{
     if(value==null)return null;if(!(value instanceof Number number)||!Double.isFinite(number.doubleValue())||number.doubleValue()<0)throw new WorkerFailure("PROTOCOL");return value;
@@ -306,7 +385,7 @@ public class GarminSyncService {
   }
   private static void copyCache(Path from,Path to)throws IOException{
     if(!Files.isDirectory(from))return;try(var files=Files.list(from)){for(Path file:files.filter(Files::isRegularFile).toList()){
-      if(!file.getFileName().toString().matches("[0-9]{4}-[0-9]{2}-[0-9]{2}\\.json")||Files.exists(to.resolve(file.getFileName())))continue;
+      if(!file.getFileName().toString().matches("[0-9]{4}-[0-9]{2}-[0-9]{2}(\\.summary)?\\.json")||Files.exists(to.resolve(file.getFileName())))continue;
       Files.copy(file,to.resolve(file.getFileName()));mode(to.resolve(file.getFileName()),FILE_MODE);
     }}
   }

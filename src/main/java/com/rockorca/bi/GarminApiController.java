@@ -55,6 +55,7 @@ public class GarminApiController {
   @PostMapping("/connect") public Map<String,Object> connect(HttpServletRequest request,@RequestBody Map<String,Object> input){
     return service.connect(owner(request,input),input);
   }
+  @GetMapping("/day") public Map<String,Object> day(HttpServletRequest request,@RequestParam String date){return service.day(owner(request,null),date);}
   @PostMapping("/mfa") public Map<String,Object> mfa(HttpServletRequest request,@RequestBody Map<String,Object> input){
     return service.mfa(owner(request,input),input);
   }

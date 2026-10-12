@@ -22,6 +22,7 @@
   const active = () => !document.hidden && document.hasFocus();
   function message(value = '', error = false) { text('pageMessage', value); hide('pageMessage', !value); $('pageMessage').dataset.error = String(error); }
   function clearData() {
+    window.garminDetails?.clear();
     shownDays = []; $('dailyRows').replaceChildren(); $('summaryCards').replaceChildren(); $('activitiesList').replaceChildren(); $('warningsList').replaceChildren();
     for (const id of ['tableWrap','summaryCards','activitiesPanel','warningsPanel','dataEmpty']) hide(id, true);
     text('dataRange', ''); text('dataStatus', '');
@@ -63,6 +64,8 @@
     $('refreshStatus').disabled = !canUse || busy;
     for (const id of ['startDate','endDate','queryButton']) $(id).disabled = !canUse || busy;
     $('syncButton').disabled = !canSync;
+    $('includeDetails').disabled = !canUse || busy || running;
+    window.garminDetails?.controls(canSync);
     const expired = status?.mfa?.expiresAt && timestamp(status.mfa.expiresAt) <= Date.now();
     $('mfaCode').disabled = $('mfaButton').disabled = !canUse || busy || !mfaRequired || !status?.jobId || !!expired;
     $('disconnect').disabled = !canUse || busy || (!connected && !running && !mfaRequired);
@@ -108,7 +111,7 @@
     }
     controls();
     if (changedAccount) { dataSequence++; dataController?.abort(); clearData(); message('已切换佳明账户，当前显示新账户的数据。'); }
-    if (previous && (changedAccount || (next.lastSuccess && next.lastSuccess !== previous.lastSuccess))) queryData();
+    if (previous && (changedAccount || (next.lastSuccess && next.lastSuccess !== previous.lastSuccess))) { queryData(); window.garminDetails?.refresh(); }
   }
   async function refreshStatus() {
     if (!ready || locked || busy) return;
@@ -137,6 +140,7 @@
   function renderData(result) {
     const days = Array.isArray(result.days) ? result.days.filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day.date)).sort((a,b) => b.date.localeCompare(a.date)) : [];
     shownDays = days;
+    window.garminDetails?.setDays(days);
     text('dataRange', `${result.startDate} — ${result.endDate}`);
     const expected = Math.round((Date.parse(result.endDate) - Date.parse(result.startDate)) / dayMillis) + 1;
     const missing = Array.isArray(result.missingDates) ? result.missingDates.length : Math.max(0, expected - days.length);
@@ -160,7 +164,7 @@
       const workouts = Array.isArray(day.activities) ? day.activities : [];
       const values = [day.date,format(summary.steps),number(summary.heartRateAverage) === null ? '—' : `${format(summary.heartRateAverage,1)} 次/分`,number(summary.restingHeartRate) === null ? '—' : `${format(summary.restingHeartRate)} 次/分`,number(summary.activeCalories) === null ? '—' : `${format(summary.activeCalories)} 千卡`,number(summary.weightKg) === null ? '—' : `${format(summary.weightKg,1)} 千克`,duration(summary.sleepSeconds),number(summary.workoutSeconds) === null ? (workouts.length ? `${workouts.length} 次` : '—') : duration(summary.workoutSeconds),number(summary.hrvMs) === null ? '—' : `${format(summary.hrvMs,1)} 毫秒`,format(summary.stress),format(summary.bodyBattery)];
       values.forEach((value,index) => {
-        const cell = element(index === 0 ? 'th' : 'td', value); if (index === 0) cell.scope = 'row';
+        const cell = element(index === 0 ? 'th' : 'td', index === 0 ? undefined : value); if (index === 0) { cell.scope = 'row';const button=element('button',value,'date-detail-button');button.type='button';button.setAttribute('aria-label',`${value} 每日详情`);button.addEventListener('click',()=>window.garminDetails?.open(day.date));cell.append(button); }
         if (index === 2 && (number(summary.heartRateMin) !== null || number(summary.heartRateMax) !== null)) cell.title = `最低 ${format(summary.heartRateMin)} · 最高 ${format(summary.heartRateMax)} 次/分`;
         if (index === 6) cell.title = `深睡 ${duration(summary.deepSleepSeconds)} · 浅睡 ${duration(summary.lightSleepSeconds)} · REM ${duration(summary.remSleepSeconds)} · 睡眠评分 ${format(summary.sleepScore)}${summary.sleepStartTime ? ` · 入睡 ${time(summary.sleepStartTime)}` : ''}${summary.sleepEndTime ? ` · 起床 ${time(summary.sleepEndTime)}` : ''}`;
         row.append(cell);
@@ -171,6 +175,7 @@
         node.append(timestamp, element('h3', workout.name || workout.type || '运动记录'));
         const details = [workout.type || '',number(workout.durationSeconds) === null ? '' : duration(workout.durationSeconds),number(workout.distanceMeters) === null ? '' : `${format(workout.distanceMeters / 1000,2)} 公里`,number(workout.calories) === null ? '' : `${format(workout.calories)} 千卡`,number(workout.averageHeartRate) === null ? '' : `平均心率 ${format(workout.averageHeartRate)} 次/分`].filter(Boolean);
         node.append(element('p', details.join(' · ') || '暂无详细指标')); activities.append(node);
+        const view=element('button','查看运动详情','secondary');view.type='button';view.addEventListener('click',()=>window.garminDetails?.open(day.date,'activities',workout.id));node.append(view);
       }
       const codes = [...new Set(Array.isArray(day.warnings) ? day.warnings : [])];
       if (codes.length) { warningCount++; warnings.append(element('li', `${day.date}：${[...new Set(codes.map(code => warningLabels[code] || '部分指标暂未提供'))].join('；')}`)); }
@@ -227,7 +232,7 @@
   });
   $('syncButton').addEventListener('click', () => {
     let dates; try { dates = range(); } catch (error) { message(error.message, true); return; }
-    mutate('/sync', {startDate:dates.startDate,endDate:dates.endDate}, '同步任务已提交，可在此处查看采集进度。');
+    mutate('/sync', {startDate:dates.startDate,endDate:dates.endDate,includeDetails:$('includeDetails').checked}, '同步任务已提交，可在此处查看采集进度。');
   });
   $('settingsForm').addEventListener('change', () => { settingsDirty = true; controls(); });
   $('settingsForm').addEventListener('input', () => { settingsDirty = true; controls(); });
@@ -245,8 +250,9 @@
   function pausePolling() { clearTimeout(pollTimer); if (statusController) { statusSequence++; statusController.abort(); } }
   document.addEventListener('visibilitychange', () => { if (active()) refreshStatus(); else pausePolling(); });
   window.addEventListener('blur', pausePolling); window.addEventListener('focus', () => { if (active()) refreshStatus(); });
-  window.addEventListener('pagehide', () => { pausePolling(); dataSequence++; dataController?.abort(); $('email').value = $('password').value = $('mfaCode').value = ''; });
+  window.addEventListener('pagehide', () => { pausePolling(); dataSequence++; dataController?.abort(); window.garminDetails?.clear();$('email').value = $('password').value = $('mfaCode').value = ''; });
   window.addEventListener('pageshow', event => { if (event.persisted && active()) refreshStatus(); });
+  window.garminDetailBridge = {request, sync:payload=>mutate('/sync',payload,'补采任务已提交，完成后详情将自动更新。'),canSync:()=>!$('syncButton').disabled};
   (async () => {
     try {
       const response = await fetch('/api/session', {cache:'no-store',credentials:'same-origin'});

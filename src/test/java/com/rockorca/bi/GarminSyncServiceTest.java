@@ -66,6 +66,46 @@ class GarminSyncServiceTest {
     service.sync(owner,Map.of("startDate",date,"endDate",date));idle(owner);assertEquals("",service.status(owner).get("error"));return worker;
   }
   Map<?,?> day(long owner){return (Map<?,?>)((List<?>)service.data(owner,date,date).get("days")).getFirst();}
+  static Map<String,Object> record(Object value){return Map.of("state","available","value",value,"truncated",false,"collectedAt","2026-10-12T01:00:00Z");}
+  void detailedSync(long owner,Map<String,Object> payload,Map<String,Object> input)throws Exception{
+    var worker=runner.add();worker.input=request->{worker.event(Map.of("type","day","date",date,"data",payload));worker.event(Map.of("type","done","startDate",date,"endDate",date,"dayCount",1));worker.finish();};
+    service.sync(owner,input);idle(owner);assertEquals("",service.status(owner).get("error"));
+  }
+  @Test void detailsArePrivateBoundedLazyAndRetainedByBasicSync()throws Exception{
+    login(7,"alice@example.com");
+    var payload=new LinkedHashMap<String,Object>(payload(5));payload.put("details",Map.of(
+        "spo2",record(Map.of("newProviderMetric",99,"nested",Map.of("password","hidden","value",95))),
+        "private_endpoint",record(Map.of("cookie","hidden"))));
+    detailedSync(7,payload,Map.of("startDate",date,"endDate",date,"includeDetails",true));
+    var full=(Map<?,?>)service.day(7,date).get("day");assertFalse(full.toString().contains("hidden"));assertFalse(full.toString().contains("private_endpoint"));
+    assertTrue(full.toString().contains("newProviderMetric"));assertFalse(day(7).containsKey("details"));assertEquals(1,day(7).get("detailCount"));
+    assertEquals(404,assertThrows(ResponseStatusException.class,()->service.day(8,date)).getStatusCode().value());
+    assertThrows(ResponseStatusException.class,()->service.day(7,"../../state"));assertThrows(ResponseStatusException.class,()->service.day(7,""));
+    syncDay(7,6);assertTrue(service.day(7,date).toString().contains("newProviderMetric"));
+    String dataId=Objects.toString(((Map<?,?>)mapper.readValue(dir.resolve("garmin/7/state.json").toFile(),Map.class)).get("dataId"));
+    Path cache=dir.resolve("garmin/7/data").resolve(dataId);assertTrue(Files.isRegularFile(cache.resolve(date+".summary.json")));
+    Files.writeString(cache.resolve(date+".json"),"corrupt detail fixture");
+    assertEquals(6,((Map<?,?>)day(7).get("summary")).get("steps"),"range queries use the lightweight summary index");
+  }
+  @Test void activityRefreshIsRestrictedToSavedOwnersActivitiesAndSurvivesLaterBasicSync()throws Exception{
+    login(7,"alice@example.com");var workout=new LinkedHashMap<String,Object>(Map.of("id","123","name","Run","type","running","durationSeconds",100));
+    workout.put("overview",record(Map.of("averagePower",200)));
+    var payload=new LinkedHashMap<String,Object>(payload(10));payload.put("activities",List.of(workout));
+    detailedSync(7,payload,Map.of("startDate",date,"endDate",date));
+    assertThrows(ResponseStatusException.class,()->service.sync(7,Map.of("startDate",date,"endDate",date,"activityId","999")));
+    workout.put("details",Map.of("splits",record(List.of(Map.of("distance",1000)))));
+    detailedSync(7,payload,Map.of("startDate",date,"endDate",date,"activityId","123"));
+    assertTrue(service.day(7,date).toString().contains("splits"));
+    workout.remove("details");detailedSync(7,payload,Map.of("startDate",date,"endDate",date));
+    assertTrue(service.day(7,date).toString().contains("splits"));assertFalse(service.data(7,date,date).toString().contains("averagePower"));
+  }
+  @Test void invalidDetailPayloadNeverOverwritesCache()throws Exception{
+    login(7,"alice@example.com");syncDay(7,12);
+    var bad=new LinkedHashMap<String,Object>(payload(99));bad.put("details",Map.of("sleep",record(Map.of("value","x".repeat(501)))));
+    var worker=runner.add();worker.input=request->{worker.event(Map.of("type","day","date",date,"data",bad));worker.finish();};
+    service.sync(7,Map.of("startDate",date,"endDate",date,"includeDetails",true));idle(7);
+    assertFalse(service.status(7).get("error").toString().isBlank());assertEquals(12,((Map<?,?>)day(7).get("summary")).get("steps"));
+  }
 
   @Test void passwordOnlyTravelsOverStdinAndMfaRetriesStayOnTheSameWorker()throws Exception{
     var worker=runner.add();var attempts=new AtomicInteger();

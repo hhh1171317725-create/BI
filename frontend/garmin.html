@@ -5,10 +5,11 @@
   <title>佳明健康 · 工具中心</title>
   <style>html:not(.authenticated) body{visibility:hidden}</style>
   <link rel="stylesheet" href="/app-ui.css?v=6">
-  <link rel="stylesheet" href="/garmin.css?v=20261012">
+  <link rel="stylesheet" href="/garmin.css?v=20261012-details">
   <script src="/report-visibility.js?v=3" defer></script>
   <script src="/app-ui.js?v=20261012-garmin" defer></script>
-  <script src="/garmin.js?v=20261012" defer></script>
+  <script src="/garmin.js?v=20261012-details" defer></script>
+  <script src="/garmin-details.js?v=20261012-details" defer></script>
 </head>
 <body data-page="garmin">
   <header><div class="header-row"><div class="brand"><span class="health-mark" aria-hidden="true">佳</span><div><h1>佳明健康</h1><p>把每天的睡眠、运动和恢复放在一起。</p></div></div><nav class="nav" aria-label="页面导航"><a href="/tools.html">工具中心</a><a href="/account">账户与设置</a><button id="logout" type="button">退出登录</button></nav></div></header>
@@ -25,7 +26,7 @@
     </section>
     <section class="data-card" aria-labelledby="dataHeading">
       <div class="section-heading"><div><h2 id="dataHeading">每日健康</h2><p>设备未记录或佳明未提供的指标显示为「—」。</p></div><span id="dataRange" class="muted"></span></div>
-      <form id="rangeForm" class="range-form"><label for="startDate">开始日期<input id="startDate" type="date" required disabled></label><label for="endDate">结束日期<input id="endDate" type="date" required disabled></label><div class="range-actions"><button id="queryButton" class="secondary" type="submit" disabled>查询记录</button><button id="syncButton" class="primary" type="button" disabled>同步所选日期</button></div><p class="form-note">默认最近 7 天，每次最多 90 天。同步在后台进行，可离开页面稍后查看。</p></form>
+      <form id="rangeForm" class="range-form"><label for="startDate">开始日期<input id="startDate" type="date" required disabled></label><label for="endDate">结束日期<input id="endDate" type="date" required disabled></label><div class="range-actions"><button id="queryButton" class="secondary" type="submit" disabled>查询记录</button><button id="syncButton" class="primary" type="button" disabled>同步所选日期</button></div><label class="checkbox-label full-metrics"><input id="includeDetails" type="checkbox" checked>采集完整指标与详情</label><p class="form-note">默认最近 7 天，最多 90 天。完整采集需要更多时间；点击日期查看每日详情，运动详情可单独补采。</p></form>
       <p id="dataStatus" class="data-status" role="status" aria-live="polite">正在加载健康记录…</p>
       <div id="summaryCards" class="summary-grid" hidden></div>
       <div id="tableWrap" class="table-wrap" tabindex="0" aria-label="每日健康数据，可横向滚动" aria-busy="true" hidden><table><caption class="sr-only">所选日期的个人佳明健康记录</caption><thead><tr><th scope="col">日期</th><th scope="col">步数</th><th scope="col">平均心率</th><th scope="col">静息心率</th><th scope="col">活动热量</th><th scope="col">体重</th><th scope="col">睡眠</th><th scope="col">运动</th><th scope="col">夜间 HRV</th><th scope="col">压力</th><th scope="col">身体电量</th></tr></thead><tbody id="dailyRows"></tbody></table></div>
@@ -36,5 +37,6 @@
     <section class="settings-card" aria-labelledby="settingsHeading"><div class="section-heading"><div><h2 id="settingsHeading">自动同步</h2><p>默认关闭。开启后按小时周期更新最近几天的数据。</p></div><span id="autoSyncState" class="muted">关闭</span></div><form id="settingsForm" class="settings-form"><label class="checkbox-label" for="autoSync"><input id="autoSync" type="checkbox" disabled>开启自动同步</label><label for="intervalHours">同步周期<select id="intervalHours" disabled><option value="1">每小时</option><option value="24">每 24 小时</option></select></label><label for="syncDays">每次同步天数<input id="syncDays" type="number" min="1" max="90" value="7" required disabled></label><button id="saveSettings" class="secondary" type="submit" disabled>保存设置</button></form></section>
     <p class="page-footnote">记录来自你的佳明账户；不同设备和日期提供的指标可能不同。</p>
   </main>
+  <dialog id="dayDialog" class="health-dialog" aria-labelledby="detailTitle"><div class="detail-header"><div><span class="eyebrow">每日详情</span><h2 id="detailTitle"></h2></div><button id="closeDetail" class="secondary" type="button" aria-label="关闭每日详情">关闭</button></div><div class="detail-toolbar"><label for="detailDate">日期<select id="detailDate"></select></label><button id="syncDetail" class="primary" type="button">补采这一天完整指标</button><button id="exportDetail" class="secondary" type="button" disabled>导出详情</button></div><p id="detailStatus" class="muted" role="status" aria-live="polite"></p><div class="detail-search"><label for="detailSearch" class="sr-only">搜索这一天的指标</label><input id="detailSearch" type="search" placeholder="搜索这一天的指标，例如：血氧、睡眠、功率…" maxlength="100"></div><div id="detailTabs" class="detail-tabs" aria-label="详情分类"></div><div id="detailContent" class="detail-content"></div></dialog>
 </body>
 </html>

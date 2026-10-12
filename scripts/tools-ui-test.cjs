@@ -36,13 +36,14 @@ const root = path.resolve(__dirname, '../frontend');
       deeplink: true,
       deeplinkAccount: true,
       jdImages: true,
-      bidMonitor: true
+      bidMonitor: true,
+      garmin: true
     } }));
 
     await page.goto(`http://127.0.0.1:${server.address().port}/tools.html`);
     await page.locator('html.authenticated').waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll('[data-tool]')].every(card => card.dataset.allowed));
-    assert.equal(await page.locator('.tool:visible').count(), 11);
+    assert.equal(await page.locator('.tool:visible').count(), 12);
     assert.equal(await page.locator('[data-tool="terminal"]').count(), 0);
     await page.getByRole('link',{name:'出价监测',exact:true}).waitFor();
     assert.equal(await page.locator('[data-tool="bidMonitor"]').count(),0);
@@ -51,12 +52,16 @@ const root = path.resolve(__dirname, '../frontend');
     assert.equal(await page.locator('.tool:visible h3').textContent(),'Todo 任务');
     await page.reload();await page.getByRole('button',{name:'取消收藏：Todo 任务',exact:true}).waitFor();
     await page.locator('#favoriteToolsOnly').click();assert.equal(await page.locator('.tool:visible').count(),1);
-    await page.locator('#resetToolFilters').click();assert.equal(await page.locator('.tool:visible').count(),11);
+    await page.locator('#resetToolFilters').click();assert.equal(await page.locator('.tool:visible').count(),12);
     await page.getByRole('button',{name:'取消收藏：Todo 任务',exact:true}).click();
 
     const healthCard=page.locator('.tool').filter({has:page.getByRole('heading',{name:'AI 个人生活管理',exact:true})});
     assert.equal(await healthCard.getByRole('link',{name:'打开',exact:true}).getAttribute('href'),'/life-health.html');
-    await page.locator('#toolSearch').fill('健康');assert.equal(await page.locator('.tool:visible').count(),1);assert.equal(await healthCard.isVisible(),true);await page.locator('#toolSearch').fill('');
+    const garminCard=page.locator('.tool').filter({has:page.getByRole('heading',{name:'佳明健康',exact:true})});
+    assert.equal(await garminCard.getAttribute('data-tool'),'garmin');
+    assert.equal(await garminCard.getAttribute('data-category'),'personal');
+    assert.equal(await garminCard.getByRole('link',{name:'打开',exact:true}).getAttribute('href'),'/garmin.html');
+    await page.locator('#toolSearch').fill('健康');assert.equal(await page.locator('.tool:visible').count(),2);assert.equal(await healthCard.isVisible(),true);assert.equal(await garminCard.isVisible(),true);await page.locator('#toolSearch').fill('');
     const gameCard=page.locator('.tool').filter({has:page.getByRole('heading',{name:'游戏大厅',exact:true})});
     assert.equal(await gameCard.getAttribute('data-tool'),null);
     assert.equal(await gameCard.getAttribute('data-category'),'personal');
@@ -68,7 +73,7 @@ const root = path.resolve(__dirname, '../frontend');
     }
     await page.locator('#toolSearch').fill('');
     await page.locator('#toolCategory').selectOption('personal');
-    assert.equal(await page.locator('.tool:visible').count(),5);
+    assert.equal(await page.locator('.tool:visible').count(),6);
     assert.equal(await gameCard.isVisible(),true);
     await page.locator('#resetToolFilters').click();
     await gameCard.getByRole('button',{name:'收藏：游戏大厅',exact:true}).click();
@@ -89,9 +94,9 @@ const root = path.resolve(__dirname, '../frontend');
     await page.locator('#toolSearch').fill('');
     await page.locator('#toolCategory').selectOption('automation');
     assert.equal(await page.locator('.tool:visible').count(), 2);
-    await page.waitForFunction(()=>document.getElementById('toolResultCount').textContent==='显示 2 / 11 项工具');
+    await page.waitForFunction(()=>document.getElementById('toolResultCount').textContent==='显示 2 / 12 项工具');
     await page.locator('#resetToolFilters').click();
-    assert.equal(await page.locator('.tool:visible').count(),11);
+    assert.equal(await page.locator('.tool:visible').count(),12);
     await page.locator('#addTool').click();await page.locator('#toolName').fill('演示工具');await page.locator('#toolUrl').fill('/tools');
     await page.locator('#toolForm button[type=submit]').click();
     await page.locator('#toolCategory').selectOption('custom');assert.equal(await page.locator('.tool:visible').count(),1);
@@ -108,6 +113,7 @@ const root = path.resolve(__dirname, '../frontend');
     await page.route('**/api/tool-visibility',route=>route.fulfill({json:{bidMonitor:true}}));
     await page.reload();await page.waitForFunction(()=>document.getElementById('toolResultCount')?.textContent==='显示 3 / 3 项工具');
     assert.equal(await page.locator('.tool:visible').count(),3);
+    assert.equal(await garminCard.isVisible(),false);
     assert.deepEqual(await page.locator('.tool:visible h3').allTextContents(),['备忘录','游戏大厅','AI 个人生活管理']);
     await page.locator('.app-nav-toggle').click();
     assert.equal(await page.getByRole('link',{name:'出价监测',exact:true}).isVisible(),true);

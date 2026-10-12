@@ -1,0 +1,4 @@
+# Python 3.12+. This is an unofficial, read-only personal Garmin Connect client.
+garminconnect==0.3.17
+curl_cffi==0.16.3
+requests==2.34.2

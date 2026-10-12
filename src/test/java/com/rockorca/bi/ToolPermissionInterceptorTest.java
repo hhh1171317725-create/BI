@@ -76,4 +76,19 @@ class ToolPermissionInterceptorTest {
 
     assertTrue(interceptor.preHandle(request, response, new Object()));
   }
+
+  @Test
+  void garminEndpointsRequireTheirOwnToolPermission() throws Exception {
+    for (String path : java.util.List.of("/api/garmin/status", "/api/garmin/data", "/api/garmin/connect",
+        "/api/garmin/mfa", "/api/garmin/sync", "/api/garmin/settings", "/api/garmin/disconnect")) {
+      var request = new MockHttpServletRequest("GET", path);
+      when(sessions.currentUser(request)).thenReturn(operator);
+      when(users.canUseTool(operator, "garmin")).thenReturn(false);
+      var denied = new MockHttpServletResponse();
+      assertFalse(interceptor.preHandle(request, denied, new Object()));
+      assertEquals(403, denied.getStatus());
+      when(users.canUseTool(operator, "garmin")).thenReturn(true);
+      assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+    }
+  }
 }

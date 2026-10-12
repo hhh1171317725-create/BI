@@ -37,6 +37,8 @@ sh scripts/install-garmin.sh
 
 已有可用的独立解释器会复用，不重复下载。**不要删除 `.runtime/garmin-interpreter`**，已创建的虚拟环境依赖它；也不要移动虚拟环境目录。服务器已有其他 Python 3.12+ 时，可设置 `GARMIN_BOOTSTRAP_PYTHON=/绝对路径/bin/python3.12` 使用它。非 Linux 或 musl 系统请自行提供兼容解释器。
 
+慢网络下载使用断点续传：单次最多 60 分钟，持续低于 1 KB/s 超过 2 分钟会中止本次传输，连接/超时错误最多尝试 3 次。未完成文件保存在 `.runtime/garmin-interpreter/.python-{版本}-{发行日期}-{架构}.tar.gz.part`，正常中断或重跑也会复用进度；完成且通过 SHA256 核验后才解压，安装成功会移除下载缓存。校验失败会删除损坏缓存，以便下次重新下载。若下载服务器拒绝 Range 续传，会尝试重新下载。切勿同时启动多个安装进程。
+
 从 root 执行时，脚本会创建仅属于 `www` 的专用虚拟环境/解释器目录，再切换到 `www` 下载和安装；已有 `.runtime` 不更改所有权或权限。也可在确认 `.runtime` 对 Java 账号可写后明确执行：
 
 ```sh

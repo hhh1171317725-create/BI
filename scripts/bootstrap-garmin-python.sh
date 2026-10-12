@@ -53,13 +53,41 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 temporary=$(mktemp -d "$managed_dir/.install-XXXXXX")
-archive="$temporary/python.tar.gz"
+# Keep unfinished bytes across retries and interrupted installer runs. The fixed
+# digest is still mandatory before extracting or executing any downloaded file.
+archive="$managed_dir/.python-$version-$release-$arch.tar.gz.part"
+[ ! -L "$archive" ] && { [ ! -e "$archive" ] || [ -f "$archive" ]; } || fail 'Python 下载缓存必须是普通文件，不能是符号链接。'
+archive_ok() { printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c - >/dev/null 2>&1; }
 url="https://github.com/astral-sh/python-build-standalone/releases/download/$release/cpython-$version%2B$release-$arch-unknown-linux-gnu-install_only_stripped.tar.gz"
 printf '正在下载项目独立 Python %s（%s，约 30 MB），不修改系统 Python…\n' "$version" "$arch" >&2
-if ! curl --fail --location --show-error --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 900 --retry 2 --retry-delay 2 --output "$archive" "$url"; then
-  fail 'Python 下载失败；请确认服务器能访问 GitHub Releases，再运行原安装命令重试。'
+downloaded=false
+if [ -s "$archive" ] && archive_ok; then downloaded=true; fi
+attempt=1
+while [ "$downloaded" = false ]; do
+  printf '下载第 %s/3 次，支持断点续传；单次最多 60 分钟，持续低于 1 KB/s 超过 2 分钟会重试。\n' "$attempt" >&2
+  if curl --fail --location --show-error --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 3600 --speed-limit 1024 --speed-time 120 --continue-at - --output "$archive" "$url"; then
+    downloaded=true
+    break
+  else
+    download_status=$?
+  fi
+  # A timeout can occur after the final bytes arrive: trust the digest, not a
+  # percentage or HTTP status, and avoid repeatedly requesting beyond EOF.
+  if [ -s "$archive" ] && archive_ok; then downloaded=true; break; fi
+  case "$download_status" in
+    5|6|7|18|28|35|52|55|56|92) ;; # DNS, connection, timeout or partial transfer.
+    33) rm -f -- "$archive"; printf '%s\n' '下载服务器不支持断点续传，本次改为重新下载。' >&2 ;;
+    *) fail 'Python 下载失败；已保留未完成的下载，下次执行原命令会续传。请确认服务器能访问 GitHub Releases。' ;;
+  esac
+  [ "$attempt" -lt 3 ] || fail 'Python 下载重试失败；网络恢复后执行原安装命令重试，已有下载缓存会优先复用。'
+  printf '%s\n' '下载中断，2 秒后继续下载…' >&2
+  attempt=$((attempt + 1))
+  sleep 2
+done
+if ! archive_ok; then
+  rm -f -- "$archive"
+  fail 'Python 下载文件 SHA256 校验失败；已移除损坏的下载缓存，未执行或安装下载内容。请重试。'
 fi
-printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c - >/dev/null 2>&1 || fail 'Python 下载文件 SHA256 校验失败；未执行或安装下载内容。'
 tar -xzf "$archive" -C "$temporary" --no-same-owner --no-same-permissions || fail '独立 Python 解压失败，原环境未改动。'
 [ ! -L "$temporary/python" ] && [ -x "$temporary/python/bin/python3.12" ] && python_ok "$temporary/python/bin/python3.12" || fail '独立 Python 无法在本机运行或缺少 SSL/venv/ensurepip，原环境未改动。'
 rm -f -- "$archive"

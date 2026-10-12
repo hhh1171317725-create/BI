@@ -87,17 +87,35 @@ STUBS = {
     "uname": 'case "$1" in -s) printf "Linux\\n" ;; -m) printf "%s\\n" "$FAKE_ARCH" ;; *) exit 96 ;; esac\n',
     "getconf": 'printf "%s\\n" "${FAKE_LIBC:-glibc 2.32}"\n',
     "df": 'printf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 2097152 0 %s 0%% /\\n" "${FAKE_FREE_KB:-1048576}"\n',
+    "sleep": 'record retry-delay "$@"\n',
     "curl": r"""
 record curl "$@"
 output=''
 url=''
+resume=''
 while [ "$#" -gt 0 ]; do
-  case "$1" in --output) output=$2; shift ;; https://*) url=$1 ;; esac
+  case "$1" in --output) output=$2; shift ;; --continue-at) resume=$2; shift ;; https://*) url=$1 ;; esac
   shift
 done
 [ -n "$output" ] && [ -n "$url" ] || exit 97
 [ "${FAKE_DOWNLOAD_FAIL:-0}" != 1 ] || exit 22
+if [ "${FAKE_RESUME_UNSUPPORTED:-0}" = 1 ] && [ -s "$output" ]; then exit 33; fi
+if [ "${FAKE_TIMEOUT_ONCE:-0}" = 1 ] && [ ! -f "$FAKE_ROOT/timeout-seen" ]; then
+  printf 'partial archive fixture\n' > "$output"
+  : > "$FAKE_ROOT/timeout-seen"
+  exit 28
+fi
+if [ "${FAKE_ALWAYS_TIMEOUT:-0}" = 1 ]; then
+  printf 'partial archive fixture\n' > "$output"
+  exit 28
+fi
+if [ -s "$output" ]; then
+  [ "$resume" = - ] || exit 98
+  [ "$(cat "$output")" = 'partial archive fixture' ] || exit 99
+  record resumed "$output"
+fi
 printf 'offline archive fixture\n' > "$output"
+if [ "${FAKE_TIMEOUT_AFTER_COMPLETE:-0}" = 1 ]; then exit 28; fi
 """,
     "sha256sum": r"""
 [ "$1" = -c ] && [ "$2" = - ] || exit 97
@@ -109,6 +127,7 @@ case "$FAKE_ARCH" in
   *) exit 97 ;;
 esac
 [ "$checksum" = "$expected" ] && [ -s "$archive" ] || exit 97
+[ "$(cat "$archive")" = 'offline archive fixture' ] || exit 1
 [ "${FAKE_HASH_BAD:-0}" != 1 ]
 """,
     "tar": r"""
@@ -219,6 +238,9 @@ class GarminInstallTest(unittest.TestCase):
                 self.assertIn("--fail", curl[0])
                 self.assertEqual(curl[0][curl[0].index("--proto") + 1], "=https")
                 self.assertEqual(curl[0][curl[0].index("--proto-redir") + 1], "=https")
+                self.assertEqual(curl[0][curl[0].index("--continue-at") + 1], "-")
+                self.assertEqual(curl[0][curl[0].index("--max-time") + 1], "3600")
+                self.assertNotIn("--retry", curl[0])
                 self.assertEqual(curl[0][-1], "https://github.com/astral-sh/python-build-standalone/releases/download/20261009/"
                                  f"cpython-3.12.15%2B20261009-{arch}-unknown-linux-gnu-install_only_stripped.tar.gz")
                 self.assertEqual(self.events("sha256")[0][0], checksum)
@@ -244,6 +266,44 @@ class GarminInstallTest(unittest.TestCase):
         self.assertEqual(len(self.events("curl")), 1)
         self.assertEqual(self.events("sha256") + self.events("tar"), [])
 
+    def test_timeout_retries_using_saved_partial_bytes(self) -> None:
+        self.assert_success(self.run_install(FAKE_TIMEOUT_ONCE="1"))
+        self.assertEqual(len(self.events("curl")), 2)
+        self.assertEqual(len(self.events("resumed")), 1)
+        self.assertEqual(len(self.events("tar")), 1)
+        self.assertEqual(list((self.runtime / "garmin-interpreter").glob("*.part")), [])
+
+    def test_exhausted_timeout_preserves_bytes_for_next_run(self) -> None:
+        self.assert_failed_without_venv(self.run_install(FAKE_ALWAYS_TIMEOUT="1"))
+        self.assertEqual(len(self.events("curl")), 3)
+        archive = self.runtime / "garmin-interpreter" / ".python-3.12.15-20261009-x86_64.tar.gz.part"
+        self.assertEqual(archive.read_text(encoding="utf-8"), "partial archive fixture\n")
+        self.trace.write_text("", encoding="utf-8")
+        self.assert_success(self.run_install())
+        self.assertEqual(len(self.events("resumed")), 1)
+        self.assertFalse(archive.exists())
+
+    def test_complete_download_accepted_even_if_curl_times_out(self) -> None:
+        self.assert_success(self.run_install(FAKE_TIMEOUT_AFTER_COMPLETE="1"))
+        self.assertEqual(len(self.events("curl")), 1)
+        self.assertEqual(self.events("retry-delay"), [])
+
+    def test_range_refused_retries_with_fresh_archive(self) -> None:
+        managed = self.runtime / "garmin-interpreter"
+        managed.mkdir()
+        archive = managed / ".python-3.12.15-20261009-x86_64.tar.gz.part"
+        archive.write_text("partial archive fixture\n", encoding="utf-8")
+        self.assert_success(self.run_install(FAKE_RESUME_UNSUPPORTED="1"))
+        self.assertEqual(len(self.events("curl")), 2)
+        self.assertEqual(self.events("resumed"), [])
+        self.assertFalse(archive.exists())
+
+    def test_verified_archive_reused_after_extraction_failure(self) -> None:
+        self.assert_failed_without_venv(self.run_install(FAKE_TAR_FAIL="1"))
+        self.trace.write_text("", encoding="utf-8")
+        self.assert_success(self.run_install(FAKE_DOWNLOAD_FAIL="1"))
+        self.assertEqual(self.events("curl"), [])
+
     def test_concurrent_install_is_refused_before_mutating_venv(self) -> None:
         self.assert_success(self.run_install())
         old_cfg = (self.runtime / "garmin-python" / "pyvenv.cfg").read_bytes()
@@ -260,6 +320,7 @@ class GarminInstallTest(unittest.TestCase):
         self.assert_failed_without_venv(self.run_install(FAKE_HASH_BAD="1"))
         self.assertEqual(len(self.events("sha256")), 1)
         self.assertEqual(self.events("tar") + self.events("python"), [])
+        self.assertFalse((self.runtime / "garmin-interpreter" / ".python-3.12.15-20261009-x86_64.tar.gz.part").exists())
 
     def test_unsupported_arch_and_libc_stop_before_download(self) -> None:
         for settings in ({"FAKE_ARCH": "mips64"}, {"FAKE_LIBC": "glibc 2.16"}, {"FAKE_LIBC": "musl 1.2"}):
@@ -309,7 +370,8 @@ class GarminInstallTest(unittest.TestCase):
         outside.mkdir()
         marker = outside / "keep.txt"
         marker.write_text("symlink target untouched", encoding="utf-8")
-        for relative in ("garmin-python", "garmin-interpreter", "garmin-interpreter/3.12.15-20261009-x86_64"):
+        for relative in ("garmin-python", "garmin-interpreter", "garmin-interpreter/3.12.15-20261009-x86_64",
+                         "garmin-interpreter/.python-3.12.15-20261009-x86_64.tar.gz.part"):
             with self.subTest(path=relative):
                 link = self.runtime / relative
                 link.parent.mkdir(parents=True, exist_ok=True)

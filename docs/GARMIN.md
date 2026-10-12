@@ -13,6 +13,7 @@
 | Python 依赖清单 | `scripts/garmin/requirements.txt` |
 | Python worker | `scripts/garmin_worker.py` |
 | 专用虚拟环境 | `.runtime/garmin-python` |
+| 缺少系统 Python 时的独立解释器 | `.runtime/garmin-interpreter/3.12.15-20261009-{架构}/python/` |
 | 用户状态 | `.runtime/garmin/{网站用户ID}/state.json` |
 | 账户会话与 token | `.runtime/garmin/{网站用户ID}/sessions/{会话UUID}/` |
 | 数据缓存 | `.runtime/garmin/{网站用户ID}/data/{数据UUID}/{日期}.json` |
@@ -23,39 +24,40 @@
 
 ## 1. 安装 Python 运行环境
 
-先确认服务器有 Python 3.12+ 与对应 `venv`/`ensurepip` 模块，不替换系统的 `/usr/bin/python3`。例如 Ubuntu 24.04 的官方仓库提供 [python3.12](https://packages.ubuntu.com/noble/python3.12) 和 [python3.12-venv](https://packages.ubuntu.com/noble/python3.12-venv)，可在服务器管理员终端执行：
-
-```sh
-sudo apt-get update
-sudo apt-get install python3.12 python3.12-venv
-python3.12 --version
-```
-
-其他发行版请使用其支持的安装方式；该脚本不会安装系统包、修改系统 Python 或添加第三方系统软件源。
-
-更新完整仓库后，在 Linux 服务器执行：
+更新完整仓库后，在 Linux 服务器执行原安装命令即可：
 
 ```sh
 cd /www/wwwroot/BI
 sh scripts/install-garmin.sh
 ```
 
-从 root 执行时，脚本会创建仅属于 `www` 的专用虚拟环境目录，再切换到 `www` 安装；已有 `.runtime` 不更改所有权或权限。也可在确认 `.runtime` 对 Java 账号可写后明确执行：
+脚本优先使用现有 Python 3.12+（包括 `venv`、`ensurepip`、SSL）。找不到时，`bootstrap-garmin-python.sh` 会从 [Astral Python Build Standalone 固定发行版](https://github.com/astral-sh/python-build-standalone/releases/tag/20261009) 下载 Python **3.12.15** 的 GNU `install_only_stripped` 包，校验内置 SHA256 后放到上表中的项目私有目录，再在最终路径创建虚拟环境。支持 Linux x86_64/aarch64、glibc 2.17+；需 `curl`、`tar`、`sha256sum` 和至少 512 MB 可用空间。下载约 30 MB，速度取决于服务器访问 GitHub Releases 的网络。
+
+这适用于缺少新 Python 的阿里云 Linux 3 宝塔服务器。[阿里云官方说明](https://www.alibabacloud.com/help/en/alinux/support/install-a-newer-python-3-on-alibaba-cloud-linux-3) 中，标准版官方仓库列出 Python 3.8/3.11，AI 扩展版才列出 3.12。无需改系统 `python3`、安装编译工具或更换系统软件源。下载失败、校验失败、架构不支持时会停止，未通过校验的内容不会执行；原环境保留，可处理提示后重跑同一安装命令。
+
+已有可用的独立解释器会复用，不重复下载。**不要删除 `.runtime/garmin-interpreter`**，已创建的虚拟环境依赖它；也不要移动虚拟环境目录。服务器已有其他 Python 3.12+ 时，可设置 `GARMIN_BOOTSTRAP_PYTHON=/绝对路径/bin/python3.12` 使用它。非 Linux 或 musl 系统请自行提供兼容解释器。
+
+从 root 执行时，脚本会创建仅属于 `www` 的专用虚拟环境/解释器目录，再切换到 `www` 下载和安装；已有 `.runtime` 不更改所有权或权限。也可在确认 `.runtime` 对 Java 账号可写后明确执行：
 
 ```sh
 runuser -u www -- sh /www/wwwroot/BI/scripts/install-garmin.sh
 ```
 
-如果 Java 实际使用其他运行账号，请用那个账号执行安装。已有虚拟环境属于别的账号时脚本会退出，不会覆盖或删除。确认路径确实是本仓库的 `.runtime/garmin-python` 且不是符号链接后，只修复这个环境，例如：
+如果 Java 实际使用其他运行账号，请用那个账号执行安装。已有虚拟环境/解释器目录属于别的账号时脚本会退出，不会覆盖或删除。确认路径确实是本仓库的对应目录且不是符号链接后，只修复这些目录，例如：
 
 ```sh
 chown -R www:www /www/wwwroot/BI/.runtime/garmin-python
+chown -R www:www /www/wwwroot/BI/.runtime/garmin-interpreter
 runuser -u www -- sh /www/wwwroot/BI/scripts/install-garmin.sh
 ```
 
 不要对整个仓库或 `.runtime` 递归改权限。`GARMIN_BOOTSTRAP_PYTHON` 可在安装前设为已有 Python 3.12+ 的可执行文件绝对路径；这是创建虚拟环境的解释器，不是佳明账号配置。
 
-脚本固定使用本仓库 `.runtime/garmin-python`，可重复运行；依赖安装仅访问 PyPI，不访问佳明。安装缓存、临时文件和私有错误记录位于虚拟环境内部；失败时不会自动输出依赖工具日志。它不会拉取 Git、重启 Java、运行同步、改数据库或安装系统包。
+脚本固定使用本仓库 `.runtime/garmin-python`，可重复运行；Python 下载访问 GitHub Releases，依赖安装访问 PyPI，不访问佳明。安装缓存、临时文件和私有错误记录位于项目私有运行目录；失败时不会自动输出依赖工具日志。它不会拉取 Git、重启 Java、运行同步、改数据库或安装系统包。
+
+安装全程持有 `.runtime/garmin-interpreter/.venv-install-lock` 空目录锁，重复启动会退出，避免同时修改虚拟环境。正常退出或收到终止信号时会释放；若进程被强制杀死，先确认无安装进程运行，再用 `rmdir` 移除提示中的空锁目录后重试，不要删除解释器或虚拟环境。
+
+如果首次创建虚拟环境时被磁盘或 IO 错误打断、留下缺少 pip 的环境，解决故障后重跑会尝试用该环境的 `ensurepip` 离线恢复，无需删除重建。下载/校验失败不会替换解释器；pip 更新依赖不是事务性回滚，依赖安装失败需检查私有 `install.log`，脚本不会删除已有虚拟环境或健康缓存。
 
 ## 2. 部署 Java BI
 
@@ -66,7 +68,7 @@ cd /www/wwwroot/BI
 sh scripts/deploy-server.sh
 ```
 
-该部署脚本会拉取配置的主分支、检查磁盘和 JDK、构建 `target/marketing-reports-1.0.0.jar`，成功后重启 `dahanghai-analysis`。它不会自动安装佳明 Python，也不会登录佳明。已有 BI 的 Java、MySQL、Nginx 配置沿用；不增加健康 PostgreSQL 或公开 Python 服务端口。
+该部署脚本会拉取配置的主分支、检查磁盘和 JDK、构建 `target/marketing-reports-1.0.0.jar`，成功后重启 `dahanghai-analysis`。它不会自动安装佳明 Python，也不会登录佳明。若 Java 版本已经部署、仅安装 Python，无需重新构建 Java；安装完成后稍等一分钟，再刷新佳明页面的状态。已有 BI 的 Java、MySQL、Nginx 配置沿用；不增加健康 PostgreSQL 或公开 Python 服务端口。
 
 Java 默认从 `DHH_RUNTIME_DIR/garmin-python/bin/python` 找解释器，Windows 对应 `Scripts/python.exe`，最后才尝试 `python3`。安装脚本固定用仓库下的 `.runtime`；如果 `DHH_RUNTIME_DIR` 指向其他路径，或 Python/worker 位于其他位置，请在实际 Java 服务环境中设置非敏感路径配置：
 

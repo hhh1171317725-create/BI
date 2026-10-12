@@ -34,11 +34,21 @@ mkdir -p "$managed_dir"
 chmod 0700 "$managed_dir"
 install_lock="$managed_dir/.venv-install-lock"
 [ ! -L "$install_lock" ] && mkdir "$install_lock" 2>/dev/null || fail '已有佳明环境安装任务；请等待完成后重试。若上次被强制终止，请先确认无安装进程再移除 .runtime/garmin-interpreter/.venv-install-lock 空目录。'
-trap 'rmdir "$install_lock" 2>/dev/null || true' EXIT
+pip_pid=''
+cleanup_install() {
+  if [ -n "$pip_pid" ]; then
+    kill -TERM "$pip_pid" 2>/dev/null || true
+    wait "$pip_pid" 2>/dev/null || true
+  fi
+  rmdir "$install_lock" 2>/dev/null || true
+}
+trap cleanup_install EXIT
 trap 'exit 1' HUP INT TERM
+command -v timeout >/dev/null 2>&1 || fail '缺少 coreutils 的 timeout 命令；请先安装该系统工具后重试。'
 
 python_ok() { "$1" -I -c 'import sys,ssl,venv,ensurepip; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; }
 if [ -f "$venv_dir/pyvenv.cfg" ]; then
+  printf '%s\n' '正在检查已有佳明虚拟环境…' >&2
   [ -x "$venv_dir/bin/python" ] && python_ok "$venv_dir/bin/python" || fail '已有虚拟环境不可用或 Python 低于 3.12；脚本不会删除或替换它。'
 else
   if [ -d "$venv_dir" ] && [ -n "$(find "$venv_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
@@ -58,11 +68,13 @@ else
     bootstrap_python=$(sh "$script_dir/bootstrap-garmin-python.sh") || fail '独立 Python 未安装完成，请按上方原因处理后重试。'
   fi
   mkdir -p "$runtime_dir" "$venv_dir"
+  printf '%s\n' '正在创建佳明 Python 虚拟环境…' >&2
   if ! "$bootstrap_python" -I -m venv "$venv_dir" >/dev/null 2>&1; then
     fail '创建虚拟环境失败；请检查磁盘空间与 Python 的 venv/ensurepip。已有文件未删除，处理后可重跑以恢复 pip。'
   fi
 fi
 
+printf '%s\n' '虚拟环境已就绪，正在检查依赖安装路径…' >&2
 chmod 0700 "$venv_dir"
 "$venv_dir/bin/python" -c 'import pathlib,sys,sysconfig; root=pathlib.Path(sys.argv[1]).resolve(); paths=[pathlib.Path(sysconfig.get_path(key)).resolve() for key in ("purelib","platlib")]; sys.exit(0 if sys.prefix != sys.base_prefix and pathlib.Path(sys.prefix).resolve() == root and all(path.is_relative_to(root) for path in paths) else 1)' "$venv_dir" >/dev/null 2>&1 || fail '解释器或依赖目录未指向指定虚拟环境，拒绝安装。'
 for private_path in "$venv_dir/.pip-cache" "$venv_dir/.tmp" "$venv_dir/install.log"; do
@@ -77,11 +89,31 @@ if ! "$venv_dir/bin/python" -I -m pip --version >/dev/null 2>&1; then
     fail '虚拟环境 pip 恢复失败；请检查磁盘空间及私有 install.log，已有环境未删除。'
   fi
 fi
-if ! TMPDIR="$venv_dir/.tmp" "$venv_dir/bin/python" -I -m pip --isolated --disable-pip-version-check install --no-input --index-url https://pypi.org/simple --cache-dir "$venv_dir/.pip-cache" -r "$requirements" >"$install_log" 2>&1; then
+printf '正在安装佳明依赖（最长 30 分钟）；详细日志：%s\n' "$install_log" >&2
+TMPDIR="$venv_dir/.tmp" timeout --kill-after=10s 1800 "$venv_dir/bin/python" -I -m pip --isolated --disable-pip-version-check --timeout 30 --retries 2 install --no-input --index-url https://pypi.org/simple --cache-dir "$venv_dir/.pip-cache" -r "$requirements" >"$install_log" 2>&1 &
+pip_pid=$!
+elapsed=0
+while kill -0 "$pip_pid" 2>/dev/null; do
+  sleep 1
+  elapsed=$((elapsed + 1))
+  if [ $((elapsed % 15)) -eq 0 ] && kill -0 "$pip_pid" 2>/dev/null; then
+    printf '依赖安装仍在运行，已等待 %s 秒；日志 %s 字节。可在另一终端查看 install.log。\n' "$elapsed" "$(wc -c < "$install_log")" >&2
+  fi
+done
+if wait "$pip_pid"; then
+  pip_pid=''
+else
+  pip_status=$?
+  pip_pid=''
   chmod 0600 "$install_log"
+  case "$pip_status" in
+    124) fail '依赖安装超过 30 分钟，已停止本次任务。缓存和已有环境保留；请检查私有 install.log 和 PyPI 网络后重试。' ;;
+    137) fail '依赖安装被强制终止，可能是超时或内存不足；请检查服务器内存和私有 install.log，已有环境未删除。' ;;
+  esac
   fail '依赖安装失败；请在服务器私有终端检查 .runtime/garmin-python/install.log。错误日志不会自动输出。'
 fi
 chmod 0600 "$install_log"
+printf '%s\n' '依赖安装完成，正在核验固定版本和佳明 worker…' >&2
 "$venv_dir/bin/python" -c 'from importlib.metadata import version; import sys; sys.exit(0 if version("garminconnect") == "0.3.17" else 1)' >/dev/null 2>&1 || fail 'garminconnect 版本核验失败，请核对固定版本 requirements.txt。'
 "$venv_dir/bin/python" "$project_dir/scripts/garmin_worker.py" --check >/dev/null 2>&1 || fail '本地佳明 worker 检查失败；请确认 Python 版本、依赖及完整仓库均已就绪。'
 printf '佳明 Python 环境已安装：%s/bin/python\n' "$venv_dir"

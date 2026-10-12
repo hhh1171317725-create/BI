@@ -67,6 +67,10 @@ case "${1:-}" in
           [ "${FAKE_MISSING_PIP:-0}" != 1 ] || [ -f "$FAKE_ROOT/pip-restored" ]
         else
           record pip-install "$@"
+          if [ "${FAKE_SLOW_PIP:-0}" = 1 ]; then
+            printf 'private fixture dependency output\n'
+            /bin/sleep 6
+          fi
           [ "${FAKE_PIP_FAIL:-0}" != 1 ]
         fi ;;
       ensurepip)
@@ -87,7 +91,15 @@ STUBS = {
     "uname": 'case "$1" in -s) printf "Linux\\n" ;; -m) printf "%s\\n" "$FAKE_ARCH" ;; *) exit 96 ;; esac\n',
     "getconf": 'printf "%s\\n" "${FAKE_LIBC:-glibc 2.32}"\n',
     "df": 'printf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 2097152 0 %s 0%% /\\n" "${FAKE_FREE_KB:-1048576}"\n',
-    "sleep": 'record retry-delay "$@"\n',
+    "sleep": 'case "$1" in 2) record retry-delay "$@" ;; 1) record install-poll ;; *) exit 97 ;; esac\n',
+    "timeout": r"""
+record timeout "$@"
+[ "$1" = --kill-after=10s ] && [ "$2" = 1800 ] || exit 97
+[ "${FAKE_DEPENDENCY_TIMEOUT:-0}" != 1 ] || exit 124
+[ "${FAKE_DEPENDENCY_KILLED:-0}" != 1 ] || exit 137
+shift 2
+exec "$@"
+""",
     "curl": r"""
 record curl "$@"
 output=''
@@ -249,6 +261,12 @@ class GarminInstallTest(unittest.TestCase):
                 self.assertIn(shell_path(self.base(arch).parents[1]), cfg)
                 self.assertNotIn(".install-", cfg)
                 self.assertEqual(len(self.events("pip-install")), 1)
+                pip = self.events("pip-install")[0]
+                self.assertEqual(pip[pip.index("--timeout") + 1], "30")
+                self.assertEqual(pip[pip.index("--retries") + 1], "2")
+                self.assertIn('SHA256 校验通过', result.stderr)
+                self.assertIn('正在安装佳明依赖', result.stderr)
+                self.assertIn('依赖安装完成', result.stderr)
                 self.assertEqual(self.events("worker-check"), [[]])
 
     def test_cached_base_reused_without_download(self) -> None:
@@ -353,6 +371,40 @@ class GarminInstallTest(unittest.TestCase):
         self.assertEqual(len(self.events("ensurepip")), 1)
         self.assertEqual(len(self.events("pip-install")), 1)
         self.assertEqual((self.runtime / "garmin-python" / "pyvenv.cfg").read_bytes(), old_cfg)
+
+    def test_dependency_timeout_releases_lock_and_allows_retry(self) -> None:
+        result = self.run_install(FAKE_DEPENDENCY_TIMEOUT="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('超过 30 分钟', result.stderr)
+        self.assertEqual(self.events("pip-install") + self.events("worker-check"), [])
+        self.assertTrue((self.runtime / "garmin-python" / "pyvenv.cfg").is_file())
+        self.assertFalse((self.runtime / "garmin-interpreter" / ".venv-install-lock").exists())
+        self.trace.write_text("", encoding="utf-8")
+        self.assert_success(self.run_install())
+        self.assertEqual(self.events("curl") + self.events("venv"), [])
+
+    def test_dependency_failure_is_not_reported_as_success(self) -> None:
+        result = self.run_install(FAKE_PIP_FAIL="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('依赖安装失败', result.stderr)
+        self.assertNotIn('环境已安装', result.stdout)
+        self.assertNotIn('依赖安装完成', result.stderr)
+        self.assertEqual(self.events("worker-check"), [])
+        self.assertFalse((self.runtime / "garmin-interpreter" / ".venv-install-lock").exists())
+
+    def test_slow_dependency_install_shows_status_without_private_log(self) -> None:
+        result = self.run_install(FAKE_SLOW_PIP="1")
+        self.assert_success(result)
+        self.assertIn('依赖安装仍在运行', result.stderr)
+        self.assertNotIn('private fixture dependency output', result.stdout + result.stderr)
+        self.assertIn('private fixture dependency output', (self.runtime / "garmin-python" / "install.log").read_text())
+
+    def test_force_killed_dependency_is_not_assumed_to_be_timeout(self) -> None:
+        result = self.run_install(FAKE_DEPENDENCY_KILLED="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('被强制终止', result.stderr)
+        self.assertNotIn('超过 30 分钟', result.stderr)
+        self.assertFalse((self.runtime / "garmin-interpreter" / ".venv-install-lock").exists())
 
     def test_failed_pip_recovery_preserves_venv_without_pip_install(self) -> None:
         self.assert_success(self.run_install())

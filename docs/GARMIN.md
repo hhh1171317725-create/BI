@@ -57,6 +57,17 @@ runuser -u www -- sh /www/wwwroot/BI/scripts/install-garmin.sh
 
 脚本固定使用本仓库 `.runtime/garmin-python`，可重复运行；Python 下载访问 GitHub Releases，依赖安装访问 PyPI，不访问佳明。安装缓存、临时文件和私有错误记录位于项目私有运行目录；失败时不会自动输出依赖工具日志。它不会拉取 Git、重启 Java、运行同步、改数据库或安装系统包。
 
+下载达到 100% 后，脚本会依次显示 SHA256 校验、解压、解释器检查、虚拟环境创建、依赖安装和 worker 核验。依赖安装每 15 秒显示已等待时间和日志大小，完整输出仍只写私有 `install.log`；状态提示仅表示进程还在运行，不保证下载进度。依赖安装最长 30 分钟，超时会终止该任务并释放安装锁；pip 网络读写超时为 30 秒，建立连接最多重试 2 次。需要系统 coreutils 的 `timeout` 命令。
+
+如果原终端长时间没有输出，在另一终端执行以下只读检查，不要同时启动第二次安装：
+
+```sh
+ps -eo pid,etime,comm | grep -E 'python|pip|tar|sha256sum|curl|timeout'
+tail -n 20 /www/wwwroot/BI/.runtime/garmin-python/install.log
+```
+
+尚未产生日志说明可能还在校验、解压或创建虚拟环境，不能仅凭下载 100% 判断安装成功。日志请在服务器私有终端查看。
+
 安装全程持有 `.runtime/garmin-interpreter/.venv-install-lock` 空目录锁，重复启动会退出，避免同时修改虚拟环境。正常退出或收到终止信号时会释放；若进程被强制杀死，先确认无安装进程运行，再用 `rmdir` 移除提示中的空锁目录后重试，不要删除解释器或虚拟环境。
 
 如果首次创建虚拟环境时被磁盘或 IO 错误打断、留下缺少 pip 的环境，解决故障后重跑会尝试用该环境的 `ensurepip` 离线恢复，无需删除重建。下载/校验失败不会替换解释器；pip 更新依赖不是事务性回滚，依赖安装失败需检查私有 `install.log`，脚本不会删除已有虚拟环境或健康缓存。

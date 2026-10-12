@@ -84,11 +84,14 @@ while [ "$downloaded" = false ]; do
   attempt=$((attempt + 1))
   sleep 2
 done
+printf '%s\n' '下载完成，正在核验 Python 文件 SHA256…' >&2
 if ! archive_ok; then
   rm -f -- "$archive"
   fail 'Python 下载文件 SHA256 校验失败；已移除损坏的下载缓存，未执行或安装下载内容。请重试。'
 fi
+printf '%s\n' 'SHA256 校验通过，正在解压 Python…' >&2
 tar -xzf "$archive" -C "$temporary" --no-same-owner --no-same-permissions || fail '独立 Python 解压失败，原环境未改动。'
+printf '%s\n' '解压完成，正在检查 Python 的 SSL、venv 和 ensurepip…' >&2
 [ ! -L "$temporary/python" ] && [ -x "$temporary/python/bin/python3.12" ] && python_ok "$temporary/python/bin/python3.12" || fail '独立 Python 无法在本机运行或缺少 SSL/venv/ensurepip，原环境未改动。'
 rm -f -- "$archive"
 # Publish the base interpreter before creating a venv; venv paths must never be moved.
@@ -96,4 +99,5 @@ rm -f -- "$archive"
 mv -- "$temporary" "$prefix"
 temporary=''
 python_ok "$python" || fail '独立 Python 安装后的本地检查失败，请检查 .runtime/garmin-interpreter。'
+printf '%s\n' '项目独立 Python 已就绪。' >&2
 printf '%s\n' "$python"

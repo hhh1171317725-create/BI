@@ -107,6 +107,56 @@ class GarminSyncServiceTest {
     assertFalse(service.status(7).get("error").toString().isBlank());assertEquals(12,((Map<?,?>)day(7).get("summary")).get("steps"));
   }
 
+  @Test void readKeysAreHashedPersistentOwnerBoundAndRotatable()throws Exception{
+    assertEquals(409,assertThrows(ResponseStatusException.class,()->service.createReadKey(7,Map.of("days",30))).getStatusCode().value());
+    login(7,"alice@example.com");syncDay(7,13);
+    assertThrows(ResponseStatusException.class,()->service.createReadKey(7,Map.of("days",365)));
+    var issued=service.createReadKey(7,Map.of("days",30));String key=issued.get("apiKey").toString();
+    assertTrue(key.matches("ghk_7_[A-Za-z0-9_-]{43}"));assertFalse(service.status(7).containsKey("apiKey"));
+    String disk=Files.readString(dir.resolve("garmin/7/state.json"));assertFalse(disk.contains(key));assertTrue(disk.contains("readKeyHash"));
+    assertEquals(13,((Map<?,?>)((Map<?,?>)((List<?>)service.withReadKey("Bearer "+key,id->service.data(id,date,date)).get("days")).getFirst()).get("summary")).get("steps"));
+    service.close();service=new GarminSyncService(config,users,runner,2,30_000,30_000);
+    assertEquals("website_cache",service.withReadKey("Bearer "+key,service::externalStatus).get("source"));
+    for(String authorization:List.of("",key,"Bearer "+key.replace("ghk_7_","ghk_8_"),"Bearer "+key+" ","Bearer ghk_999_"+"a".repeat(43)))
+      assertEquals(401,assertThrows(ResponseStatusException.class,()->service.withReadKey(authorization,service::externalStatus)).getStatusCode().value());
+    String replacement=service.createReadKey(7,Map.of("days",7)).get("apiKey").toString();
+    assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus));
+    assertNotNull(service.withReadKey("Bearer "+replacement,service::externalStatus));service.revokeReadKey(7);
+    assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+replacement,service::externalStatus));
+    assertEquals(false,((Map<?,?>)service.status(7).get("readKey")).get("enabled"));
+  }
+  @Test void readKeyExpiryAndPermissionRevocationRejectReads()throws Exception{
+    login(7,"alice@example.com");String key=service.createReadKey(7,Map.of("days",30)).get("apiKey").toString();
+    when(users.canUseTool(any(),eq("garmin"))).thenReturn(false);
+    assertEquals(403,assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus)).getStatusCode().value());
+    when(users.canUseTool(any(),eq("garmin"))).thenReturn(true);service.close();
+    Path path=dir.resolve("garmin/7/state.json");var saved=mapper.readValue(path.toFile(),Map.class);saved.put("readKeyExpiresAt",System.currentTimeMillis()-1);mapper.writeValue(path.toFile(),saved);
+    service=new GarminSyncService(config,users,runner,2,30_000,30_000);
+    assertEquals(401,assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus)).getStatusCode().value());
+  }
+  @Test void successfulAccountSwitchRevokesReadKeyButSameAccountReconnectKeepsIt()throws Exception{
+    login(7,"alice@example.com");String key=service.createReadKey(7,Map.of("days",90)).get("apiKey").toString();
+    login(7,"ALICE@example.com");assertNotNull(service.withReadKey("Bearer "+key,service::externalStatus));
+    login(7,"bob@example.com");assertEquals(401,assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus)).getStatusCode().value());
+    assertEquals(false,((Map<?,?>)service.status(7).get("readKey")).get("enabled"));
+  }
+  @Test void readKeyQuotaDoesNotStartWorkersOrExposeSecrets()throws Exception{
+    login(7,"alice@example.com");String key=service.createReadKey(7,Map.of("days",30)).get("apiKey").toString();int starts=runner.starts.get();
+    for(int i=0;i<60;i++)assertNotNull(service.withReadKey("Bearer "+key,service::externalStatus));
+    assertEquals(429,assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus)).getStatusCode().value());
+    assertEquals(starts,runner.starts.get());
+  }
+  @Test void revocationWaitsForAnAuthorizedCacheReadToFinish()throws Exception{
+    login(7,"alice@example.com");String key=service.createReadKey(7,Map.of("days",30)).get("apiKey").toString();
+    var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var revoking=new CountDownLatch(1);
+    try(var executor=Executors.newVirtualThreadPerTaskExecutor()){
+      var reading=executor.submit(()->service.withReadKey("Bearer "+key,id->{entered.countDown();try{release.await(3,TimeUnit.SECONDS);}catch(InterruptedException error){throw new RuntimeException(error);}return service.externalStatus(id);}));
+      assertTrue(entered.await(3,TimeUnit.SECONDS));var revoked=executor.submit(()->{revoking.countDown();return service.revokeReadKey(7);});
+      assertTrue(revoking.await(3,TimeUnit.SECONDS));assertFalse(revoked.isDone());release.countDown();assertNotNull(reading.get(3,TimeUnit.SECONDS));revoked.get(3,TimeUnit.SECONDS);
+      assertEquals(401,assertThrows(ResponseStatusException.class,()->service.withReadKey("Bearer "+key,service::externalStatus)).getStatusCode().value());
+    }finally{release.countDown();}
+  }
+
   @Test void passwordOnlyTravelsOverStdinAndMfaRetriesStayOnTheSameWorker()throws Exception{
     var worker=runner.add();var attempts=new AtomicInteger();
     worker.input=request->{if(request.get("action").equals("connect"))worker.event(Map.of("type","mfa","method","email"));

@@ -1,0 +1,1089 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Personal Garmin Cached Health API",
+    "version": "1.0.0",
+    "description": "Read-only private health records, authorized by an expiring personal Bearer key. Never triggers Garmin login or collection. null is missing, not zero. All dates use Asia/Shanghai. Respect responseLimited and missingDates."
+  },
+  "servers": [
+    {
+      "url": "https://www.huanghaha.fun"
+    }
+  ],
+  "security": [
+    {
+      "GarminReadKey": []
+    }
+  ],
+  "paths": {
+    "/api/garmin-external/status": {
+      "get": {
+        "operationId": "getGarminCacheStatus",
+        "summary": "Check cached health data freshness and Beijing current date. Does not log in or sync Garmin.",
+        "description": "Check cached health data freshness and Beijing current date. Does not log in or sync Garmin.",
+        "x-openai-isConsequential": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Cached private health data. Missing metrics are null, never assumed zero.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dates, categories or paging parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired or revoked Bearer key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Website account inactive or Garmin tool permission removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cached record; sync on website first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "60 requests per minute; retry after 60 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Cache unavailable; retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/garmin-external/data": {
+      "get": {
+        "operationId": "getGarminDailySummaries",
+        "summary": "Read up to 31 inclusive days of cached daily summaries. Defaults to the last 7 days. Activities and raw details use separate operations.",
+        "description": "Read up to 31 inclusive days of cached daily summaries. Defaults to the last 7 days. Activities and raw details use separate operations.",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "First day, inclusive. Defaults to six days before endDate.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "description": "Last day, inclusive. Defaults to today in Beijing. Future dates are rejected.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached private health data. Missing metrics are null, never assumed zero.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Range"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dates, categories or paging parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired or revoked Bearer key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Website account inactive or Garmin tool permission removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cached record; sync on website first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "60 requests per minute; retry after 60 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Cache unavailable; retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/garmin-external/day": {
+      "get": {
+        "operationId": "getGarminDayDetails",
+        "summary": "Read daily health details already collected on the website. If responseLimited is true, request a specific category. Missing categories have not been collected.",
+        "description": "Read daily health details already collected on the website. If responseLimited is true, request a specific category. Missing categories have not been collected.",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "description": "Cached date in Beijing.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Daily detail code. Request a specific code to reduce omitted data.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "daily",
+                "sleep",
+                "heart",
+                "hrv",
+                "weight",
+                "battery",
+                "steps",
+                "floors",
+                "stress",
+                "battery_events",
+                "hydration",
+                "respiration",
+                "spo2",
+                "intensity",
+                "training_readiness",
+                "training_status",
+                "training_load",
+                "daily_training",
+                "vo2max",
+                "fitness_age",
+                "endurance",
+                "hill",
+                "move_iq",
+                "lifestyle",
+                "menstrual",
+                "nutrition",
+                "meals",
+                "composition",
+                "blood_pressure",
+                "race_predictions",
+                "running_tolerance",
+                "ftp",
+                "lactate_threshold"
+              ],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached private health data. Missing metrics are null, never assumed zero.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Day"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dates, categories or paging parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired or revoked Bearer key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Website account inactive or Garmin tool permission removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cached record; sync on website first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "60 requests per minute; retry after 60 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Cache unavailable; retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/garmin-external/activities": {
+      "get": {
+        "operationId": "listGarminCachedActivities",
+        "summary": "List cached activity headers for one day. Follow nextOffset until null. Does not trigger collection.",
+        "description": "List cached activity headers for one day. Follow nextOffset until null. Does not trigger collection.",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "description": "Cached date in Beijing.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based paging offset.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of activity headers per page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached private health data. Missing metrics are null, never assumed zero.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activities"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dates, categories or paging parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired or revoked Bearer key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Website account inactive or Garmin tool permission removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cached record; sync on website first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "60 requests per minute; retry after 60 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Cache unavailable; retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/garmin-external/activity": {
+      "get": {
+        "operationId": "getGarminActivityDetails",
+        "summary": "Read one cached activity belonging to this account and date. Samples are compacted and omitted by default. Use category to read a specific detail.",
+        "description": "Read one cached activity belonging to this account and date. Samples are compacted and omitted by default. Use category to read a specific detail.",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "description": "Cached date in Beijing.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "activityId",
+            "in": "query",
+            "description": "ID returned by listGarminCachedActivities; never infer it.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,29}$"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Activity detail code. category=samples explicitly requests compact samples.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "overview",
+                "splits",
+                "typed_splits",
+                "split_summaries",
+                "weather",
+                "heart_zones",
+                "power_zones",
+                "exercise_sets",
+                "gear",
+                "samples"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "includeSamples",
+            "in": "query",
+            "description": "Include compact samples when category=all. Arrays still limited to 30 items.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached private health data. Missing metrics are null, never assumed zero.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dates, categories or paging parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired or revoked Bearer key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Website account inactive or Garmin tool permission removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cached record; sync on website first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "60 requests per minute; retry after 60 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Cache unavailable; retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "GarminReadKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Personal read key generated on the Garmin website page. Never send as a URL query parameter."
+      }
+    },
+    "schemas": {
+      "Status": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "website_cache"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Shanghai"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastSuccess": {
+            "type": "string"
+          },
+          "syncing": {
+            "type": "boolean"
+          },
+          "syncError": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "timezone",
+          "currentDate",
+          "lastSuccess",
+          "syncing",
+          "syncError"
+        ]
+      },
+      "Summary": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Garmin native unit; null means unavailable"
+          },
+          "distanceMeters": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "meters"
+          },
+          "activeCalories": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "kcal"
+          },
+          "totalCalories": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "kcal"
+          },
+          "restingHeartRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "bpm"
+          },
+          "heartRateAverage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "bpm"
+          },
+          "heartRateMin": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "bpm"
+          },
+          "heartRateMax": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "bpm"
+          },
+          "sleepSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "deepSleepSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "lightSleepSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "remSleepSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "awakeSleepSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "sleepScore": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Garmin native unit; null means unavailable"
+          },
+          "stress": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Garmin native unit; null means unavailable"
+          },
+          "bodyBattery": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Garmin native unit; null means unavailable"
+          },
+          "hrvMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "ms"
+          },
+          "weightKg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "kg"
+          },
+          "workoutSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "seconds"
+          },
+          "sleepStartTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 UTC time, or null"
+          },
+          "sleepEndTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 UTC time, or null"
+          }
+        }
+      },
+      "ActivityHeader": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "distanceMeters": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "calories": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "averageHeartRate": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      },
+      "Range": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "website_cache"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Shanghai"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastSuccess": {
+            "type": "string"
+          },
+          "syncing": {
+            "type": "boolean"
+          },
+          "syncError": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "missingDates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "summary": {
+                  "$ref": "#/components/schemas/Summary"
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "detailCount": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "activityCount": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Day": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "website_cache"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Shanghai"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastSuccess": {
+            "type": "string"
+          },
+          "syncing": {
+            "type": "boolean"
+          },
+          "syncError": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Summary"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activityCount": {
+            "type": "integer"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "description": "Cached Garmin record with state, collectedAt, truncated and provider-specific value. Fields may be omitted when responseLimited=true."
+            }
+          },
+          "category": {
+            "type": "string"
+          },
+          "omittedCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "responseLimited": {
+            "type": "boolean"
+          },
+          "detailNotice": {
+            "type": "string"
+          }
+        }
+      },
+      "Activities": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "website_cache"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Shanghai"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastSuccess": {
+            "type": "string"
+          },
+          "syncing": {
+            "type": "boolean"
+          },
+          "syncError": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "activities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityHeader"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "nextOffset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Continue paging until null"
+          }
+        }
+      },
+      "Activity": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "website_cache"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Shanghai"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastSuccess": {
+            "type": "string"
+          },
+          "syncing": {
+            "type": "boolean"
+          },
+          "syncError": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/ActivityHeader"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "description": "Cached Garmin record with state, collectedAt, truncated and provider-specific value. Fields may be omitted when responseLimited=true."
+            }
+          },
+          "category": {
+            "type": "string"
+          },
+          "omittedCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "responseLimited": {
+            "type": "boolean"
+          },
+          "detailNotice": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  }
+}

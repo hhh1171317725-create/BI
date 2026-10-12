@@ -5,6 +5,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermission;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -32,6 +34,8 @@ public class GarminSyncService {
       "endurance","hill","move_iq","lifestyle","menstrual","nutrition","meals","composition","blood_pressure","race_predictions","running_tolerance","ftp","lactate_threshold");
   private static final Set<String> ACTIVITY_DETAIL_CODES=Set.of("overview","splits","typed_splits","split_summaries","weather","heart_zones","power_zones","exercise_sets","gear","samples");
   private static final java.util.regex.Pattern PRIVATE_KEY=java.util.regex.Pattern.compile("password|token|secret|cookie|authorization|email|displayname|username|profileimage",java.util.regex.Pattern.CASE_INSENSITIVE);
+  private static final List<String> READ_KEY_FIELDS=List.of("readKeyHash","readKeyCreatedAt","readKeyExpiresAt","readKeyFingerprint");
+  private static final SecureRandom KEY_RANDOM=new SecureRandom();
   private final RuntimeConfig config;
   private final UserService users;
   private final ObjectMapper mapper;
@@ -56,7 +60,7 @@ public class GarminSyncService {
     final String code;WorkerFailure(String code){this.code=code;}
   }
   private static final class Owner {
-    final long id;final Path dir;Map<String,Object> disk;Job job;long revision;
+    final long id;final Path dir;Map<String,Object> disk;Job job;long revision,keyWindow;int keyRequests;
     Owner(long id,Path dir,Map<String,Object> disk){this.id=id;this.dir=dir;this.disk=disk;}
   }
   private static final class Job {
@@ -105,6 +109,7 @@ public class GarminSyncService {
     output.put("userId",Long.toString(owner.id));output.put("connected",connected);output.put("region",text(disk,"region"));
     output.put("state",state);output.put("jobId",job==null?"":job.id);output.put("error",error);output.put("lastSuccess",text(disk,"lastSuccess"));
     output.put("accountChanged",Boolean.TRUE.equals(disk.get("accountChanged")));
+    output.put("readKey",readKeyView(owner));
     output.put("available",available);output.put("setupError",available?"":"服务器尚未配置佳明 Python 同步环境");
     output.put("settings",Map.of("autoSync",Boolean.TRUE.equals(disk.get("autoSync")),"intervalHours",integer(disk.get("intervalHours"),1),"days",integer(disk.get("days"),7)));
     output.put("progress",Map.of("done",job==null?0:job.done,"total",job==null||job.start==null?0:ChronoUnit.DAYS.between(job.start,job.end)+1));
@@ -122,6 +127,53 @@ public class GarminSyncService {
           "sessionDir",session(owner,job.tokenId).toString()));
       begin(owner,job,request);return view(owner);
     }
+  }
+  private static long longValue(Object value){return value instanceof Number number?number.longValue():0L;}
+  private static String keyHash(String token){
+    try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));}
+    catch(Exception error){throw new IllegalStateException("访问密钥生成失败");}
+  }
+  private static Map<String,Object> readKeyView(Owner owner){
+    var disk=owner.disk;long expires=longValue(disk.get("readKeyExpiresAt"));
+    return Map.of("enabled",!text(disk,"readKeyHash").isBlank()&&expires>System.currentTimeMillis()
+        &&!text(disk,"fingerprint").isBlank()&&text(disk,"fingerprint").equals(text(disk,"readKeyFingerprint")),
+        "canCreate",!text(disk,"fingerprint").isBlank(),"createdAt",longValue(disk.get("readKeyCreatedAt")),"expiresAt",expires);
+  }
+  Map<String,Object> createReadKey(long id,Map<String,Object> input){
+    requireAllowed(id);int days=integer(input.get("days"),0);
+    if(!Set.of(7,30,90).contains(days))throw problem(HttpStatus.BAD_REQUEST,"请选择 7、30 或 90 天有效期");
+    var owner=owner(id);synchronized(owner){
+      if(text(owner.disk,"fingerprint").isBlank())throw problem(HttpStatus.CONFLICT,"请先连接自己的佳明账户");
+      byte[] random=new byte[32];KEY_RANDOM.nextBytes(random);String key="ghk_"+id+"_"+Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+      long now=System.currentTimeMillis();var next=new LinkedHashMap<>(owner.disk);
+      next.put("readKeyHash",keyHash(key));next.put("readKeyCreatedAt",now);next.put("readKeyExpiresAt",now+days*86_400_000L);
+      next.put("readKeyFingerprint",text(next,"fingerprint"));save(owner,next);owner.keyWindow=0;owner.keyRequests=0;
+      var result=new LinkedHashMap<>(view(owner));result.put("apiKey",key);return result;
+    }
+  }
+  Map<String,Object> revokeReadKey(long id){
+    requireAllowed(id);var owner=owner(id);synchronized(owner){var next=new LinkedHashMap<>(owner.disk);READ_KEY_FIELDS.forEach(next::remove);save(owner,next);return view(owner);}
+  }
+  /** Authorization and the cache read share the owner lock, including account switches and revocation. */
+  Map<String,Object> withReadKey(String authorization,java.util.function.Function<Long,Map<String,Object>> read){
+    var matcher=java.util.regex.Pattern.compile("(?i:Bearer) (ghk_([1-9][0-9]{0,18})_[A-Za-z0-9_-]{43})").matcher(Objects.toString(authorization,""));
+    if(!matcher.matches())throw invalidReadKey();
+    long id;try{id=Long.parseLong(matcher.group(2));}catch(Exception error){throw invalidReadKey();}
+    if(!owners.containsKey(id)&&!Files.isRegularFile(root.resolve(Long.toString(id)).resolve("state.json")))throw invalidReadKey();
+    var owner=owner(id);synchronized(owner){
+      String stored=text(owner.disk,"readKeyHash");
+      if(!stored.matches("[0-9a-f]{64}")||!MessageDigest.isEqual(stored.getBytes(StandardCharsets.US_ASCII),keyHash(matcher.group(1)).getBytes(StandardCharsets.US_ASCII))
+          ||!Boolean.TRUE.equals(readKeyView(owner).get("enabled")))throw invalidReadKey();
+      requireAllowed(id);long minute=System.currentTimeMillis()/60_000;
+      if(owner.keyWindow!=minute){owner.keyWindow=minute;owner.keyRequests=0;}
+      if(++owner.keyRequests>60)throw problem(HttpStatus.TOO_MANY_REQUESTS,"每分钟最多读取 60 次，请稍后重试");
+      return read.apply(id);
+    }
+  }
+  private static ResponseStatusException invalidReadKey(){return problem(HttpStatus.UNAUTHORIZED,"健康数据访问密钥无效、已撤销或已过期");}
+  Map<String,Object> externalStatus(long id){
+    var owner=owner(id);synchronized(owner){return Map.of("source","website_cache","timezone","Asia/Shanghai","currentDate",LocalDate.now(ReportService.BEIJING).toString(),
+        "lastSuccess",text(owner.disk,"lastSuccess"),"syncing",owner.job!=null,"syncError",text(owner.disk,"error"));}
   }
   Map<String,Object> sync(long id,Map<String,Object> input){
     requireAllowed(id);var owner=owner(id);synchronized(owner){
@@ -266,7 +318,7 @@ public class GarminSyncService {
           if(!Files.isRegularFile(tokens)||Files.size(tokens)==0)throw new WorkerFailure("PROTOCOL");
           next.put("connected",true);next.put("region",job.region);next.put("tokenId",job.tokenId);next.put("fingerprint",job.fingerprint);
           if(!same||oldData.isBlank())next.put("dataId",job.dataId);
-          if(changed)next.put("lastSuccess","");next.put("accountChanged",changed);
+          if(changed){next.put("lastSuccess","");READ_KEY_FIELDS.forEach(next::remove);}next.put("accountChanged",changed);
         }else{
           String previous=text(next,"dataId");if(!previous.isBlank())copyCache(cache(owner,previous),cache(owner,job.dataId));
           next.put("dataId",job.dataId);next.put("lastSuccess",Instant.now().toString());next.put("accountChanged",false);

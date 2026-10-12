@@ -26,6 +26,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     if (path.equals("/api/login") || path.equals("/api/logout")) {
       return true;
     }
+    // Only these GET handlers accept the independent, owner-scoped Garmin read key.
+    // They always verify the bearer credential themselves; website mutations still require a session.
+    if (GarminExternalApiController.isReadPath(request)) return true;
     if (sessions.authenticated(request)) {
       return true;
     }

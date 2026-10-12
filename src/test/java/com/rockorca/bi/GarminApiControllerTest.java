@@ -21,6 +21,12 @@ class GarminApiControllerTest {
     controller.status(request);controller.data(request,"2026-10-01","2026-10-02");controller.day(request,"2026-10-01");controller.sync(request,Map.of("expectedUserId","7","userId","8"));
     verify(service).status(7);verify(service).data(7,"2026-10-01","2026-10-02");verify(service).day(7,"2026-10-01");verify(service).sync(eq(7L),anyMap());verify(service,never()).status(8);
   }
+  @Test void keyManagementUsesSessionOwnerAndRejectsCrossOriginOrChangedOwner(){
+    controller.createReadKey(request,Map.of("expectedUserId","7","userId","8","days",30));controller.revokeReadKey(request,Map.of("expectedUserId","7"));
+    verify(service).createReadKey(eq(7L),anyMap());verify(service).revokeReadKey(7);
+    assertThrows(GarminApiController.AccountChanged.class,()->controller.createReadKey(request,Map.of("expectedUserId","8","days",30)));
+    request.addHeader("Origin","https://evil.example.com");assertThrows(ResponseStatusException.class,()->controller.revokeReadKey(request,Map.of("expectedUserId","7")));
+  }
   @Test void missingInactiveAndDisabledActorsCannotReadOrMutateHealthData(){
     when(sessions.currentUser(request)).thenReturn(null);assertEquals(401,assertThrows(ResponseStatusException.class,()->controller.status(request)).getStatusCode().value());
     when(sessions.currentUser(request)).thenReturn(new UserRepository.UserAccount(7,"owner","hash","user",false,1,null,null,null));assertThrows(ResponseStatusException.class,()->controller.data(request,"",""));

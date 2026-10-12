@@ -63,4 +63,12 @@ class AuthInterceptorTest {
         new MockHttpServletResponse(),
         new Object()));
   }
+  @Test void onlyExactExternalGetPathsCanReachBearerAuthentication() throws Exception {
+    for(String endpoint:new String[]{"status","data","day","activities","activity"}){
+      assertTrue(interceptor.preHandle(new MockHttpServletRequest("GET","/api/garmin-external/"+endpoint),new MockHttpServletResponse(),new Object()));
+      assertFalse(interceptor.preHandle(new MockHttpServletRequest("POST","/api/garmin-external/"+endpoint),new MockHttpServletResponse(),new Object()));
+    }
+    for(String path:new String[]{"/api/garmin/status","/api/garmin/access-key/create","/api/garmin-external/unknown","/api/garmin-external/data/","/api/garmin-external/data/../status"})
+      assertFalse(interceptor.preHandle(new MockHttpServletRequest("GET",path),new MockHttpServletResponse(),new Object()));
+  }
 }

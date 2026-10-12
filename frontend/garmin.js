@@ -7,6 +7,8 @@
   const warningLabels = {steps:'步数暂未提供',heart_rate:'心率暂未提供',sleep:'睡眠暂未提供',stress:'压力暂未提供',body_battery:'身体电量暂未提供',hrv:'HRV 暂未提供',weight:'体重暂未提供',activities:'运动记录暂未提供',workout:'运动时长暂未提供'};
   let userId = null, status = null, ready = false, busy = false, locked = false, settingsDirty = false;
   let statusSequence = 0, dataSequence = 0, statusController, dataController, pollTimer, shownDays = [];
+  let keySequence = 0;
+  function clearReadKey() { keySequence++; $('readKeyValue').value = ''; $('readKeySecret').hidden = true; $('readKeyCopyState').textContent = ''; }
   const text = (id, value) => { const element = typeof id === 'string' ? $(id) : id; if (element.textContent !== value) element.textContent = value; };
   const hide = (id, value) => { if ($(id).hidden !== value) $(id).hidden = value; };
   const number = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
@@ -22,6 +24,7 @@
   const active = () => !document.hidden && document.hasFocus();
   function message(value = '', error = false) { text('pageMessage', value); hide('pageMessage', !value); $('pageMessage').dataset.error = String(error); }
   function clearData() {
+    clearReadKey();
     window.garminDetails?.clear();
     shownDays = []; $('dailyRows').replaceChildren(); $('summaryCards').replaceChildren(); $('activitiesList').replaceChildren(); $('warningsList').replaceChildren();
     for (const id of ['tableWrap','summaryCards','activitiesPanel','warningsPanel','dataEmpty']) hide(id, true);
@@ -71,6 +74,8 @@
     $('disconnect').disabled = !canUse || busy || (!connected && !running && !mfaRequired);
     for (const id of ['autoSync','intervalHours','syncDays']) $(id).disabled = !canSync;
     $('saveSettings').disabled = !canSync || !settingsDirty;
+    $('readKeyDays').disabled = $('createReadKey').disabled = !canUse || !status?.readKey?.canCreate || busy || running;
+    $('revokeReadKey').disabled = !canUse || busy || !(status?.readKey?.createdAt > 0);
     text('connectButton', busy ? '处理中…' : '连接账户');
   }
   function schedulePoll() {
@@ -83,6 +88,9 @@
   function renderStatus(next) {
     const previous = status; status = next;
     const changedAccount = next.accountChanged && !previous?.accountChanged;
+    if (!next.readKey?.enabled) clearReadKey();
+    text('readKeyState', next.readKey?.enabled ? `已启用 · 有效至 ${time(next.readKey.expiresAt)}` : next.readKey?.createdAt > 0 ? '密钥已过期或失效' : '尚未启用');
+    text('createReadKey', next.readKey?.createdAt > 0 ? '重新生成密钥' : '生成访问密钥');
     if (changedAccount) settingsDirty = false;
     const connected = next.connected === true, state = next.state || (connected ? 'ready' : 'idle');
     text('connectionState', state === 'idle' && connected ? '已连接' : stateLabels[state] || '状态待更新'); $('connectionState').dataset.state = state;
@@ -204,13 +212,15 @@
     if (!ready || locked || busy) return;
     busy = true; statusSequence++; statusController?.abort(); clearTimeout(pollTimer); controls(); message();
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
-    let focusMfa = false;
+    let focusMfa = false; const secretSequence = keySequence;
     try {
       const result = await request(path, {method:'POST',body:JSON.stringify({...payload,expectedUserId:userId}),signal:controller.signal});
       if (locked) return;
+      const newKey = result.apiKey; delete result.apiKey;
       if (path === '/settings' || path === '/disconnect') settingsDirty = false;
       const switchedAccount = result.accountChanged && !status?.accountChanged;
       renderStatus(result); if (!switchedAccount) message(successMessage);
+      if (path === '/access-key/create' && typeof newKey === 'string' && secretSequence === keySequence && !document.hidden) { $('readKeyValue').value = newKey; hide('readKeySecret', false); }
       focusMfa = result.mfa?.required || result.state === 'mfa_required';
       return result;
     } catch (error) {
@@ -218,6 +228,10 @@
     } finally { clearTimeout(timeout); busy = false; controls(); if (focusMfa && active()) $('mfaCode').focus(); schedulePoll(); }
   }
   $('refreshStatus').addEventListener('click', () => { message(); refreshStatus(); });
+  $('createReadKey').addEventListener('click', () => { clearReadKey(); mutate('/access-key/create', {days:Number($('readKeyDays').value)}, '访问密钥已生成，旧密钥已失效。'); });
+  $('revokeReadKey').addEventListener('click', () => { clearReadKey(); mutate('/access-key/revoke', {}, '访问密钥已撤销，GPT 将无法继续读取。'); });
+  $('hideReadKey').addEventListener('click', clearReadKey);
+  $('copyReadKey').addEventListener('click', async () => { const sequence = keySequence; try { await navigator.clipboard.writeText($('readKeyValue').value); if(sequence === keySequence) text('readKeyCopyState', '已复制，请保存到自己的 GPT 中。'); } catch { if(sequence === keySequence) text('readKeyCopyState', '自动复制未完成，请选中上方密钥手动复制。'); } });
   $('rangeForm').addEventListener('submit', event => { event.preventDefault(); message(); queryData(); });
   $('connectForm').addEventListener('submit', async event => {
     event.preventDefault(); if (busy || !$('connectForm').reportValidity()) return;
@@ -250,7 +264,7 @@
   function pausePolling() { clearTimeout(pollTimer); if (statusController) { statusSequence++; statusController.abort(); } }
   document.addEventListener('visibilitychange', () => { if (active()) refreshStatus(); else pausePolling(); });
   window.addEventListener('blur', pausePolling); window.addEventListener('focus', () => { if (active()) refreshStatus(); });
-  window.addEventListener('pagehide', () => { pausePolling(); dataSequence++; dataController?.abort(); window.garminDetails?.clear();$('email').value = $('password').value = $('mfaCode').value = ''; });
+  window.addEventListener('pagehide', () => { clearReadKey(); pausePolling(); dataSequence++; dataController?.abort(); window.garminDetails?.clear();$('email').value = $('password').value = $('mfaCode').value = ''; });
   window.addEventListener('pageshow', event => { if (event.persisted && active()) refreshStatus(); });
   window.garminDetailBridge = {request, sync:payload=>mutate('/sync',payload,'补采任务已提交，完成后详情将自动更新。'),canSync:()=>!$('syncButton').disabled};
   (async () => {

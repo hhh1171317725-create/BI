@@ -56,6 +56,8 @@ public class GarminApiController {
     return service.connect(owner(request,input),input);
   }
   @GetMapping("/day") public Map<String,Object> day(HttpServletRequest request,@RequestParam String date){return service.day(owner(request,null),date);}
+  @PostMapping("/access-key/create") public Map<String,Object> createReadKey(HttpServletRequest request,@RequestBody Map<String,Object> input){return service.createReadKey(owner(request,input),input);}
+  @PostMapping("/access-key/revoke") public Map<String,Object> revokeReadKey(HttpServletRequest request,@RequestBody Map<String,Object> input){return service.revokeReadKey(owner(request,input));}
   @PostMapping("/mfa") public Map<String,Object> mfa(HttpServletRequest request,@RequestBody Map<String,Object> input){
     return service.mfa(owner(request,input),input);
   }

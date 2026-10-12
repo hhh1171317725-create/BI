@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import java.nio.file.*;
 import java.sql.Connection;
+import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -126,6 +129,20 @@ class BidServerSyncServiceTest {
     var missing=rows(999,1).getFirst();missing.put("source_platform","byte");
     when(upstream.page(anyMap())).thenReturn(Map.of("total",200,"rows",rows(0,100)));
     assertThrows(IllegalArgumentException.class,()->service.collectPlanTotals(input(),"cookie",List.of(present,missing),java.time.LocalDate.of(2026,9,17)));
+  }
+  @Test void verificationTotalDriftDoesNotRestartOrRepublishAcceptedCandidates()throws Exception{
+    var present=rows(0,1).getFirst();present.put("source_platform","byte");
+    var missing=rows(999,1).getFirst();missing.put("source_platform","byte");
+    var firstPages=new AtomicInteger();var batches=new ArrayList<List<Map<String,Object>>>();
+    doAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");if(page==1)firstPages.incrementAndGet();
+      return Map.of("total",page==1?200:201,"rows",rows((page-1)*100,100));
+    }).when(upstream).page(anyMap());
+    var error=assertThrows(BidSyncDiagnostics.PageFailure.class,()->
+        service.collectPlanTotals(input(),"cookie",List.of(present,missing),LocalDate.of(2026,9,17),message->{},batches::add));
+    assertTrue(BidSyncDiagnostics.paginationChanged(error));assertEquals(1,firstPages.get());
+    assertEquals(1,batches.size());assertEquals(1,batches.getFirst().size());
+    verifyNoInteractions(gdt);
   }
   private List<Map<String,Object>> rows(int offset,int size){
     var rows=new ArrayList<Map<String,Object>>();
@@ -352,6 +369,115 @@ class BidServerSyncServiceTest {
     assertEquals(java.time.LocalDate.parse("2026-08-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-09-01")));
     assertEquals(java.time.LocalDate.parse("2025-12-29"),BidServerSyncService.creationStart(java.time.LocalDate.parse("2026-01-01")));
   }
+  @Test void creationCutoffExcludesTheCurrentSecondAndKeepsHistoricalDayEnd(){
+    var today=LocalDate.of(2026,10,10);var now=today.atTime(15,30,12,987654321);
+    assertEquals(today.atTime(15,30,11),BidServerSyncService.creationCutoff(today,now));
+    assertEquals(today.minusDays(1).atTime(23,59,59),BidServerSyncService.creationCutoff(today.minusDays(1),now));
+    assertEquals(today.minusDays(1).atTime(23,59,59),BidServerSyncService.creationCutoff(today,today.atStartOfDay()));
+  }
+  @Test void totalIncreaseAndDecreaseRestartWithOnlySuccessfulAttemptRowsAndOneCutoff()throws Exception{
+    for(int stableTotal:List.of(301,201)){
+      var attempts=new AtomicInteger();var cutoffs=ConcurrentHashMap.<String>newKeySet();
+      doAnswer(call->{
+        Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");
+        int attempt=page==1?attempts.incrementAndGet():attempts.get();
+        cutoffs.add(request.get("createdEndAt").toString());
+        int total=attempt==1&&page==1?300:stableTotal;
+        var batch=rows((page-1)*100,Math.min(100,Math.max(0,total-(page-1)*100)));
+        for(var row:batch)row.put("promotion_name",attempt==1?"discarded":"stable");
+        return Map.of("total",total,"rows",batch);
+      }).when(upstream).page(anyMap());
+      var snapshot=service.collect(input(),"cookie");var collected=BidServerSyncService.rawRows(snapshot);
+      assertEquals(2,attempts.get());assertEquals(stableTotal,collected.size());
+      assertTrue(collected.stream().allMatch(row->"stable".equals(row.get("promotion_name"))));
+      assertEquals((long)stableTotal,snapshot.get("sourceTotal"));assertEquals(0L,snapshot.get("duplicateRows"));
+      assertEquals(1,cutoffs.size());
+      var cutoff=LocalDateTime.parse(cutoffs.iterator().next(),java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+      assertTrue(cutoff.isBefore(LocalDateTime.now(ReportService.BEIJING).withNano(0)));
+    }
+  }
+  @Test void gdtRestartKeepsCompletedByteRowsAndRollsProgressBackToTheirBaseline()throws Exception{
+    doReturn(Map.of("total",1,"rows",rows(900,1))).when(upstream).page(anyMap());
+    var attempts=new AtomicInteger();var progress=new ArrayList<List<Long>>();
+    var cutoffs=ConcurrentHashMap.<String>newKeySet();
+    doAnswer(call->{
+      Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");
+      int attempt=page==1?attempts.incrementAndGet():attempts.get();cutoffs.add(request.get("createdEndAt").toString());
+      int total=attempt==1&&page==1?200:201;
+      var batch=rows((page-1)*100,Math.min(100,total-(page-1)*100));
+      for(var row:batch){row.put("source_platform","gdt");row.put("promotion_name",attempt==1?"discarded":"stable");}
+      return Map.of("total",total,"rows",batch);
+    }).when(gdt).page(anyMap());
+    var snapshot=service.collect(input(),"cookie",(done,total)->progress.add(List.of((long)done,total)));
+    assertEquals(2,attempts.get());assertEquals(202,BidServerSyncService.rawRows(snapshot).size());
+    assertEquals(202L,snapshot.get("sourceTotal"));assertEquals(0L,snapshot.get("duplicateRows"));
+    assertEquals(201,BidServerSyncService.rawRows(snapshot).stream().filter(row->"stable".equals(row.get("promotion_name"))).count());
+    assertTrue(progress.contains(List.of(101L,201L)));
+    assertEquals(List.of(1L,1L),progress.get(progress.indexOf(List.of(101L,201L))+1));
+    var byteRequest=org.mockito.ArgumentCaptor.forClass(Map.class);verify(upstream,times(1)).page(byteRequest.capture());
+    assertEquals(Set.of(byteRequest.getValue().get("createdEndAt")),cutoffs);
+  }
+  @Test void driftCancelsAndJoinsOldPagesBeforeStartingTheNextAttempt()throws Exception{
+    var attempts=new AtomicInteger();var started=new CountDownLatch(2);var interrupted=new CountDownLatch(2);
+    var release=new CountDownLatch(1);var active=new AtomicInteger();
+    doAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      int attempt=page==1?attempts.incrementAndGet():attempts.get();
+      if(attempt==1&&page>=3){
+        active.incrementAndGet();started.countDown();
+        try{assertTrue(release.await(3,TimeUnit.SECONDS),"Old page should be cancelled");}
+        catch(InterruptedException error){interrupted.countDown();throw error;}
+        finally{active.decrementAndGet();}
+      }
+      if(attempt==1&&page==2)assertTrue(started.await(3,TimeUnit.SECONDS));
+      if(attempt==2&&page==1){assertEquals(0,interrupted.getCount());assertEquals(0,active.get());}
+      int total=attempt==1&&page==1?400:401;
+      return Map.of("total",total,"rows",rows((page-1)*100,Math.min(100,total-(page-1)*100)));
+    }).when(upstream).page(anyMap());
+    try{assertEquals(401,BidServerSyncService.rawRows(service.collect(input(),"cookie")).size());assertEquals(2,attempts.get());}
+    finally{release.countDown();}
+  }
+  @Test void totalDriftRestartsAtMostOnceAndKeepsTheOldSnapshotWithTheLastFailure()throws Exception{
+    service.start(7,input());store.update(7,(connection,state)->state.put("lastSuccess","old-snapshot"));
+    var attempts=new AtomicInteger();
+    doAnswer(call->{
+      int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+      int attempt=page==1?attempts.incrementAndGet():attempts.get();int total=200+attempt+(page==1?0:1);
+      return Map.of("total",total,"rows",rows((page-1)*100,Math.min(100,total-(page-1)*100)));
+    }).when(upstream).page(anyMap());
+    service.run(7);var status=service.status(7);
+    assertEquals(2,attempts.get());assertEquals("retrying",status.get("state"));assertEquals(true,status.get("enabled"));
+    assertEquals("old-snapshot",status.get("lastSuccess"));assertEquals(1L,status.get("failureCount"));
+    assertEquals("字节 · 第 2 页：分页总数变化（202 → 203）",status.get("failureReason"));
+    verifyNoInteractions(gdt);verify(snapshots,never()).write(any(),anyLong(),anyMap());verifyNoInteractions(rawStore);
+  }
+  @Test void stopAndCredentialChangesDuringDriftPreventRestartAndCommit()throws Exception{
+    for(String command:List.of("stop","replace")){
+      service.start(7,input());var firstPages=new AtomicInteger();
+      doAnswer(call->{
+        int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+        if(page==1)firstPages.incrementAndGet();
+        else if(command.equals("stop"))service.command(7,"stop");else service.start(7,input());
+        return Map.of("total",page==1?200:201,"rows",rows((page-1)*100,100));
+      }).when(upstream).page(anyMap());
+      service.run(7);var status=service.status(7);
+      assertEquals(1,firstPages.get());assertEquals(command.equals("stop")?"stopped":"waiting",status.get("state"));
+      assertFalse(status.containsKey("failureCount"));assertFalse(status.containsKey("lastFailureAt"));
+    }
+    verifyNoInteractions(gdt);verify(snapshots,never()).write(any(),anyLong(),anyMap());verifyNoInteractions(rawStore);
+  }
+  @Test void shortPagesAndUntrustedTotalChangeTextDoNotRestart()throws Exception{
+    for(boolean shortPage:List.of(true,false)){
+      var firstPages=new AtomicInteger();
+      doAnswer(call->{
+        int page=(Integer)((Map<?,?>)call.getArgument(0)).get("page");
+        if(page==1){firstPages.incrementAndGet();return Map.of("total",200,"rows",rows(0,100));}
+        if(!shortPage)throw new IllegalArgumentException("分页期间计划总数从 200 变为 201，请重新查询");
+        return Map.of("total",200,"rows",rows(100,99));
+      }).when(upstream).page(anyMap());
+      assertThrows(BidSyncDiagnostics.PageFailure.class,()->service.collect(input(),"cookie"));assertEquals(1,firstPages.get());
+    }
+  }
   @Test void readsEveryPageAndProgressTargetsTheFullTotal()throws Exception{
     var pages=Collections.synchronizedList(new ArrayList<Integer>());var progress=new ArrayList<Long>();
     when(upstream.page(anyMap())).thenAnswer(call->{
@@ -427,11 +553,25 @@ class BidServerSyncServiceTest {
       Map<String,Object> request=call.getArgument(0);
       assertEquals("2026-09-10",request.get("startDate"));assertEquals("2026-09-10",request.get("endDate"));
       assertEquals("2026-09-07",request.get("createdStart"));assertEquals("2026-09-10",request.get("createdEnd"));
+      assertEquals("2026-09-10 23:59:59",request.get("createdEndAt"));
       return Map.of("total",1,"rows",rows(0,1));
     });
     var history=service.collectHistory(input(),input().get("cookie").toString(),java.time.LocalDate.of(2026,9,11));
     assertEquals("2026-09-10",history.get("date"));assertEquals("2026-09-07",history.get("createdStart"));
     assertEquals(1,((List<?>)history.get("rows")).size());
+  }
+  @Test void historyProgressGuardCanPreventAPlatformRestart()throws Exception{
+    var firstPages=new AtomicInteger();var cutoffs=ConcurrentHashMap.<String>newKeySet();
+    doAnswer(call->{
+      Map<String,Object> request=call.getArgument(0);int page=(Integer)request.get("page");
+      if(page==1)firstPages.incrementAndGet();cutoffs.add(request.get("createdEndAt").toString());
+      return Map.of("total",page==1?200:201,"rows",rows((page-1)*100,100));
+    }).when(upstream).page(anyMap());
+    assertThrows(CancellationException.class,()->service.collectHistory(input(),"cookie",LocalDate.of(2026,9,11),(done,total)->{
+      if(done==0&&total==0)throw new CancellationException("history token changed");
+    }));
+    assertEquals(1,firstPages.get());assertEquals(Set.of("2026-09-10 23:59:59"),cutoffs);
+    verifyNoInteractions(gdt);
   }
   @Test void persistedScheduleRunsWithoutBrowserAndAfterServiceRestart()throws Exception{
     service.start(7,input());service.close();service=new BidServerSyncService(store,cipher,upstream,gdt,snapshots,rawStore,users);

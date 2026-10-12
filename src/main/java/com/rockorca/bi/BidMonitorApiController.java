@@ -6,8 +6,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 public class BidMonitorApiController {
   static final int PAGE_SIZE = 100;
   static final int MAX_PLAN_ROWS = 100_000;
+  private static final DateTimeFormatter CREATED_END_AT_FORMAT=DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(ResolverStyle.STRICT);
   private final ObjectMapper mapper;
   private volatile boolean skipOpenUrlField;
   private final BidUpstreamRequest requests;
@@ -133,6 +137,18 @@ public class BidMonitorApiController {
     if (!createdEnd.isBlank()) conditions.put("cdt_end_date", LocalDate.parse(createdEnd) + " 23:59:59");
     if (!createdStart.isBlank() && !createdEnd.isBlank() && createdStart.compareTo(createdEnd) > 0)
       throw new IllegalArgumentException("计划创建开始日期不能晚于结束日期");
+    String createdEndAt=text(input,"createdEndAt");
+    if(!createdEnd.isBlank()&&!createdEndAt.isBlank()){
+      if(!createdEndAt.matches("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"))
+        throw new IllegalArgumentException("计划创建截止时间格式无效");
+      LocalDateTime cutoff;
+      try{cutoff=LocalDateTime.parse(createdEndAt,CREATED_END_AT_FORMAT);}
+      catch(DateTimeParseException error){throw new IllegalArgumentException("计划创建截止时间格式无效");}
+      if(cutoff.isAfter(LocalDate.parse(createdEnd).atTime(23,59,59))
+          ||!createdStart.isBlank()&&cutoff.isBefore(LocalDate.parse(createdStart).atStartOfDay()))
+        throw new IllegalArgumentException("计划创建截止时间必须在所选创建日期范围内");
+      conditions.put("cdt_end_date",createdEndAt);
+    }
     conditions.put("media_account_id", accountIds(input));
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("conditions", mapper.writeValueAsString(conditions));

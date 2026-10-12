@@ -80,6 +80,54 @@ class BidMonitorApiControllerTest {
     assertEquals(List.of(40_000L,25_000L),sent.getAllValues().stream().map(request->request.timeout().orElseThrow().toMillis()).toList());
   }
 
+  @Test void creationCutoffIsStableAcrossPagesTransportAndCompatibilityRetries()throws Exception{
+    HttpClient client=mock(HttpClient.class);when(client.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class)))
+        .thenThrow(new java.io.IOException("private detail"))
+        .thenReturn(reply(200,"{\"code\":-1,\"message\":\"optional field refused\"}",null),
+            reply(200,"{\"code\":0,\"data\":{\"list\":[],\"total_count\":7942}}",null));
+    var subject=noWaitController(client);var input=new java.util.LinkedHashMap<>(reportInput());
+    input.put("createdStart","2026-10-07");input.put("createdEnd","2026-10-10");input.put("createdEndAt","2026-10-10 12:34:55");
+    subject.page(input);input.put("page",2);input.put("total",7942);subject.page(input);
+    var sent=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);verify(client,times(4)).send(sent.capture(),any(HttpResponse.BodyHandler.class));
+    var mapper=new ObjectMapper();
+    for(var request:sent.getAllValues()){
+      var body=mapper.readValue(BidUpstreamRequestTest.body(request),Map.class);
+      var conditions=mapper.readValue(body.get("conditions").toString(),Map.class);
+      assertEquals("2026-10-07 00:00:00",conditions.get("cdt_start_date"));
+      assertEquals("2026-10-10 12:34:55",conditions.get("cdt_end_date"));
+      assertEquals("promotion_id",body.get("sort_field"));assertEquals("desc",body.get("sort_direction"));
+      assertFalse(body.containsKey("createdEndAt"));assertFalse(conditions.containsKey("createdEndAt"));
+    }
+    assertEquals(BidUpstreamRequestTest.body(sent.getAllValues().get(0)),BidUpstreamRequestTest.body(sent.getAllValues().get(1)));
+    assertFalse(((List<?>)mapper.readValue(BidUpstreamRequestTest.body(sent.getAllValues().get(2)),Map.class).get("select_kpi_fields")).contains("open_url"));
+    assertEquals(2,mapper.readValue(BidUpstreamRequestTest.body(sent.getAllValues().get(3)),Map.class).get("page"));
+  }
+
+  @Test void creationCutoffKeepsTheOriginalHistoricalBoundaryWhenAbsent(){
+    var day=java.time.LocalDate.parse("2026-10-09");var mapper=new ObjectMapper();
+    var input=Map.<String,Object>of("createdStart","2026-10-06","createdEnd","2026-10-09");
+    var body=controller.requestBody(input,day,day,1);
+    var conditions=mapper.readValue(body.get("conditions").toString(),Map.class);
+    assertEquals("2026-10-06 00:00:00",conditions.get("cdt_start_date"));assertEquals("2026-10-09 23:59:59",conditions.get("cdt_end_date"));
+    for(String cutoff:List.of("2026-10-06 00:00:00","2026-10-09 23:59:59")){
+      var bounded=new java.util.LinkedHashMap<>(input);bounded.put("createdEndAt",cutoff);
+      var boundary=mapper.readValue(controller.requestBody(bounded,day,day,1).get("conditions").toString(),Map.class);
+      assertEquals(cutoff,boundary.get("cdt_end_date"));
+    }
+    var noEnd=mapper.readValue(controller.requestBody(Map.of("createdEndAt","2026-10-09 12:00:00"),day,day,1).get("conditions").toString(),Map.class);
+    assertFalse(noEnd.containsKey("cdt_end_date"));
+  }
+
+  @Test void rejectsMalformedAndOutOfRangeCreationCutoffsBeforeAnyRequest(){
+    HttpClient client=mock(HttpClient.class);var subject=noWaitController(client);
+    for(String cutoff:List.of("2026-10-10T12:34:56","2026-10-10 12:34","2026-02-29 12:34:56","2026-10-10 24:00:00",
+        "2026-10-10 12:34:56.123","2026-10-11 00:00:00","2026-10-06 23:59:59")){
+      var input=new java.util.LinkedHashMap<>(reportInput());input.put("createdStart","2026-10-07");input.put("createdEnd","2026-10-10");input.put("createdEndAt",cutoff);
+      assertThrows(IllegalArgumentException.class,()->subject.page(input));
+    }
+    verifyNoInteractions(client);
+  }
+
   @Test void springCanCreateTheProductionController() {
     try (var context = new AnnotationConfigApplicationContext()) {
       context.registerBean(ObjectMapper.class, () -> new ObjectMapper());

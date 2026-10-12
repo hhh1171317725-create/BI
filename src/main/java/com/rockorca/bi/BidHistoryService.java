@@ -64,7 +64,11 @@ public class BidHistoryService {
       try{cookie=cipher.decrypt(owner,Objects.toString(state.get("credential"),""));}
       catch(Exception error){throw new IllegalStateException("credential");}
       String credentialRevision=Objects.toString(state.get("credentialRevision"),"");
-      var snapshot=sync.collectHistory(state,cookie,runDate);
+      var snapshot=sync.collectHistory(state,cookie,runDate,(done,total)->store.update(owner,(connection,current)->{
+        if(!current(current,token,credentialRevision))throw new CancellationException();
+        if(!sync.allowed(owner))throw new IllegalStateException("permission");
+        current.put("historyRetryAt",System.currentTimeMillis()+180_000L);
+      }));
       rawStore.initialize();history.initialize();
       boolean[] committed={false};
       store.update(owner,(connection,current)->{

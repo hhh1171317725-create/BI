@@ -3,6 +3,8 @@ package com.rockorca.bi;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import org.slf4j.Logger;
@@ -14,6 +16,8 @@ import org.springframework.stereotype.Service;
 public class BidServerSyncService {
   private static final long INTERVAL_MILLIS=600000L;
   private static final int PAGE_CONCURRENCY=4;
+  private static final int MAX_SOURCE_ATTEMPTS=2;
+  private static final DateTimeFormatter CREATED_END_FORMAT=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
   private static final Logger LOG=LoggerFactory.getLogger(BidServerSyncService.class);
   private final BidServerSyncStore store;
   private final BidCredentialCipher cipher;
@@ -358,6 +362,10 @@ public class BidServerSyncService {
     return Map.of("done",done,"total",total,"startedAt",startedAt,"updatedAt",System.currentTimeMillis());
   }
   static LocalDate creationStart(LocalDate today){return today.minusDays(3);}
+  static LocalDateTime creationCutoff(LocalDate createdEnd,LocalDateTime now){
+    LocalDateTime cutoff=now.withNano(0).minusSeconds(1),end=createdEnd.atTime(23,59,59);
+    return end.isAfter(cutoff)?cutoff:end;
+  }
 
   Map<String,Object> collect(Map<String,Object> state,String cookie,Progress progress) throws Exception {
     LocalDate today=LocalDate.now(ReportService.BEIJING);
@@ -365,8 +373,12 @@ public class BidServerSyncService {
   }
 
   Map<String,Object> collectHistory(Map<String,Object> state,String cookie,LocalDate runDate)throws Exception{
+    return collectHistory(state,cookie,runDate,(done,total)->{});
+  }
+
+  Map<String,Object> collectHistory(Map<String,Object> state,String cookie,LocalDate runDate,Progress progress)throws Exception{
     LocalDate reportDate=runDate.minusDays(1);
-    return collectWindow(state,cookie,reportDate,runDate.minusDays(4),reportDate,(done,total)->{},true);
+    return collectWindow(state,cookie,reportDate,runDate.minusDays(4),reportDate,progress,true);
   }
 
   /** Requery cumulative metrics, including conversion backfills and activity after the warning window. */
@@ -464,9 +476,11 @@ public class BidServerSyncService {
   private Map<String,Object> collectWindow(Map<String,Object> state,String cookie,LocalDate reportDate,
       LocalDate createdStart,LocalDate createdEnd,Progress progress,boolean allowEmpty)throws Exception{
     String start=createdStart.toString();
+    LocalDateTime createdEndAt=creationCutoff(createdEnd,LocalDateTime.now(ReportService.BEIJING));
     var input=new LinkedHashMap<String,Object>(Map.of("cookie",cookie,"clientUser",state.get("clientUser"),
         "mainUserId",state.get("mainUserId"),"startDate",reportDate.toString(),"endDate",reportDate.toString(),
         "createdStart",start,"createdEnd",createdEnd.toString()));
+    input.put("createdEndAt",createdEndAt.format(CREATED_END_FORMAT));
     var rows=new ArrayList<Map<String,Object>>();long sourceTotal=0,duplicates=0;var ids=new HashSet<String>();
     progress.update(0,-1);
     for(String platform:List.of("byte","gdt")){
@@ -482,6 +496,20 @@ public class BidServerSyncService {
   }
 
   private SourceRows collectSource(Map<String,Object> input,String platform,Set<String> ids,int completed,long completedTotal,Progress progress)throws Exception{
+    for(int attempt=1;;attempt++){
+      var attemptIds=new HashSet<>(ids);
+      try{
+        SourceRows source=collectSourceAttempt(input,platform,attemptIds,completed,completedTotal,progress);
+        ids.addAll(attemptIds);return source;
+      }catch(Exception error){
+        if(attempt>=MAX_SOURCE_ATTEMPTS||!BidSyncDiagnostics.paginationChanged(error))throw error;
+        // Discard this platform's progress and check the owner token before fetching again.
+        progress.update(completed,completedTotal);
+      }
+    }
+  }
+
+  private SourceRows collectSourceAttempt(Map<String,Object> input,String platform,Set<String> ids,int completed,long completedTotal,Progress progress)throws Exception{
     var rows=new ArrayList<Map<String,Object>>();long received=0,duplicates=0;
     PageChunk first=fetchPage(input,platform,1,-1),chunk=first;long total=first.total();
     int pages=(int)((total+BidMonitorApiController.PAGE_SIZE-1)/BidMonitorApiController.PAGE_SIZE);
@@ -491,18 +519,20 @@ public class BidServerSyncService {
       for(int firstPage=2;firstPage<=pages;firstPage+=PAGE_CONCURRENCY){
         int lastPage=Math.min(pages,firstPage+PAGE_CONCURRENCY-1);
         var pending=new ArrayList<Future<PageChunk>>();
-        for(int page=firstPage;page<=lastPage;page++){
-          int requestedPage=page;pending.add(executor.submit(()->fetchPage(input,platform,requestedPage,total)));
-        }
-        for(Future<PageChunk> future:pending){
-          try{chunk=future.get();}
-          catch(ExecutionException error){
-            if(error.getCause() instanceof Exception cause)throw cause;
-            throw new IllegalStateException("分页查询失败",error.getCause());
+        try{
+          for(int page=firstPage;page<=lastPage;page++){
+            int requestedPage=page;pending.add(executor.submit(()->fetchPage(input,platform,requestedPage,total)));
           }
-          for(var row:chunk.rows()){if(ids.add(planKey(row)))rows.add(row);else duplicates++;}
-          received+=chunk.rows().size();progress.update(completed+(int)received,completedTotal+total);
-        }
+          for(Future<PageChunk> future:pending){
+            try{chunk=future.get();}
+            catch(ExecutionException error){
+              if(error.getCause() instanceof Exception cause)throw cause;
+              throw new IllegalStateException("分页查询失败",error.getCause());
+            }
+            for(var row:chunk.rows()){if(ids.add(planKey(row)))rows.add(row);else duplicates++;}
+            received+=chunk.rows().size();progress.update(completed+(int)received,completedTotal+total);
+          }
+        }finally{for(var future:pending)if(!future.isDone())future.cancel(true);}
       }
     }
     return new SourceRows(total,duplicates,rows);
@@ -528,7 +558,7 @@ public class BidServerSyncService {
     if(total>BidMonitorApiController.MAX_PLAN_ROWS)
       throw new IllegalArgumentException("计划总数 "+total+" 超过 100000 条，请缩小计划创建日期范围");
     if(expectedTotal>=0&&expectedTotal!=total)
-      throw new IllegalArgumentException("分页期间计划总数从 "+expectedTotal+" 变为 "+total+"，请重新查询");
+      throw new BidSyncDiagnostics.PaginationChanged(expectedTotal,total);
     if(!(result.get("rows") instanceof List<?> batch))throw new IllegalArgumentException("第 "+page+" 页缺少计划列表");
     long expected=Math.min(BidMonitorApiController.PAGE_SIZE,Math.max(0,total-(long)(page-1)*BidMonitorApiController.PAGE_SIZE));
     if(batch.size()!=expected)throw new IllegalArgumentException("第 "+page+" 页数据不完整：应有 "+expected+" 条，实际 "+batch.size()+" 条");

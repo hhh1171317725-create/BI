@@ -41,6 +41,16 @@ class BidSyncDiagnosticsTest {
     assertEquals("计划数据或分页响应校验失败",untrusted);
   }
 
+  @Test void onlyTypedPaginationChangesCanRequestARestart(){
+    var changed=new BidSyncDiagnostics.PageFailure("byte",46,new BidSyncDiagnostics.PaginationChanged(7942,7944));
+    assertEquals("字节 · 第 46 页：分页总数变化（7942 → 7944）",changed.getMessage());
+    assertTrue(BidSyncDiagnostics.paginationChanged(changed));
+    assertTrue(BidSyncDiagnostics.paginationChanged(new IllegalStateException("private body",changed)));
+    assertFalse(BidSyncDiagnostics.requiresAttention(changed));
+    assertFalse(BidSyncDiagnostics.paginationChanged(new IllegalArgumentException("分页期间计划总数从 7942 变为 7944，请重新查询")));
+    assertFalse(BidSyncDiagnostics.paginationChanged(new BidSyncDiagnostics.PageFailure("byte",2,new IOException("private body"))));
+  }
+
   @Test void databaseDiagnosticsUseExceptionTypesAndNeverRawSqlMessages(){
     assertEquals("数据库连接池等待超时或连接失败",BidSyncDiagnostics.describe(
         new IllegalStateException("private datasource",new SQLTransientConnectionException("private JDBC password"))));

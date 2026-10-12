@@ -17,6 +17,12 @@ final class BidSyncDiagnostics {
   private static final Pattern SHORT_PAGE=Pattern.compile("第 ([0-9]{1,4}) 页数据不完整：应有 ([0-9]{1,3}) 条，实际 ([0-9]{1,6}) 条");
   private BidSyncDiagnostics(){}
 
+  static final class PaginationChanged extends IllegalArgumentException {
+    PaginationChanged(long expected,long actual){
+      super("分页期间计划总数从 "+expected+" 变为 "+actual+"，请重新查询");
+    }
+  }
+
   static final class PageFailure extends IllegalArgumentException {
     private final String platform;
     private final int page;
@@ -32,6 +38,10 @@ final class BidSyncDiagnostics {
       return page.platform+" · 第 "+page.page+" 页："+category(causes);
     String platform=platform(causes);
     return (platform.equals("上游")?"":platform+"：")+category(causes);
+  }
+
+  static boolean paginationChanged(Throwable error){
+    return chain(error).stream().anyMatch(PaginationChanged.class::isInstance);
   }
 
   static boolean requiresAttention(Throwable error){

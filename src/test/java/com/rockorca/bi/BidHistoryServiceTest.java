@@ -43,8 +43,8 @@ class BidHistoryServiceTest {
     var row=new LinkedHashMap<String,Object>();row.put("promotion_id","123");row.put("source_platform","byte");
     row.put("media_account_id","456");row.put("advertiser_id","789");row.put("stat_cost",1);row.put("convert_cnt",2);
     row.put("active_register",3);row.put("cpa_bid",4);row.put("provider_data",Map.of("full_field","saved"));
-    when(sync.collectHistory(anyMap(),eq("cookie"),eq(LocalDate.of(2026,9,11))))
-        .thenReturn(Map.of("date","2026-09-10","rows",List.of(row)));
+    doReturn(Map.of("date","2026-09-10","rows",List.of(row)))
+        .when(sync).collectHistory(anyMap(),eq("cookie"),eq(LocalDate.of(2026,9,11)),any(BidServerSyncService.Progress.class));
     service=new BidHistoryService(store,cipher,sync,raw,history);
   }
 
@@ -56,20 +56,85 @@ class BidHistoryServiceTest {
     verify(history).replace(eq(store.connection),eq(7L),eq(LocalDate.of(2026,9,10)),anyList());
     verify(history).archiveCommitted();
     assertEquals("2026-09-10",store.get(7).get("historyLastDate"));assertEquals("ready",store.get(7).get("historyState"));
-    service.capture(7,LocalDate.of(2026,9,11));verify(sync,times(1)).collectHistory(anyMap(),anyString(),any());
+    service.capture(7,LocalDate.of(2026,9,11));verify(sync,times(1)).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
   }
 
   @Test void nextCaptureIsNextBeijing0030(){
     long expected=LocalDate.of(2026,9,12).atTime(0,30).atZone(ReportService.BEIJING).toInstant().toEpochMilli();
     assertEquals(expected,BidHistoryService.nextCaptureAt(LocalDate.of(2026,9,11)));
   }
+
+  @Test void activeCaptureProgressRenewsItsLeaseUntilCommit()throws Exception{
+    var runDate=LocalDate.of(2026,9,11);
+    doAnswer(call->{
+      BidServerSyncService.Progress progress=call.getArgument(3);
+      String token=store.get(7).get("historyToken").toString();
+      for(int done:List.of(1,2)){
+        store.update(7,(connection,state)->state.put("historyRetryAt",0L));
+        long before=System.currentTimeMillis();progress.update(done,2);long after=System.currentTimeMillis();
+        var current=store.get(7);long retryAt=((Number)current.get("historyRetryAt")).longValue();
+        assertTrue(retryAt>=before+180_000L&&retryAt<=after+180_000L);
+        assertEquals("running",current.get("historyState"));assertEquals(token,current.get("historyToken"));
+        assertEquals("revision",current.get("credentialRevision"));
+      }
+      return Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123")));
+    }).when(sync).collectHistory(anyMap(),anyString(),eq(runDate),any(BidServerSyncService.Progress.class));
+    service.capture(7,runDate);
+    assertEquals("ready",store.get(7).get("historyState"));
+    assertEquals(BidHistoryService.nextCaptureAt(runDate),store.get(7).get("historyRetryAt"));
+    verify(history).replace(eq(store.connection),eq(7L),eq(runDate.minusDays(1)),anyList());
+    verify(history).archiveCommitted();
+  }
+
+  @Test void progressCancelsObsoleteCredentialsWithoutRetryOrCommit()throws Exception{
+    doAnswer(call->{
+      store.update(7,(connection,state)->{
+        state.put("credentialRevision","replacement");state.put("historyState","waiting");
+        state.put("historyError","");state.put("historyRetryAt",0L);
+      });
+      BidServerSyncService.Progress progress=call.getArgument(3);
+      throw assertThrows(CancellationException.class,()->progress.update(1,2));
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
+    service.capture(7,LocalDate.of(2026,9,11));
+    var state=store.get(7);assertEquals("replacement",state.get("credentialRevision"));
+    assertEquals("waiting",state.get("historyState"));assertEquals("",state.get("historyError"));
+    assertEquals(0L,state.get("historyRetryAt"));assertFalse(state.containsKey("historyFailureAt"));
+    assertFalse(state.containsKey("historyLastDate"));verifyNoInteractions(raw,history);
+  }
+
+  @Test void progressCancelsStoppedCaptureWithoutRetryOrCommit()throws Exception{
+    doAnswer(call->{
+      store.update(7,(connection,state)->{
+        state.put("enabled",false);state.put("historyState","stopped");state.put("historyRetryAt",0L);
+      });
+      BidServerSyncService.Progress progress=call.getArgument(3);
+      throw assertThrows(CancellationException.class,()->progress.update(1,2));
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
+    service.capture(7,LocalDate.of(2026,9,11));
+    var state=store.get(7);assertEquals(false,state.get("enabled"));assertEquals("stopped",state.get("historyState"));
+    assertEquals(0L,state.get("historyRetryAt"));assertEquals("",state.get("historyError"));
+    assertFalse(state.containsKey("historyFailureAt"));assertFalse(state.containsKey("historyLastDate"));
+    verifyNoInteractions(raw,history);
+  }
+
+  @Test void progressRejectsRevokedPermissionBeforeCommit()throws Exception{
+    doAnswer(call->{
+      doReturn(false).when(sync).allowed(7);
+      BidServerSyncService.Progress progress=call.getArgument(3);
+      var error=assertThrows(IllegalStateException.class,()->progress.update(1,2));
+      assertEquals("permission",error.getMessage());throw error;
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
+    service.capture(7,LocalDate.of(2026,9,11));
+    assertFalse(store.get(7).containsKey("historyLastDate"));verifyNoInteractions(raw,history);
+  }
+
   @Test void archiveFailurePersistsAcrossRetriesAndRestartUntilArchiveCommitSucceeds()throws Exception{
     var runDate=LocalDate.of(2026,9,11);
     store.update(7,(connection,state)->{
       state.put("historyLastDate","2026-09-09");state.put("historyLastSuccess","old-archive");
       state.put("error","current snapshot failure");state.put("failureAt","current-incident");state.put("lastSuccess","current-snapshot");
     });
-    doThrow(new java.io.IOException("private cookie body")).when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+    doThrow(new java.io.IOException("private cookie body")).when(sync).collectHistory(anyMap(),anyString(),eq(runDate),any(BidServerSyncService.Progress.class));
     service.capture(7,runDate);var failed=store.get(7);String failureAt=failed.get("historyFailureAt").toString();
     assertDoesNotThrow(()->java.time.Instant.parse(failureAt));assertEquals("retrying",failed.get("historyState"));
     assertEquals("2026-09-09",failed.get("historyLastDate"));assertEquals("old-archive",failed.get("historyLastSuccess"));
@@ -80,11 +145,11 @@ class BidHistoryServiceTest {
       var current=store.get(7);assertEquals("running",current.get("historyState"));
       assertEquals(failed.get("historyError"),current.get("historyError"));assertEquals(failureAt,current.get("historyFailureAt"));
       throw new java.io.IOException("still failing");
-    }).when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+    }).when(sync).collectHistory(anyMap(),anyString(),eq(runDate),any(BidServerSyncService.Progress.class));
     service.capture(7,runDate);assertEquals(failureAt,store.get(7).get("historyFailureAt"));
     store.update(7,(connection,state)->state.put("historyRetryAt",0L));
     doReturn(Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123"))))
-        .when(sync).collectHistory(anyMap(),anyString(),eq(runDate));
+        .when(sync).collectHistory(anyMap(),anyString(),eq(runDate),any(BidServerSyncService.Progress.class));
     service.capture(7,runDate);var recovered=store.get(7);
     assertEquals("ready",recovered.get("historyState"));assertEquals("",recovered.get("historyError"));assertFalse(recovered.containsKey("historyFailureAt"));
     assertEquals("2026-09-10",recovered.get("historyLastDate"));assertNotEquals("old-archive",recovered.get("historyLastSuccess"));
@@ -113,7 +178,7 @@ class BidHistoryServiceTest {
         state.put("historyError","");state.put("historyRetryAt",0L);
       });
       throw new IllegalArgumentException("code=-1 obsolete credential");
-    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
     service.capture(7,LocalDate.of(2026,9,11));
     var state=store.get(7);assertEquals("replacement",state.get("credentialRevision"));
     assertEquals("waiting",state.get("historyState"));assertEquals("",state.get("historyError"));
@@ -127,7 +192,7 @@ class BidHistoryServiceTest {
         state.put("enabled",false);state.put("historyState","stopped");state.put("historyRetryAt",0L);
       });
       throw new java.io.IOException("obsolete response after stop");
-    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
     service.capture(7,LocalDate.of(2026,9,11));
     var state=store.get(7);assertEquals(false,state.get("enabled"));assertEquals("stopped",state.get("historyState"));
     assertEquals(0L,state.get("historyRetryAt"));assertEquals("",state.get("historyError"));
@@ -138,7 +203,7 @@ class BidHistoryServiceTest {
     doAnswer(call->{
       store.update(7,(connection,state)->state.put("credentialRevision","replacement"));
       return Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123")));
-    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
     service.capture(7,LocalDate.of(2026,9,11));
     verify(raw,never()).replace(any(),anyLong(),anyString(),anyList());
     verify(history,never()).replace(any(),anyLong(),any(),anyList());verify(history,never()).archiveCommitted();
@@ -157,7 +222,7 @@ class BidHistoryServiceTest {
       if(owner.equals("7")){started.countDown();assertTrue(release.await(5,TimeUnit.SECONDS));}
       if(owner.equals("9"))drained.countDown();
       return Map.of("date","2026-09-10","rows",List.of(Map.of("promotion_id","123")));
-    }).when(sync).collectHistory(anyMap(),anyString(),any());
+    }).when(sync).collectHistory(anyMap(),anyString(),any(),any(BidServerSyncService.Progress.class));
     var now=LocalDate.of(2026,9,11).atTime(0,30).atZone(ReportService.BEIJING);
     store.dueOwners=List.of(7L,8L);service.dispatch(now);
     try{
@@ -168,9 +233,9 @@ class BidHistoryServiceTest {
     }finally{release.countDown();}
     assertTrue(drained.await(3,TimeUnit.SECONDS));
     assertEquals(2,store.updates(7));assertEquals(2,store.updates(8));
-    verify(sync,times(1)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any());
+    verify(sync,times(1)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any(),any(BidServerSyncService.Progress.class));
     store.update(8,(connection,state)->{state.remove("historyLastDate");state.put("historyRetryAt",0L);});
     store.dueOwners=List.of(8L);service.dispatch(now);
-    verify(sync,timeout(2000).times(2)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any());
+    verify(sync,timeout(2000).times(2)).collectHistory(argThat(state->"8".equals(state.get("clientUser"))),anyString(),any(),any(BidServerSyncService.Progress.class));
   }
 }
